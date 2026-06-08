@@ -14,5 +14,19 @@ namespace AgvDispatcher.Modules.TaskModule.Models
         public string EndPoint { get; set; } = string.Empty;
         public string CreatedTime { get; set; } = string.Empty;
         public string EstimatedTime { get; set; } = string.Empty;
+
+        private bool _isDispatchPaused;
+        public bool IsDispatchPaused
+        {
+            get => _isDispatchPaused;
+            set => SetProperty(ref _isDispatchPaused, value);
+        }
+
+        private string _dispatchPauseReason = string.Empty;
+        public string DispatchPauseReason
+        {
+            get => _dispatchPauseReason;
+            set => SetProperty(ref _dispatchPauseReason, value);
+        }
     }
 }

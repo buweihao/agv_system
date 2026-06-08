@@ -210,6 +210,38 @@
                 </DataGridTemplateColumn>
 
                 <DataGridTextColumn Header="AGV编号" Binding="{Binding AgvId}" Width="*"/>
+                <DataGridTemplateColumn Header="派发状态" Width="1.2*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="可派发" Foreground="#00FF7F" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDispatchPaused}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding DispatchPauseReason}" Foreground="#FFD700" FontWeight="Bold">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsDispatchPaused}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="起点" Binding="{Binding StartPoint}" Width="*"/>
                 <DataGridTextColumn Header="终点" Binding="{Binding EndPoint}" Width="*"/>
                 <DataGridTextColumn Header="创建时间" Binding="{Binding CreatedTime}" Width="1.5*"/>

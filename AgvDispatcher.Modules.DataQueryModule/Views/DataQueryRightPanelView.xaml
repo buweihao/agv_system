@@ -1,0 +1,213 @@
+<UserControl x:Class="AgvDispatcher.Modules.DataQueryModule.Views.DataQueryRightPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="900" d:DesignWidth="320"
+             Background="#0A111E">
+
+    <UserControl.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Microsoft YaHei"/>
+        </Style>
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#00BFFF"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#0F1A2A"/>
+            <Setter Property="BorderBrush" Value="#1F3A60"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,0,0,15"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 1. 运行数据统计 -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <Grid Margin="0,0,0,10">
+                    <TextBlock Text="▶ 运行数据统计" Style="{StaticResource SectionTitleStyle}" Margin="0"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="&lt;" Background="Transparent" Foreground="Gray" BorderThickness="0" Cursor="Hand"/>
+                        <TextBlock Text=" 日 " Foreground="Gray" VerticalAlignment="Center"/>
+                        <Button Content="&gt;" Background="Transparent" Foreground="Gray" BorderThickness="0" Cursor="Hand"/>
+                    </StackPanel>
+                </Grid>
+                
+                <StackPanel Orientation="Horizontal" Height="140">
+                    <Grid Width="120">
+                        <Ellipse Width="100" Height="100" Stroke="#1F3A60" StrokeThickness="12" />
+                        <Ellipse Width="100" Height="100" Stroke="#00FF7F" StrokeThickness="12" StrokeDashArray="20 20" />
+                        <Ellipse Width="100" Height="100" Stroke="#FFD700" StrokeThickness="12" StrokeDashArray="10 30" StrokeDashOffset="-20" />
+                        <Ellipse Width="100" Height="100" Stroke="#00BFFF" StrokeThickness="12" StrokeDashArray="6 34" StrokeDashOffset="-30" />
+                        <Ellipse Width="100" Height="100" Stroke="Gray" StrokeThickness="12" StrokeDashArray="4 36" StrokeDashOffset="-36" />
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="256" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                            <TextBlock Text="总次数" FontSize="12" Foreground="Gray" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel VerticalAlignment="Center" Margin="15,0,0,0" Width="130">
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Grid.Column="0" Width="8" Height="8" Fill="#00FF7F"/>
+                            <TextBlock Grid.Column="1" Text="搬运任务" Foreground="White" FontSize="12" Margin="5,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="128" Foreground="#00FF7F" FontSize="12" Margin="0,0,5,0" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="3" Text="50%" Foreground="Gray" FontSize="10"/>
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Grid.Column="0" Width="8" Height="8" Fill="#FFD700"/>
+                            <TextBlock Grid.Column="1" Text="巡检任务" Foreground="White" FontSize="12" Margin="5,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="64" Foreground="#FFD700" FontSize="12" Margin="0,0,5,0" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="3" Text="25%" Foreground="Gray" FontSize="10"/>
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Grid.Column="0" Width="8" Height="8" Fill="#00BFFF"/>
+                            <TextBlock Grid.Column="1" Text="充电任务" Foreground="White" FontSize="12" Margin="5,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="38" Foreground="#00BFFF" FontSize="12" Margin="0,0,5,0" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="3" Text="15%" Foreground="Gray" FontSize="10"/>
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Grid.Column="0" Width="8" Height="8" Fill="Gray"/>
+                            <TextBlock Grid.Column="1" Text="其他任务" Foreground="White" FontSize="12" Margin="5,0,0,0"/>
+                            <TextBlock Grid.Column="2" Text="26" Foreground="Gray" FontSize="12" Margin="0,0,5,0" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="3" Text="10%" Foreground="Gray" FontSize="10"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- 2. 运行趋势(近7天) -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <TextBlock Text="▶ 运行趋势 (近7天)" Style="{StaticResource SectionTitleStyle}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,5">
+                    <Ellipse Width="8" Height="8" Fill="#00BFFF" Margin="0,0,5,0"/>
+                    <TextBlock Text="运行距离(km)" Foreground="Gray" FontSize="10" Margin="0,0,10,0"/>
+                    <Ellipse Width="8" Height="8" Fill="#00FF7F" Margin="0,0,5,0"/>
+                    <TextBlock Text="运行时长(h)" Foreground="Gray" FontSize="10"/>
+                </StackPanel>
+                <Grid Height="140">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="20"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="20"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <Grid Grid.Column="0" Grid.Row="0">
+                        <TextBlock Text="10k" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                        <TextBlock Text="5k" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        <TextBlock Text="0" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                    </Grid>
+                    
+                    <Canvas Grid.Column="1" Grid.Row="0" Margin="5,5,5,0" ClipToBounds="True">
+                        <!-- Background Grid Lines -->
+                        <Line X1="0" Y1="30" X2="220" Y2="30" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                        <Line X1="0" Y1="60" X2="220" Y2="60" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                        <Line X1="0" Y1="90" X2="220" Y2="90" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                        <Line X1="0" Y1="110" X2="220" Y2="110" Stroke="#1F3A60" StrokeThickness="1"/>
+                        
+                        <!-- 运行距离(km) - 蓝色 -->
+                        <Polyline Points="0,90 35,60 70,70 105,40 140,50 175,20 220,10" Stroke="#00BFFF" StrokeThickness="2" />
+                        <!-- 运行时长(h) - 青色 -->
+                        <Polyline Points="0,100 35,80 70,85 105,60 140,70 175,40 220,35" Stroke="#00FF7F" StrokeThickness="2" />
+                    </Canvas>
+                    
+                    <Grid Grid.Column="2" Grid.Row="0">
+                        <TextBlock Text="20" Foreground="Gray" FontSize="10" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                        <TextBlock Text="10" Foreground="Gray" FontSize="10" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <TextBlock Text="0" Foreground="Gray" FontSize="10" HorizontalAlignment="Left" VerticalAlignment="Bottom"/>
+                    </Grid>
+
+                    <!-- X-Axis Labels -->
+                    <Grid Grid.Column="1" Grid.Row="1" Margin="5,0">
+                        <TextBlock Text="01-06" Foreground="Gray" FontSize="10" HorizontalAlignment="Left"/>
+                        <TextBlock Text="01-09" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
+                        <TextBlock Text="01-12" Foreground="Gray" FontSize="10" HorizontalAlignment="Right"/>
+                    </Grid>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 3. 平均速度分布 -->
+        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Margin="0">
+            <StackPanel>
+                <TextBlock Text="▶ 平均速度分布" Style="{StaticResource SectionTitleStyle}"/>
+                <Grid Height="130">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="20"/>
+                    </Grid.RowDefinitions>
+                    
+                    <Canvas Grid.Row="0" Margin="10,10,10,0" ClipToBounds="True">
+                        <Line X1="0" Y1="100" X2="250" Y2="100" Stroke="#1F3A60" StrokeThickness="1"/>
+                        
+                        <Rectangle Canvas.Left="15" Canvas.Bottom="0" Width="20" Height="20" Fill="#00BFFF"/>
+                        <TextBlock Canvas.Left="20" Canvas.Bottom="22" Text="8" Foreground="Gray" FontSize="10"/>
+                        
+                        <Rectangle Canvas.Left="65" Canvas.Bottom="0" Width="20" Height="45" Fill="#00BFFF"/>
+                        <TextBlock Canvas.Left="68" Canvas.Bottom="47" Text="36" Foreground="Gray" FontSize="10"/>
+                        
+                        <Rectangle Canvas.Left="115" Canvas.Bottom="0" Width="20" Height="90" Fill="#00BFFF"/>
+                        <TextBlock Canvas.Left="115" Canvas.Bottom="92" Text="128" Foreground="#00FF7F" FontSize="10" FontWeight="Bold"/>
+                        
+                        <Rectangle Canvas.Left="165" Canvas.Bottom="0" Width="20" Height="60" Fill="#00BFFF"/>
+                        <TextBlock Canvas.Left="168" Canvas.Bottom="62" Text="64" Foreground="Gray" FontSize="10"/>
+                        
+                        <Rectangle Canvas.Left="215" Canvas.Bottom="0" Width="20" Height="30" Fill="#00BFFF"/>
+                        <TextBlock Canvas.Left="218" Canvas.Bottom="32" Text="20" Foreground="Gray" FontSize="10"/>
+                    </Canvas>
+                    
+                    <Grid Grid.Row="1" Margin="10,0">
+                        <TextBlock Text="0-0.5" Foreground="Gray" FontSize="9" HorizontalAlignment="Left" Margin="10,0,0,0"/>
+                        <TextBlock Text="0.5-1.0" Foreground="Gray" FontSize="9" HorizontalAlignment="Left" Margin="55,0,0,0"/>
+                        <TextBlock Text="1.0-1.5" Foreground="Gray" FontSize="9" HorizontalAlignment="Center"/>
+                        <TextBlock Text="1.5-2.0" Foreground="Gray" FontSize="9" HorizontalAlignment="Right" Margin="0,0,55,0"/>
+                        <TextBlock Text=">2.0" Foreground="Gray" FontSize="9" HorizontalAlignment="Right" Margin="0,0,12,0"/>
+                    </Grid>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

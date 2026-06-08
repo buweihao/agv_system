@@ -1,0 +1,193 @@
+<UserControl x:Class="AgvDispatcher.Modules.SignalModule.Views.SignalRightPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="900" d:DesignWidth="320"
+             Background="#0A111E">
+             
+    <UserControl.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Microsoft YaHei"/>
+        </Style>
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#00BFFF"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#0F1A2A"/>
+            <Setter Property="BorderBrush" Value="#1F3A60"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,0,0,15"/>
+        </Style>
+        <Style TargetType="ToggleButton">
+            <Setter Property="Background" Value="#1F3A60"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Background" Value="#00BFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 1. 信号详情 -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <TextBlock Text="▶ 信号详情" Style="{StaticResource SectionTitleStyle}"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="信号名称:" Foreground="Gray" FontSize="12" Margin="0,0,15,0"/>
+                    <TextBlock Grid.Column="1" Text="安全门_03限位" FontWeight="Bold" FontSize="12"/>
+                </Grid>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="信号状态:" Foreground="Gray" FontSize="12" Margin="0,0,15,0"/>
+                    <TextBlock Grid.Column="1" Text="异常" Foreground="#FF4500" FontWeight="Bold" FontSize="12"/>
+                </Grid>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="关联设备:" Foreground="Gray" FontSize="12" Margin="0,0,15,0"/>
+                    <TextBlock Grid.Column="1" Text="DOOR-003" FontSize="12"/>
+                </Grid>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="触发条件:" Foreground="Gray" FontSize="12" Margin="0,0,15,0"/>
+                    <TextBlock Grid.Column="1" Text="Value == 0 且 持续时间 > 5s" FontSize="12" TextWrapping="Wrap"/>
+                </Grid>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="处理建议:" Foreground="Gray" FontSize="12" Margin="0,0,15,0"/>
+                    <TextBlock Grid.Column="1" Text="检查传感器物理连接，或者执行人工复位操作。" FontSize="12" Foreground="#FFD700" TextWrapping="Wrap"/>
+                </Grid>
+                <Button Content="人工复位" Background="#00BFFF" Foreground="White" BorderThickness="0" Padding="10,6" Margin="0,10,0,0" Cursor="Hand" HorizontalAlignment="Right">
+                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- 2. 信号交互统计 -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
+            <StackPanel>
+                <TextBlock Text="▶ 信号交互统计" Style="{StaticResource SectionTitleStyle}"/>
+                
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <Border Grid.Column="0" Background="#112233" CornerRadius="4" Padding="10" Margin="0,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="触发次数" Foreground="Gray" FontSize="12"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                <TextBlock Text="💓" FontSize="14" Foreground="#00BFFF" Margin="0,0,5,0"/>
+                                <TextBlock Text="1286" Foreground="White" FontSize="16" FontWeight="Bold"/>
+                                <TextBlock Text="次" Foreground="Gray" FontSize="10" VerticalAlignment="Bottom" Margin="2,0,0,2"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    
+                    <Border Grid.Column="1" Background="#112233" CornerRadius="4" Padding="10" Margin="5,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="响应成功率" Foreground="Gray" FontSize="12"/>
+                            <TextBlock Text="98.3%" Foreground="#00FF7F" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <Border Grid.Column="0" Background="#112233" CornerRadius="4" Padding="10" Margin="0,0,5,0">
+                        <StackPanel>
+                            <TextBlock Text="平均响应时间" Foreground="Gray" FontSize="12"/>
+                            <TextBlock Text="156 ms" Foreground="#FFD700" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <Border Grid.Column="1" Background="#112233" CornerRadius="4" Padding="10" Margin="5,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="超时次数" Foreground="Gray" FontSize="12"/>
+                            <TextBlock Text="23 次" Foreground="#FF4500" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 3. 快速筛选 -->
+        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}" Margin="0" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="▶ 快速筛选" Style="{StaticResource SectionTitleStyle}"/>
+                
+                <TextBlock Text="信号类型" Foreground="Gray" FontSize="12" Margin="0,0,0,10"/>
+                <WrapPanel Margin="0,0,0,10">
+                    <ToggleButton Content="虚拟信号" IsChecked="True"/>
+                    <ToggleButton Content="设备信号"/>
+                    <ToggleButton Content="安全信号" IsChecked="True"/>
+                    <ToggleButton Content="其他信号"/>
+                </WrapPanel>
+                
+                <TextBlock Text="状态" Foreground="Gray" FontSize="12" Margin="0,0,0,10"/>
+                <StackPanel>
+                    <CheckBox Content="正常" Foreground="White" Background="#1F3A60" Margin="0,0,0,8">
+                        <CheckBox.LayoutTransform><ScaleTransform ScaleX="1.2" ScaleY="1.2"/></CheckBox.LayoutTransform>
+                    </CheckBox>
+                    <CheckBox Content="激活" Foreground="White" Background="#1F3A60" Margin="0,0,0,8" IsChecked="True">
+                        <CheckBox.LayoutTransform><ScaleTransform ScaleX="1.2" ScaleY="1.2"/></CheckBox.LayoutTransform>
+                    </CheckBox>
+                    <CheckBox Content="异常" Foreground="#FF4500" Background="#1F3A60" Margin="0,0,0,8" IsChecked="True">
+                        <CheckBox.LayoutTransform><ScaleTransform ScaleX="1.2" ScaleY="1.2"/></CheckBox.LayoutTransform>
+                    </CheckBox>
+                    <CheckBox Content="离线" Foreground="Gray" Background="#1F3A60" Margin="0,0,0,8">
+                        <CheckBox.LayoutTransform><ScaleTransform ScaleX="1.2" ScaleY="1.2"/></CheckBox.LayoutTransform>
+                    </CheckBox>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

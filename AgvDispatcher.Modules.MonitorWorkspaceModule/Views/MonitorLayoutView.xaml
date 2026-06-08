@@ -1,0 +1,48 @@
+<UserControl x:Class="AgvDispatcher.Modules.MonitorWorkspaceModule.Views.MonitorLayoutView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:prism="http://prismlibrary.com/"
+             xmlns:core="clr-namespace:AgvDispatcher.Core.Constants;assembly=AgvDispatcher.Core"
+             prism:ViewModelLocator.AutoWireViewModel="True">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="350" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="350" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Panel -->
+        <Grid Grid.Column="0" Background="#112233" Margin="10">
+            <Border BorderBrush="#1F3A52" BorderThickness="1" />
+            <TextBlock Text="左侧统计区" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="18" />
+            <ContentControl prism:RegionManager.RegionName="{x:Static core:RegionNames.LeftPanelRegion}" />
+        </Grid>
+
+        <!-- Middle Panel -->
+        <Grid Grid.Column="1" Margin="0,10,10,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="250" />
+            </Grid.RowDefinitions>
+
+            <!-- Map Region -->
+            <Grid Grid.Row="0" Background="#1A2B3C" Margin="0,0,0,10">
+                <TextBlock Text="核心地图区" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24" />
+                <ContentControl prism:RegionManager.RegionName="{x:Static core:RegionNames.MapRegion}" />
+            </Grid>
+
+            <!-- Robot List Region -->
+            <Grid Grid.Row="1" Background="#0F1A24">
+                <TextBlock Text="底部列表区" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="18" />
+                <ContentControl prism:RegionManager.RegionName="{x:Static core:RegionNames.RobotListRegion}" />
+            </Grid>
+        </Grid>
+
+        <!-- Right Panel -->
+        <Grid Grid.Column="2" Background="#112233" Margin="0,10,10,10">
+            <Border BorderBrush="#1F3A52" BorderThickness="1" />
+            <TextBlock Text="右侧统计区" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="18" />
+            <ContentControl prism:RegionManager.RegionName="{x:Static core:RegionNames.RightPanelRegion}" />
+        </Grid>
+    </Grid>
+</UserControl>

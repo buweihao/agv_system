@@ -1,0 +1,86 @@
+<UserControl x:Class="AgvDispatcher.Modules.TaskModule.Views.TaskAnalysisView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+
+    <UserControl.Resources>
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#00BFFF"/>
+            <Setter Property="Margin" Value="0,0,0,15"/>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#112233"/>
+            <Setter Property="Foreground" Value="#00BFFF"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="#1F3A60"/>
+        </Style>
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="#1F3A60"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#2A3B4C"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Padding="{TemplateBinding Padding}" Background="Transparent">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#0F1A2A" BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="6" Padding="15" Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock Text="▶ 任务瓶颈分析" Style="{StaticResource SectionTitleStyle}"/>
+                <TextBlock Text="系统诊断建议：" Foreground="Gray" Margin="0,0,0,10"/>
+                <TextBlock Text="1. '原料搬运' 类任务在高峰期（14:00 - 16:00）平均排队时间过长，建议增加投入该区域的AGV数量。" Foreground="#FFD700" Margin="0,0,0,5"/>
+                <TextBlock Text="2. 充电站 A 区周转率偏低，AGV-003 存在频繁短时充电行为，建议检查其电池健康度。" Foreground="#FFD700" Margin="0,0,0,5"/>
+                <TextBlock Text="3. 交通管制区域 'Zone-C' 发生拥堵概率达 12%，建议优化该路段的通行权重或设置单向通行策略。" Foreground="#00BFFF"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Background="#0F1A2A" BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="6" Padding="15">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="▶ 任务延迟排行榜 (Top 5)" Style="{StaticResource SectionTitleStyle}"/>
+                
+                <DataGrid Grid.Row="1" AutoGenerateColumns="False" Background="Transparent" 
+                          RowBackground="Transparent" AlternatingRowBackground="#0A111E" 
+                          Foreground="White" GridLinesVisibility="None" BorderThickness="0" HeadersVisibility="Column"
+                          CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="排名" Width="60"/>
+                        <DataGridTextColumn Header="任务类型" Width="*"/>
+                        <DataGridTextColumn Header="负责设备" Width="*"/>
+                        <DataGridTextColumn Header="平均延迟" Width="*"/>
+                        <DataGridTextColumn Header="主要延迟原因分类" Width="2*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                
+                <TextBlock Grid.Row="1" Text="暂无导致严重延迟的任务记录" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,50,0,0"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

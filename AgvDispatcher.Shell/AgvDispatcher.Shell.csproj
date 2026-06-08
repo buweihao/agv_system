@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HandyControl" Version="3.5.1" />
+    <PackageReference Include="Prism.DryIoc" Version="9.0.537" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="..\UI_pic\logo.png" Link="UI_pic\logo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
+    
+    <!-- 引入所有模块项目以确保它们在主程序启动前被编译，但设置 ReferenceOutputAssembly=false 以避免静态耦合 -->
+    <ProjectReference Include="..\AgvDispatcher.Modules.TemplateModule\AgvDispatcher.Modules.TemplateModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.DashboardModule\AgvDispatcher.Modules.DashboardModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.MonitoringModule\AgvDispatcher.Modules.MonitoringModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.MapModule\AgvDispatcher.Modules.MapModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.MonitorWorkspaceModule\AgvDispatcher.Modules.MonitorWorkspaceModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.ChargeModule\AgvDispatcher.Modules.ChargeModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.TaskModule\AgvDispatcher.Modules.TaskModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.SignalModule\AgvDispatcher.Modules.SignalModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.DataQueryModule\AgvDispatcher.Modules.DataQueryModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.TaskConfigModule\AgvDispatcher.Modules.TaskConfigModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

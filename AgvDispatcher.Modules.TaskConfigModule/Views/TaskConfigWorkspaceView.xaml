@@ -1,0 +1,139 @@
+<UserControl x:Class="AgvDispatcher.Modules.TaskConfigModule.Views.TaskConfigWorkspaceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:prism="http://prismlibrary.com/"
+             xmlns:local="clr-namespace:AgvDispatcher.Modules.TaskConfigModule.Views"
+             prism:ViewModelLocator.AutoWireViewModel="True">
+
+    <UserControl.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Microsoft YaHei"/>
+        </Style>
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#00BFFF"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="Gray"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,12"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="4">
+                            <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
+                                <TextBlock Text="⚙" Foreground="{TemplateBinding Foreground}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#112233"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Background" Value="#1F3A60"/>
+                                <Setter Property="Foreground" Value="#00BFFF"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="#0A111E">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 左侧列：垂直二级导航 -->
+        <Grid Grid.Column="0" Background="#0A111E" Margin="10">
+            <Border BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,15,0,20">
+                        <StackPanel Orientation="Horizontal" Margin="15,0,0,15">
+                            <TextBlock Text="⚙" Foreground="#00BFFF" FontSize="18" Margin="0,0,5,0"/>
+                            <TextBlock Text="任务配置" Style="{StaticResource SectionTitleStyle}" Margin="0"/>
+                        </StackPanel>
+                        
+                        <StackPanel Margin="10,0">
+                            <RadioButton x:Name="RbTCTemplate" Content="任务模板" IsChecked="True"/>
+                            <RadioButton x:Name="RbTCWorkflow" Content="任务流程"/>
+                            <RadioButton x:Name="RbTCPriority" Content="任务优先级"/>
+                            <RadioButton x:Name="RbTCParameter" Content="任务参数"/>
+                            <RadioButton x:Name="RbTCSchedule" Content="定时任务"/>
+                            <RadioButton x:Name="RbTCRule" Content="触发规则"/>
+                            <RadioButton x:Name="RbTCStrategy" Content="任务策略"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 右侧列：主配置区 -->
+        <Grid Grid.Column="1" Background="#0A111E" Margin="0,10,10,10">
+            <Grid>
+                <!-- 任务模板 原内容 -->
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=RbTCTemplate}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="380"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <local:TaskConfigTopPanelView />
+                    </Grid>
+                    <Grid Grid.Row="1">
+                        <local:TaskConfigBottomPanelView />
+                    </Grid>
+                </Grid>
+
+                <!-- 其他演示页 -->
+                <local:TaskConfigWorkflowView>
+                    <local:TaskConfigWorkflowView.Style>
+                        <Style TargetType="UserControl"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=RbTCWorkflow}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+                    </local:TaskConfigWorkflowView.Style>
+                </local:TaskConfigWorkflowView>
+                <local:TaskConfigPriorityView>
+                    <local:TaskConfigPriorityView.Style>
+                        <Style TargetType="UserControl"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=RbTCPriority}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+                    </local:TaskConfigPriorityView.Style>
+                </local:TaskConfigPriorityView>
+                <local:TaskConfigParameterView>
+                    <local:TaskConfigParameterView.Style>
+                        <Style TargetType="UserControl"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=RbTCParameter}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+                    </local:TaskConfigParameterView.Style>
+                </local:TaskConfigParameterView>
+                <local:TaskConfigScheduleView>
+                    <local:TaskConfigScheduleView.Style>
+                        <Style TargetType="UserControl"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=RbTCSchedule}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+                    </local:TaskConfigScheduleView.Style>
+                </local:TaskConfigScheduleView>
+                <local:TaskConfigRuleView>
+                    <local:TaskConfigRuleView.Style>
+                        <Style TargetType="UserControl"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=RbTCRule}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+                    </local:TaskConfigRuleView.Style>
+                </local:TaskConfigRuleView>
+                <local:TaskConfigStrategyView>
+                    <local:TaskConfigStrategyView.Style>
+                        <Style TargetType="UserControl"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=RbTCStrategy}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style>
+                    </local:TaskConfigStrategyView.Style>
+                </local:TaskConfigStrategyView>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

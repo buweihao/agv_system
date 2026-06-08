@@ -1,0 +1,52 @@
+<UserControl x:Class="AgvDispatcher.Shell.Views.HeaderView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:prism="http://prismlibrary.com/"
+             prism:ViewModelLocator.AutoWireViewModel="True">
+    <Grid Background="#050B14">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Image Grid.Column="0"
+               Source="/UI_pic/logo.png"
+               Width="130"
+               Height="42"
+               Margin="20,0,0,0"
+               Stretch="Uniform"
+               VerticalAlignment="Center"
+               HorizontalAlignment="Left"/>
+
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    Margin="20,10"
+                    HorizontalAlignment="Center">
+            <TextBlock Text="AGV智能调度系统"
+                       Foreground="White"
+                       FontSize="24"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center">
+                <TextBlock.Effect>
+                    <DropShadowEffect Color="#00BFFF" BlurRadius="5" ShadowDepth="0" Opacity="0.5"/>
+                </TextBlock.Effect>
+            </TextBlock>
+            <TextBlock Text="{Binding CurrentPageTitle}"
+                       Foreground="#00BFFF"
+                       FontSize="22"
+                       FontWeight="Bold"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Center"
+                       Margin="10,0"/>
+        </StackPanel>
+
+        <TextBlock Grid.Column="2"
+                   Text="{Binding CurrentTime}"
+                   Foreground="LightGray"
+                   FontSize="16"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Right"
+                   Margin="20,0"/>
+    </Grid>
+</UserControl>

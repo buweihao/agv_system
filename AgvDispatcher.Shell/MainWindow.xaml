@@ -1,0 +1,104 @@
+<Window x:Class="AgvDispatcher.Shell.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:prism="http://prismlibrary.com/"
+        xmlns:core="clr-namespace:AgvDispatcher.Core.Constants;assembly=AgvDispatcher.Core"
+        mc:Ignorable="d"
+        prism:ViewModelLocator.AutoWireViewModel="True"
+        Title="AgvDispatcher" Height="800" Width="1280"
+        Background="#050E17">
+    <Window.Resources>
+        <!-- BooleanToVisibilityConverter is built-in, but to ensure no namespace issues, we declare it -->
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        
+        <!-- Nav Button Style -->
+        <Style x:Key="NavButtonStyle" TargetType="RadioButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Background="Transparent" Height="50" Padding="15,0" Cursor="Hand">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="30"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Icon Placeholder -->
+                                <TextBlock Text="{TemplateBinding Tag}" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                <!-- Text (Hidden when collapsed) -->
+                                <TextBlock Grid.Column="1" Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Margin="10,0,0,0" FontSize="14"
+                                           Visibility="{Binding DataContext.IsSidebarExpanded, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Foreground" Value="Gray"/>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Foreground" Value="#00BFFF"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="#00BFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar -->
+        <Border Grid.Column="0" Width="{Binding SidebarWidth}" Background="#080E17" BorderBrush="#1F3A60" BorderThickness="0,0,1,0">
+            <StackPanel>
+                <!-- Hamburger Button -->
+                <Button Command="{Binding ToggleSidebarCommand}" Background="Transparent" BorderThickness="0" Height="60" Width="60" HorizontalAlignment="Left" Cursor="Hand">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="Transparent" Padding="15,0" >
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="30"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                     <TextBlock Text="&#xE700;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
+                <!-- Nav Buttons -->
+                <RadioButton Tag="&#xE8A9;" Content="运行监控" Style="{StaticResource NavButtonStyle}" Command="{Binding NavigateCommand}" CommandParameter="MonitorLayoutView" IsChecked="True"/>
+                <RadioButton Tag="&#xE8C0;" Content="任务管理" Style="{StaticResource NavButtonStyle}" Command="{Binding NavigateCommand}" CommandParameter="TaskWorkspaceView"/>
+                <RadioButton Tag="&#xE945;" Content="充电管理" Style="{StaticResource NavButtonStyle}" Command="{Binding NavigateCommand}" CommandParameter="ChargeWorkspaceView"/>
+                <RadioButton Tag="&#xE8D5;" Content="信号交互" Style="{StaticResource NavButtonStyle}" Command="{Binding NavigateCommand}" CommandParameter="SignalWorkspaceView"/>
+                <RadioButton Tag="&#xE1C3;" Content="数据查询" Style="{StaticResource NavButtonStyle}" Command="{Binding NavigateCommand}" CommandParameter="DataQueryWorkspaceView"/>
+                <RadioButton Tag="&#xE74C;" Content="任务配置" Style="{StaticResource NavButtonStyle}" Command="{Binding NavigateCommand}" CommandParameter="TaskConfigWorkspaceView"/>
+                <RadioButton Tag="&#xE713;" Content="系统设置" Style="{StaticResource NavButtonStyle}" Command="{Binding NavigateCommand}" CommandParameter="SystemSettingView"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Workspace (existing structure) -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="60" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Header Region -->
+            <Grid Grid.Row="0" Background="#0D1B2A">
+                <ContentControl prism:RegionManager.RegionName="{x:Static core:RegionNames.HeaderRegion}" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+            </Grid>
+
+            <!-- Main Content -->
+            <Grid Grid.Row="1">
+                <ContentControl Background="#000000" prism:RegionManager.RegionName="{x:Static core:RegionNames.MainWorkspaceRegion}" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

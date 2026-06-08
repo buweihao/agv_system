@@ -1,0 +1,15 @@
+<Solution>
+  <Project Path="agv_system.csproj" />
+  <Project Path="AgvDispatcher.Shell\AgvDispatcher.Shell.csproj" />
+  <Project Path="AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
+  <Project Path="AgvDispatcher.Modules.TemplateModule\AgvDispatcher.Modules.TemplateModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.DashboardModule\AgvDispatcher.Modules.DashboardModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.MonitoringModule\AgvDispatcher.Modules.MonitoringModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.MapModule\AgvDispatcher.Modules.MapModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.MonitorWorkspaceModule\AgvDispatcher.Modules.MonitorWorkspaceModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.ChargeModule\AgvDispatcher.Modules.ChargeModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.TaskModule\AgvDispatcher.Modules.TaskModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.SignalModule\AgvDispatcher.Modules.SignalModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.DataQueryModule\AgvDispatcher.Modules.DataQueryModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.TaskConfigModule\AgvDispatcher.Modules.TaskConfigModule.csproj" />
+</Solution>

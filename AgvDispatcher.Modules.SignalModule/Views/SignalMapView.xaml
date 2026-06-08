@@ -1,0 +1,111 @@
+<UserControl x:Class="AgvDispatcher.Modules.SignalModule.Views.SignalMapView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800"
+             Background="Transparent">
+
+    <UserControl.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Microsoft YaHei"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 顶部过滤 -->
+        <Grid Grid.Row="0" Margin="15,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <ComboBox SelectedIndex="0" Width="120" Height="28">
+                    <ComboBoxItem Content="全部区域"/>
+                    <ComboBoxItem Content="A区"/>
+                    <ComboBoxItem Content="B区"/>
+                </ComboBox>
+            </StackPanel>
+        </Grid>
+
+        <!-- 地图主体 -->
+        <Border Grid.Row="1" Background="#050B14" BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="4" Margin="10,0,10,10" ClipToBounds="True">
+            <Canvas>
+                <!-- 深蓝色网格线 -->
+                <Canvas.Background>
+                    <DrawingBrush TileMode="Tile" Viewport="0,0,40,40" ViewportUnits="Absolute">
+                        <DrawingBrush.Drawing>
+                            <GeometryDrawing>
+                                <GeometryDrawing.Pen>
+                                    <Pen Brush="#0A1525" Thickness="1"/>
+                                </GeometryDrawing.Pen>
+                                <GeometryDrawing.Geometry>
+                                    <PathGeometry>
+                                        <PathFigure StartPoint="0,0">
+                                            <LineSegment Point="40,0"/>
+                                            <LineSegment Point="40,40"/>
+                                        </PathFigure>
+                                    </PathGeometry>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </Canvas.Background>
+
+                <!-- 01区 到 08区的矩形框 -->
+                <Border Canvas.Left="50" Canvas.Top="50" Width="150" Height="200" BorderBrush="#1F3A60" BorderThickness="2" Background="#101F3A60">
+                    <TextBlock Text="01区" Foreground="#1F3A60" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border Canvas.Left="250" Canvas.Top="50" Width="150" Height="200" BorderBrush="#1F3A60" BorderThickness="2" Background="#101F3A60">
+                    <TextBlock Text="02区" Foreground="#1F3A60" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border Canvas.Left="450" Canvas.Top="50" Width="150" Height="200" BorderBrush="#1F3A60" BorderThickness="2" Background="#101F3A60">
+                    <TextBlock Text="03区" Foreground="#1F3A60" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border Canvas.Left="650" Canvas.Top="50" Width="150" Height="200" BorderBrush="#1F3A60" BorderThickness="2" Background="#101F3A60">
+                    <TextBlock Text="04区" Foreground="#1F3A60" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- 信号节点散布 -->
+                <!-- 提升机_上限位 (红色异常) -->
+                <StackPanel Canvas.Left="100" Canvas.Top="80" HorizontalAlignment="Center">
+                    <Ellipse Width="16" Height="16" Fill="#FF4500" HorizontalAlignment="Center">
+                        <Ellipse.Effect><DropShadowEffect Color="#FF4500" BlurRadius="10" ShadowDepth="0"/></Ellipse.Effect>
+                    </Ellipse>
+                    <Border Background="#40000000" CornerRadius="2" Padding="4,2" Margin="0,5,0,0">
+                        <TextBlock Text="提升机_上限位" Foreground="#FF4500" FontSize="12" FontWeight="Bold"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- 安全门_01 (黄色激活) -->
+                <StackPanel Canvas.Left="300" Canvas.Top="180" HorizontalAlignment="Center">
+                    <Ellipse Width="16" Height="16" Fill="#FFD700" HorizontalAlignment="Center">
+                        <Ellipse.Effect><DropShadowEffect Color="#FFD700" BlurRadius="10" ShadowDepth="0"/></Ellipse.Effect>
+                    </Ellipse>
+                    <Border Background="#40000000" CornerRadius="2" Padding="4,2" Margin="0,5,0,0">
+                        <TextBlock Text="安全门_01" Foreground="#FFD700" FontSize="12" FontWeight="Bold"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- 光电开关_01 (绿色正常) -->
+                <StackPanel Canvas.Left="500" Canvas.Top="100" HorizontalAlignment="Center">
+                    <Ellipse Width="12" Height="12" Fill="#00FF7F" HorizontalAlignment="Center"/>
+                    <Border Background="#40000000" CornerRadius="2" Padding="4,2" Margin="0,5,0,0">
+                        <TextBlock Text="光电开关_01" Foreground="White" FontSize="10"/>
+                    </Border>
+                </StackPanel>
+                
+                <!-- 避障雷达_05 (灰色离线) -->
+                <StackPanel Canvas.Left="700" Canvas.Top="200" HorizontalAlignment="Center">
+                    <Ellipse Width="12" Height="12" Fill="Gray" HorizontalAlignment="Center"/>
+                    <Border Background="#40000000" CornerRadius="2" Padding="4,2" Margin="0,5,0,0">
+                        <TextBlock Text="避障雷达_05" Foreground="Gray" FontSize="10"/>
+                    </Border>
+                </StackPanel>
+            </Canvas>
+        </Border>
+    </Grid>
+</UserControl>

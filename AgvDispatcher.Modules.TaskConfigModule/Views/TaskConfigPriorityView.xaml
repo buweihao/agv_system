@@ -1,0 +1,132 @@
+﻿<UserControl x:Class="AgvDispatcher.Modules.TaskConfigModule.Views.TaskConfigPriorityView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:prism="http://prismlibrary.com/"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             prism:ViewModelLocator.AutoWireViewModel="True"
+             Background="Transparent">
+
+    <UserControl.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Microsoft YaHei"/>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#112233"/>
+            <Setter Property="Foreground" Value="#00BFFF"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="#1F3A60"/>
+        </Style>
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="#1F3A60"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#2A3B4C"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Padding="{TemplateBinding Padding}" Background="Transparent">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TreeViewItem">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Margin" Value="0,2"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 内容区 -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 任务模板分类 -->
+            <Border Grid.Column="0" Background="#0A111E" BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="4" Margin="0,0,10,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="15,15,15,10">
+                        <TextBlock Text="▶ 模板分类" FontSize="16" FontWeight="Bold" Foreground="#00BFFF"/>
+                        <Button Content="+ 新建分类" Background="Transparent" Foreground="#00FF7F" BorderThickness="0" Cursor="Hand" Margin="20,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <TreeView Grid.Row="1" Background="Transparent" BorderThickness="0" Margin="10,0">
+                        <TreeViewItem Header="全部模板 (36)" IsExpanded="True" FontWeight="Bold">
+                            <TreeViewItem Header="搬运任务 (18)" IsExpanded="True">
+                                <TreeViewItem Header="产线搬运 (8)" Foreground="#00BFFF"/>
+                                <TreeViewItem Header="原料搬运 (5)"/>
+                                <TreeViewItem Header="成品搬运 (5)"/>
+                            </TreeViewItem>
+                            <TreeViewItem Header="物料任务 (6)"/>
+                            <TreeViewItem Header="巡检任务 (4)"/>
+                            <TreeViewItem Header="充电任务 (4)"/>
+                            <TreeViewItem Header="其他任务 (4)"/>
+                        </TreeViewItem>
+                    </TreeView>
+                </Grid>
+            </Border>
+
+            <!-- 任务模板列表 -->
+            <Border Grid.Column="1" Background="#0A111E" BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <Grid Grid.Row="0" Margin="15">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                            <hc:SearchBar Width="200" Height="32" hc:InfoElement.Placeholder="请输入模板名称" Style="{StaticResource SearchBarPlus}" Background="#0F1A2A" Foreground="White" BorderBrush="#1F3A60"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="重置" Background="#334455" Foreground="White" BorderThickness="0" Padding="15,6" Margin="0,0,10,0" Cursor="Hand">
+                                <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                            </Button>
+                            <Button Content="+ 新建模板" Background="#00BFFF" Foreground="White" BorderThickness="0" Padding="15,6" Cursor="Hand">
+                                <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    
+                    <DataGrid Grid.Row="1" Margin="15,0,15,0" ItemsSource="{Binding DataList}" AutoGenerateColumns="False" Background="Transparent" 
+                              hc:DataGridAttach.ShowRowNumber="True"
+                              RowBackground="Transparent" AlternatingRowBackground="#0F1A2A" 
+                              Foreground="White" GridLinesVisibility="None" BorderThickness="0" HeadersVisibility="Column"
+                              CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True">
+                        <DataGrid.Columns>
+    <DataGridTextColumn Header="任务类型" Binding="{Binding TaskType}" Width="*"/>
+    <DataGridTextColumn Header="基础优先级" Binding="{Binding BasePriority}" Width="100"/>
+    <DataGridTextColumn Header="动态规则" Binding="{Binding DynamicRule}" Width="1.5*"/>
+    <DataGridTextColumn Header="抢占策略" Binding="{Binding AllowPreempt}" Width="*"/>
+</DataGrid.Columns>
+                    </DataGrid>
+
+                    <hc:Pagination Grid.Row="2" MaxPageCount="4" PageIndex="1" HorizontalAlignment="Right" Margin="15"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

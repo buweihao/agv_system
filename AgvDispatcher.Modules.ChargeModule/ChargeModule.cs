@@ -2,6 +2,7 @@ using Prism.Ioc;
 using Prism.Modularity;
 using Prism.Navigation.Regions;
 using AgvDispatcher.Core.Constants;
+using AgvDispatcher.Modules.ChargeModule.Services;
 using AgvDispatcher.Modules.ChargeModule.Views;
 
 namespace AgvDispatcher.Modules.ChargeModule
@@ -21,6 +22,7 @@ namespace AgvDispatcher.Modules.ChargeModule
 
         public void RegisterTypes(IContainerRegistry containerRegistry)
         {
+            containerRegistry.RegisterSingleton<ChargeStationRecommendationService>();
             containerRegistry.RegisterForNavigation<ChargeWorkspaceView>();
         }
     }

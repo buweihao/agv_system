@@ -1,5 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
+using AgvDispatcher.Core.Enums;
+using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Core.Models;
 using AgvDispatcher.Modules.SignalModule.Models;
 using Prism.Mvvm;
 
@@ -14,17 +17,51 @@ namespace AgvDispatcher.Modules.SignalModule.ViewModels
             set => SetProperty(ref _signalList, value);
         }
 
-        public SignalListViewModel()
+        public SignalListViewModel(ISignalService signalService)
         {
-            string now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            
-            SignalList.Add(new SignalListModel { Id = "SIG_LIFT_TOP", Name = "提升机_上限位", Type = "设备信号", State = "正常", CurrentValue = "1", Device = "LIFT-001", LastUpdatedTime = now });
-            SignalList.Add(new SignalListModel { Id = "SIG_DOOR_01", Name = "安全门_01", Type = "安全信号", State = "激活", CurrentValue = "0", Device = "DOOR-01", LastUpdatedTime = now });
-            SignalList.Add(new SignalListModel { Id = "SIG_OPTIC_01", Name = "光电开关_01", Type = "传感器", State = "正常", CurrentValue = "1", Device = "SENSOR-01", LastUpdatedTime = now });
-            SignalList.Add(new SignalListModel { Id = "SIG_HB_05", Name = "心跳检测_AGV05", Type = "虚拟信号", State = "离线", CurrentValue = "Timeout", Device = "AGV-005", LastUpdatedTime = now });
-            SignalList.Add(new SignalListModel { Id = "SIG_ESTOP_A", Name = "急停按钮_A区", Type = "安全信号", State = "异常", CurrentValue = "1", Device = "PANEL-A", LastUpdatedTime = now });
-            SignalList.Add(new SignalListModel { Id = "SIG_WEIGHT_02", Name = "称重传感器", Type = "设备信号", State = "正常", CurrentValue = "500kg", Device = "SCALE-02", LastUpdatedTime = now });
-            SignalList.Add(new SignalListModel { Id = "SIG_PLC_RDY", Name = "接驳台_就绪", Type = "设备信号", State = "正常", CurrentValue = "1", Device = "CONV-03", LastUpdatedTime = now });
+            SignalList = new ObservableCollection<SignalListModel>(
+                signalService.GetSignals().Select(ToSignalListModel));
+        }
+
+        private static SignalListModel ToSignalListModel(SignalPoint signal)
+        {
+            return new SignalListModel
+            {
+                Id = signal.SignalId,
+                Name = signal.Name,
+                Type = FormatPointType(signal.PointType),
+                State = FormatState(signal.State),
+                CurrentValue = signal.CurrentValue,
+                Device = string.IsNullOrWhiteSpace(signal.Remark) ? signal.SignalCode : signal.Remark,
+                LastUpdatedTime = (signal.LastChangedAt ?? DateTime.Now).ToString("yyyy-MM-dd HH:mm:ss")
+            };
+        }
+
+        private static string FormatPointType(SignalPointType type)
+        {
+            return type switch
+            {
+                SignalPointType.Sensor => "传感器",
+                SignalPointType.Button => "按钮",
+                SignalPointType.Door => "安全信号",
+                SignalPointType.Elevator => "设备信号",
+                SignalPointType.Conveyor => "设备信号",
+                SignalPointType.TrafficLight => "交通信号",
+                SignalPointType.SafetyInterlock => "安全联锁",
+                _ => "虚拟信号"
+            };
+        }
+
+        private static string FormatState(SignalState state)
+        {
+            return state switch
+            {
+                SignalState.Normal => "正常",
+                SignalState.Active => "激活",
+                SignalState.Abnormal => "异常",
+                SignalState.Offline => "离线",
+                _ => state.ToString()
+            };
         }
     }
 }

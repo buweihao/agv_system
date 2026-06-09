@@ -137,7 +137,7 @@ namespace AgvDispatcher.Shell.Services
 
             var snapshots = new[]
             {
-                new VehicleStatusSnapshot { VehicleId = "AGV-001", Brand = "RGV-A", State = RobotState.Running, CurrentTaskId = "TASK20240112001", Location = "A01-02", BatteryLevel = 18, ReportedAt = reportedAt },
+                new VehicleStatusSnapshot { VehicleId = "AGV-002", Brand = "RGV-A", State = RobotState.Running, CurrentTaskId = "TASK20240112001", Location = "A01-02", BatteryLevel = 18, ReportedAt = reportedAt },
                 new VehicleStatusSnapshot { VehicleId = "AGV-003", Brand = "RGV-A", State = RobotState.Running, CurrentTaskId = "TASK20240112002", Location = "A02-08", BatteryLevel = 65, ReportedAt = reportedAt },
                 new VehicleStatusSnapshot { VehicleId = "AGV-008", Brand = "RGV-B", State = RobotState.Fault, CurrentTaskId = null, Location = "B01-05", BatteryLevel = 12, ReportedAt = reportedAt },
                 new VehicleStatusSnapshot { VehicleId = "AGV-010", Brand = "RGV-B", State = RobotState.Running, CurrentTaskId = "TASK20240112003", Location = "A03-01", BatteryLevel = 80, ReportedAt = reportedAt },

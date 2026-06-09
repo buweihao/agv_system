@@ -1,6 +1,7 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
+using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Core.Models;
 using AgvDispatcher.Modules.SignalModule.Models;
-using AgvDispatcher.Modules.SignalModule.Services;
 using Prism.Mvvm;
 
 namespace AgvDispatcher.Modules.SignalModule.ViewModels
@@ -15,10 +16,26 @@ namespace AgvDispatcher.Modules.SignalModule.ViewModels
             set => SetProperty(ref _logList, value);
         }
 
-        public SignalLogViewModel()
+        public SignalLogViewModel(ISignalService signalService)
         {
-            SignalLowBatteryLogStore.EnsureSeeded();
-            LogList = SignalLowBatteryLogStore.Logs;
+            LogList = new ObservableCollection<SignalLogModel>(
+                signalService.GetSignalLogs().Select(ToSignalLogModel));
+        }
+
+        private static SignalLogModel ToSignalLogModel(SignalLogEntry log)
+        {
+            return new SignalLogModel
+            {
+                LogTime = log.LogTime,
+                SignalName = log.SignalName,
+                SignalId = log.SignalId,
+                SignalType = log.SignalType,
+                StateChange = log.StateChange,
+                TriggerValue = log.TriggerValue,
+                Device = log.Device,
+                ResponseTime = log.ResponseTime,
+                Result = log.Result
+            };
         }
     }
 }

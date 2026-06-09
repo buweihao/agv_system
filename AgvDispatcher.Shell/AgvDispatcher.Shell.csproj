@@ -20,18 +20,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
+    <ProjectReference Include="..\AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
     
     <!-- 引入所有模块项目以确保它们在主程序启动前被编译，但设置 ReferenceOutputAssembly=false 以避免静态耦合 -->
     <ProjectReference Include="..\AgvDispatcher.Modules.TemplateModule\AgvDispatcher.Modules.TemplateModule.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
-    <ProjectReference Include="..\AgvDispatcher.Modules.DashboardModule\AgvDispatcher.Modules.DashboardModule.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
-    <ProjectReference Include="..\AgvDispatcher.Modules.MonitoringModule\AgvDispatcher.Modules.MonitoringModule.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
-    <ProjectReference Include="..\AgvDispatcher.Modules.MapModule\AgvDispatcher.Modules.MapModule.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\AgvDispatcher.Modules.MonitorWorkspaceModule\AgvDispatcher.Modules.MonitorWorkspaceModule.csproj">

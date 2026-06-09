@@ -1,0 +1,246 @@
+﻿<UserControl x:Class="AgvDispatcher.Modules.MonitorWorkspaceModule.Views.LeftPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:prism="http://prismlibrary.com/"
+             prism:ViewModelLocator.AutoWireViewModel="True"
+             Background="#0A111E">
+    <UserControl.Resources>
+        <!-- 鍗＄墖鏍峰紡 -->
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="BorderBrush" Value="#1F3A60"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="Background" Value="#0F1A2A"/>
+            <Setter Property="Margin" Value="0,0,0,15"/>
+            <Setter Property="Padding" Value="10"/>
+        </Style>
+        <Style x:Key="TitleTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#00BFFF"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40*"/>
+            <RowDefinition Height="40*"/>
+            <RowDefinition Height="28*"/>
+            <RowDefinition Height="12*"/>
+        </Grid.RowDefinitions>
+
+        <!-- 1. 杩愯姒傝 -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="■ 运行概览" Style="{StaticResource TitleTextStyle}"/>
+                <UniformGrid Grid.Row="1" Rows="3" Columns="2" VerticalAlignment="Stretch" Margin="5">
+                    <Border Background="#131C2D" CornerRadius="4" Margin="5" Padding="10,5">
+                        <StackPanel>
+                            <TextBlock Text="AGV总数" Foreground="LightGray" FontSize="12"/>
+                            <TextBlock Text="{Binding TotalAgvCount}" Foreground="White" FontSize="24" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#131C2D" CornerRadius="4" Margin="5" Padding="10,5">
+                        <StackPanel>
+                            <TextBlock Text="运行中" Foreground="LightGray" FontSize="12"/>
+                            <TextBlock Text="{Binding RunningCount}" Foreground="#00FF7F" FontSize="24" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#131C2D" CornerRadius="4" Margin="5" Padding="10,5">
+                        <StackPanel>
+                            <TextBlock Text="空闲" Foreground="LightGray" FontSize="12"/>
+                            <TextBlock Text="{Binding IdleCount}" Foreground="#FFD700" FontSize="24" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#131C2D" CornerRadius="4" Margin="5" Padding="10,5">
+                        <StackPanel>
+                            <TextBlock Text="充电中" Foreground="LightGray" FontSize="12"/>
+                            <TextBlock Text="{Binding ChargingCount}" Foreground="#9370DB" FontSize="24" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#131C2D" CornerRadius="4" Margin="5" Padding="10,5">
+                        <StackPanel>
+                            <TextBlock Text="执行任务" Foreground="LightGray" FontSize="12"/>
+                            <TextBlock Text="{Binding TaskCount}" Foreground="#1E90FF" FontSize="24" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#131C2D" CornerRadius="4" Margin="5" Padding="10,5">
+                        <StackPanel>
+                            <TextBlock Text="故障" Foreground="LightGray" FontSize="12"/>
+                            <TextBlock Text="{Binding FaultCount}" Foreground="#FF4500" FontSize="24" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                </UniformGrid>
+            </Grid>
+        </Border>
+
+        <!-- 2. 杩愯鐘舵€佸崰姣?-->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="运行状态占比" Style="{StaticResource TitleTextStyle}"/>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <!-- 妯℃嫙楗煎浘鐜?-->
+                    <Grid Width="120" Height="120" Margin="10,0,30,0">
+                        <Ellipse Stroke="#1F3A60" StrokeThickness="16" Width="120" Height="120"/>
+                        <Ellipse Stroke="#00FF7F" StrokeThickness="16" Width="120" Height="120" StrokeDashArray="3 7"/>
+                        <Ellipse Stroke="#FFD700" StrokeThickness="16" Width="120" Height="120" StrokeDashArray="2 8" RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.RenderTransform>
+                                <RotateTransform Angle="108"/>
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="{Binding TotalAgvCount}" Foreground="White" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="总数" Foreground="LightGray" FontSize="12" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                    
+                    <StackPanel VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <Ellipse Width="8" Height="8" Fill="#00FF7F" Margin="0,0,5,0"/>
+                            <TextBlock Text="运行中 30%" Foreground="White" FontSize="12"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <Ellipse Width="8" Height="8" Fill="#FFD700" Margin="0,0,5,0"/>
+                            <TextBlock Text="空闲 20%" Foreground="White" FontSize="12"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <Ellipse Width="8" Height="8" Fill="#9370DB" Margin="0,0,5,0"/>
+                            <TextBlock Text="充电中 10%" Foreground="White" FontSize="12"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <Ellipse Width="8" Height="8" Fill="#1E90FF" Margin="0,0,5,0"/>
+                            <TextBlock Text="执行任务 36%" Foreground="White" FontSize="12"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                            <Ellipse Width="8" Height="8" Fill="#FF4500" Margin="0,0,5,0"/>
+                            <TextBlock Text="故障 4%" Foreground="White" FontSize="12"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 3. 閫熷害鍒嗗竷 -->
+        <Border Grid.Row="2" Style="{StaticResource CardBorderStyle}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="■ 速度分布" Style="{StaticResource TitleTextStyle}"/>
+                
+                <Grid Grid.Row="1" Margin="5,20,5,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="35"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <!-- Y Axis -->
+                    <Grid Grid.Column="0" Margin="0,0,5,0">
+                        <TextBlock Text="(m/s)" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" Margin="0,-15,0,0"/>
+                        <TextBlock Text="2.0" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                        <TextBlock Text="1.5" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,25,0,0"/>
+                        <TextBlock Text="1.0" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,50,0,0"/>
+                        <TextBlock Text="0.5" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,75,0,0"/>
+                        <TextBlock Text="0" Foreground="Gray" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,100,0,0"/>
+                    </Grid>
+                    
+                    <Viewbox Grid.Column="1" Stretch="Fill" Height="110" VerticalAlignment="Top">
+                        <Canvas Width="250" Height="110" ClipToBounds="True">
+                            <!-- Background Grid Lines -->
+                            <Line X1="0" Y1="5" X2="250" Y2="5" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                            <Line X1="0" Y1="30" X2="250" Y2="30" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                            <Line X1="0" Y1="55" X2="250" Y2="55" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                            <Line X1="0" Y1="80" X2="250" Y2="80" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                            <Line X1="0" Y1="105" X2="250" Y2="105" Stroke="#1F3A60" StrokeThickness="1" StrokeDashArray="2 2"/>
+                            
+                            <!-- Area fill and line -->
+                            <Polyline Points="25,80 75,55 125,25 175,45 225,85" Stroke="#00BFFF" StrokeThickness="2" />
+                            <Polyline Points="25,105 25,80 75,55 125,25 175,45 225,85 225,105" Fill="#2000BFFF" />
+                            
+                            <!-- Points -->
+                            <StackPanel Canvas.Left="15" Canvas.Top="60" Width="20">
+                                <TextBlock Text="4" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Canvas.Left="65" Canvas.Top="35" Width="20">
+                                <TextBlock Text="8" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Canvas.Left="115" Canvas.Top="5" Width="20">
+                                <TextBlock Text="16" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Canvas.Left="165" Canvas.Top="25" Width="20">
+                                <TextBlock Text="10" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Canvas.Left="215" Canvas.Top="65" Width="20">
+                                <TextBlock Text="2" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </Canvas>
+                    </Viewbox>
+                </Grid>
+                
+                <Grid Grid.Row="2" Margin="5,0,5,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="35"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <UniformGrid Grid.Column="1" Columns="5">
+                        <TextBlock Text="0-0.5" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
+                        <TextBlock Text="0.5-1.0" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
+                        <TextBlock Text="1.0-1.5" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
+                        <TextBlock Text="1.5-2.0" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
+                        <TextBlock Text=">2.0" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
+                    </UniformGrid>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- 4. 鍛婅缁熻 -->
+        <Border Grid.Row="3" Style="{StaticResource CardBorderStyle}" Margin="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="■ 告警统计" Style="{StaticResource TitleTextStyle}"/>
+                <UniformGrid Grid.Row="1" Columns="3">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Border Width="4" Height="30" Background="#FF4500" Margin="0,0,10,0"/>
+                        <StackPanel>
+                            <TextBlock Text="{Binding CriticalAlarmCount}" Foreground="#FF4500" FontSize="20" FontWeight="Bold"/>
+                            <TextBlock Text="紧急告警" Foreground="LightGray" FontSize="12"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Border Width="4" Height="30" Background="#FFD700" Margin="0,0,10,0"/>
+                        <StackPanel>
+                            <TextBlock Text="{Binding MajorAlarmCount}" Foreground="#FFD700" FontSize="20" FontWeight="Bold"/>
+                            <TextBlock Text="重要告警" Foreground="LightGray" FontSize="12"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Border Width="4" Height="30" Background="#1E90FF" Margin="0,0,10,0"/>
+                        <StackPanel>
+                            <TextBlock Text="{Binding MinorAlarmCount}" Foreground="#1E90FF" FontSize="20" FontWeight="Bold"/>
+                            <TextBlock Text="一般告警" Foreground="LightGray" FontSize="12"/>
+                        </StackPanel>
+                    </StackPanel>
+                </UniformGrid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

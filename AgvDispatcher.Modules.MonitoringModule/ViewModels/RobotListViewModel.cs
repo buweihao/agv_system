@@ -14,6 +14,7 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
     public class RobotListViewModel : BindableBase
     {
         private readonly IVehicleStateStore _vehicleStateStore;
+        private readonly IVehicleStatusPublisher _vehicleStatusPublisher;
 
         private ObservableCollection<RobotModel> _robotList = new();
         private string _vehicleId = "AGV-001";
@@ -85,9 +86,13 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
 
         public DelegateCommand PublishStatusCommand { get; }
 
-        public RobotListViewModel(IEventAggregator eventAggregator, IVehicleStateStore vehicleStateStore)
+        public RobotListViewModel(
+            IEventAggregator eventAggregator,
+            IVehicleStateStore vehicleStateStore,
+            IVehicleStatusPublisher vehicleStatusPublisher)
         {
             _vehicleStateStore = vehicleStateStore;
+            _vehicleStatusPublisher = vehicleStatusPublisher;
             PublishStatusCommand = new DelegateCommand(PublishStatus, CanPublishStatus)
                 .ObservesProperty(() => VehicleId)
                 .ObservesProperty(() => Brand)
@@ -123,11 +128,11 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
                 ReportedAt = DateTime.Now
             };
 
-            _vehicleStateStore.UpsertStatus(snapshot);
+            var result = _vehicleStatusPublisher.PublishStatus(snapshot);
 
-            LastPublishMessage = VehicleStatusRules.IsLowBattery(snapshot.BatteryLevel)
-                ? $"{snapshot.VehicleId} low battery alert published"
-                : $"{snapshot.VehicleId} status updated";
+            LastPublishMessage = result.LowBatteryDetected
+                ? $"{result.Snapshot.VehicleId} low battery alert published"
+                : $"{result.Snapshot.VehicleId} status updated";
         }
 
         private void ApplyVehicleStateChange(VehicleStateChangedMessage message)

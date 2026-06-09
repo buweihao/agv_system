@@ -13,10 +13,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="Images\main_bg.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
   </ItemGroup>
 
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(RunPostBuildEvent)' != 'Never'">
     <Exec Command="xcopy &quot;$(TargetDir)*.*&quot; &quot;$(ProjectDir)..\AgvDispatcher.Shell\bin\$(Configuration)\$(TargetFramework)\Modules\&quot; /Y /I /E" />
   </Target>
 

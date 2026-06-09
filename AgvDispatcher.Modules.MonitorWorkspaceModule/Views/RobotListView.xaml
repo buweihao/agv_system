@@ -1,0 +1,274 @@
+﻿<UserControl x:Class="AgvDispatcher.Modules.MonitorWorkspaceModule.Views.RobotListView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:prism="http://prismlibrary.com/"
+             xmlns:enums="clr-namespace:AgvDispatcher.Core.Enums;assembly=AgvDispatcher.Core"
+             prism:ViewModelLocator.AutoWireViewModel="True"
+             Background="Transparent">
+    <UserControl.Resources>
+        <Style x:Key="DataGridHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#0D1B2A"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Height" Value="35"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="BorderBrush" Value="#1A2A3A"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="LightGray"/>
+            <Setter Property="Height" Value="35"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#1A2A3A"/>
+                </Trigger>
+                <Trigger Property="AlternationIndex" Value="1">
+                    <Setter Property="Background" Value="#131C2D"/>
+                </Trigger>
+                <DataTrigger Binding="{Binding IsLowBattery}" Value="True">
+                    <Setter Property="Background" Value="#3A1218"/>
+                    <Setter Property="Foreground" Value="#FFD0D0"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Background="Transparent" BorderThickness="0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SimulatorInputStyle" TargetType="Control">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Margin" Value="6,0,12,0"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#0A1422"/>
+            <Setter Property="BorderBrush" Value="#24507A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style x:Key="SimulatorLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8FB8D8"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="#0F1A2A" BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="6" Padding="15" Margin="10">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- 鏍囬 -->
+            <TextBlock Text="■ AGV列表" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" Margin="15,0,0,0"/>
+
+            <!-- 鍒楄〃 -->
+            <Border Grid.Row="1" Background="#0A1422" BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="115"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="70"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="105"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="VehicleId" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <ComboBox Grid.Column="1"
+                              IsEditable="True"
+                              ItemsSource="{Binding VehicleIdOptions}"
+                              Text="{Binding VehicleId, UpdateSourceTrigger=PropertyChanged}"
+                              Style="{StaticResource SimulatorInputStyle}"/>
+
+                    <TextBlock Grid.Column="2" Text="Brand" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <ComboBox Grid.Column="3"
+                              IsEditable="True"
+                              ItemsSource="{Binding BrandOptions}"
+                              Text="{Binding Brand, UpdateSourceTrigger=PropertyChanged}"
+                              Style="{StaticResource SimulatorInputStyle}"/>
+
+                    <TextBlock Grid.Column="4" Text="Battery" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <TextBox Grid.Column="5"
+                             Text="{Binding BatteryLevel, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F0}}"
+                             Style="{StaticResource SimulatorInputStyle}"
+                             HorizontalContentAlignment="Center"/>
+
+                    <TextBlock Grid.Column="6" Text="Location" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <TextBox Grid.Column="7"
+                             Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource SimulatorInputStyle}"/>
+
+                    <TextBlock Grid.Column="8" Text="State" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <ComboBox Grid.Column="9"
+                              ItemsSource="{Binding StateOptions}"
+                              SelectedItem="{Binding State}"
+                              Style="{StaticResource SimulatorInputStyle}"/>
+
+                    <Button Grid.Column="10"
+                            Content="上报状态" Command="{Binding PublishStatusCommand}"
+                            Width="82"
+                            Height="28"
+                            Margin="2,0,12,0"
+                            Background="#00BFFF"
+                            Foreground="#05111F"
+                            BorderThickness="0"
+                            FontWeight="Bold"
+                            Cursor="Hand"/>
+
+                    <TextBlock Grid.Column="11"
+                               Text="{Binding LastPublishMessage}"
+                               Foreground="#8FB8D8"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </Grid>
+            </Border>
+
+            <DataGrid Grid.Row="2" ItemsSource="{Binding RobotList}" AutoGenerateColumns="False" 
+                      Background="Transparent" RowBackground="Transparent" AlternatingRowBackground="#131C2D"
+                      BorderThickness="0" GridLinesVisibility="None" HeadersVisibility="Column"
+                      ColumnHeaderStyle="{StaticResource DataGridHeaderStyle}" IsReadOnly="True"
+                      CanUserAddRows="False" CanUserResizeColumns="False" SelectionMode="Single">
+                
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="AGV编号" Binding="{Binding Id}" Width="*" />
+                    
+                    <DataGridTemplateColumn Header="状态" Width="1.2*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding State}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="White" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding State}" Value="{x:Static enums:RobotState.Running}">
+                                                    <Setter Property="Foreground" Value="#00FF7F"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="{x:Static enums:RobotState.Fault}">
+                                                    <Setter Property="Foreground" Value="#FF4500"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="{x:Static enums:RobotState.Idle}">
+                                                    <Setter Property="Foreground" Value="#00BFFF"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="任务ID" Binding="{Binding TaskId}" Width="1.5*" />
+                    <DataGridTextColumn Header="当前位置" Binding="{Binding CurrentPosition}" Width="1.2*" />
+                    <DataGridTextColumn Header="目标位置" Binding="{Binding TargetPosition}" Width="1.2*" />
+
+                    <DataGridTemplateColumn Header="电量" Width="1.5*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid Margin="5,0">
+                                    <ProgressBar Value="{Binding BatteryLevel}" Maximum="100" Height="15" Background="#1A2A3A" BorderThickness="0">
+                                        <ProgressBar.Style>
+                                            <Style TargetType="ProgressBar">
+                                                <Setter Property="Foreground" Value="#32CD32"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsLowBattery}" Value="True">
+                                                        <Setter Property="Foreground" Value="#FF3B30"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ProgressBar.Style>
+                                    </ProgressBar>
+                                    <TextBlock Text="{Binding BatteryLevel, StringFormat={}{0}%}" Foreground="White" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Battery" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="3" Padding="6,2" BorderThickness="1">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#143824"/>
+                                            <Setter Property="BorderBrush" Value="#32CD32"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsLowBattery}" Value="True">
+                                                    <Setter Property="Background" Value="#5A1018"/>
+                                                    <Setter Property="BorderBrush" Value="#FF3B30"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding BatteryStatusText}" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#B8FFD2"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsLowBattery}" Value="True">
+                                                        <Setter Property="Foreground" Value="#FFD0D0"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="速度(m/s)" Binding="{Binding Speed, StringFormat={}{0:F2}}" Width="*" />
+                    <DataGridTextColumn Header="运行时长" Binding="{Binding RunningTime}" Width="1.2*" />
+
+                    <DataGridTemplateColumn Header="操作" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="详情" Background="#1E90FF" Foreground="White" BorderThickness="0" Width="50" Height="22" Cursor="Hand">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="3">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#00BFFF"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+    </Border>
+</UserControl>

@@ -1,5 +1,4 @@
-using AgvDispatcher.Core.Interfaces;
-using AgvDispatcher.Shell.Services;
+using AgvDispatcher.Infrastructure.Mock;
 using Prism.DryIoc;
 using Prism.Ioc;
 using Prism.Modularity;
@@ -20,7 +19,7 @@ public partial class App : PrismApplication
 
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
-        containerRegistry.RegisterSingleton<IVehicleStateStore, VehicleStateStore>();
+        MockServiceRegistration.RegisterMockServices(containerRegistry);
     }
 
     protected override IModuleCatalog CreateModuleCatalog()

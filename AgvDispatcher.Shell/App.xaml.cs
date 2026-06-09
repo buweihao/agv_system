@@ -1,3 +1,5 @@
+using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Shell.Services;
 using Prism.DryIoc;
 using Prism.Ioc;
 using Prism.Modularity;
@@ -18,7 +20,7 @@ public partial class App : PrismApplication
 
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
-        
+        containerRegistry.RegisterSingleton<IVehicleStateStore, VehicleStateStore>();
     }
 
     protected override IModuleCatalog CreateModuleCatalog()

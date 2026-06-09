@@ -1,0 +1,43 @@
+using AgvDispatcher.Core.Enums;
+
+namespace AgvDispatcher.Core.Models
+{
+    public class ChargeStation
+    {
+        public string StationId { get; set; } = string.Empty;
+
+        public string StationCode { get; set; } = string.Empty;
+
+        public string Name { get; set; } = string.Empty;
+
+        public string AreaCode { get; set; } = string.Empty;
+
+        public string NodeId { get; set; } = string.Empty;
+
+        public MapPosition Position { get; set; } = new();
+
+        public ChargeStationState State { get; set; } = ChargeStationState.Available;
+
+        public bool IsEnabled { get; set; } = true;
+
+        public string? BoundVehicleId { get; set; }
+
+        public string? ReservedVehicleId { get; set; }
+
+        public double RatedPowerKw { get; set; }
+
+        public double OutputVoltage { get; set; }
+
+        public double OutputCurrent { get; set; }
+
+        public double ConnectorTemperature { get; set; }
+
+        public double QueueWeight { get; set; }
+
+        public DateTime? LastHeartbeatAt { get; set; }
+
+        public DateTime? LastMaintenanceAt { get; set; }
+
+        public string Remark { get; set; } = string.Empty;
+    }
+}

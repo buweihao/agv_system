@@ -16,6 +16,28 @@ namespace AgvDispatcher.Shell.Services
         public VehicleStateStore(IEventAggregator eventAggregator)
         {
             _eventAggregator = eventAggregator;
+            SeedInitialVehicles();
+        }
+
+        public bool CreateVehicle(VehicleStatusSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+
+            if (string.IsNullOrWhiteSpace(snapshot.VehicleId))
+            {
+                throw new ArgumentException("VehicleId cannot be empty.", nameof(snapshot));
+            }
+
+            lock (_syncRoot)
+            {
+                if (_vehicles.ContainsKey(snapshot.VehicleId))
+                {
+                    return false;
+                }
+            }
+
+            UpsertStatus(snapshot);
+            return true;
         }
 
         public void UpsertStatus(VehicleStatusSnapshot snapshot)
@@ -106,6 +128,25 @@ namespace AgvDispatcher.Shell.Services
             lock (_syncRoot)
             {
                 return _vehicles.Values.ToArray();
+            }
+        }
+
+        private void SeedInitialVehicles()
+        {
+            var reportedAt = DateTime.Now;
+
+            var snapshots = new[]
+            {
+                new VehicleStatusSnapshot { VehicleId = "AGV-001", Brand = "RGV-A", State = RobotState.Running, CurrentTaskId = "TASK20240112001", Location = "A01-02", BatteryLevel = 18, ReportedAt = reportedAt },
+                new VehicleStatusSnapshot { VehicleId = "AGV-003", Brand = "RGV-A", State = RobotState.Running, CurrentTaskId = "TASK20240112002", Location = "A02-08", BatteryLevel = 65, ReportedAt = reportedAt },
+                new VehicleStatusSnapshot { VehicleId = "AGV-008", Brand = "RGV-B", State = RobotState.Fault, CurrentTaskId = null, Location = "B01-05", BatteryLevel = 12, ReportedAt = reportedAt },
+                new VehicleStatusSnapshot { VehicleId = "AGV-010", Brand = "RGV-B", State = RobotState.Running, CurrentTaskId = "TASK20240112003", Location = "A03-01", BatteryLevel = 80, ReportedAt = reportedAt },
+                new VehicleStatusSnapshot { VehicleId = "AGV-017", Brand = "RGV-C", State = RobotState.Idle, CurrentTaskId = null, Location = "Charge-03", BatteryLevel = 92, ReportedAt = reportedAt }
+            };
+
+            foreach (var snapshot in snapshots)
+            {
+                CreateVehicle(snapshot);
             }
         }
     }

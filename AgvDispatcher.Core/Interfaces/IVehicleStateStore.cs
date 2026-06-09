@@ -4,6 +4,8 @@ namespace AgvDispatcher.Core.Interfaces
 {
     public interface IVehicleStateStore
     {
+        bool CreateVehicle(VehicleStatusSnapshot snapshot);
+
         void UpsertStatus(VehicleStatusSnapshot snapshot);
 
         bool RemoveVehicle(string vehicleId);

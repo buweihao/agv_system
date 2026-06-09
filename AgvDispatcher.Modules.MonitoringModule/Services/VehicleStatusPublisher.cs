@@ -1,18 +1,16 @@
-using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using AgvDispatcher.Core.Rules;
-using Prism.Events;
 
 namespace AgvDispatcher.Modules.MonitoringModule.Services
 {
     public class VehicleStatusPublisher : IVehicleStatusPublisher
     {
-        private readonly IEventAggregator _eventAggregator;
+        private readonly IVehicleStateStore _vehicleStateStore;
 
-        public VehicleStatusPublisher(IEventAggregator eventAggregator)
+        public VehicleStatusPublisher(IVehicleStateStore vehicleStateStore)
         {
-            _eventAggregator = eventAggregator;
+            _vehicleStateStore = vehicleStateStore;
         }
 
         public VehicleStatusIngestionResult PublishStatus(VehicleStatusSnapshot snapshot)
@@ -29,7 +27,7 @@ namespace AgvDispatcher.Modules.MonitoringModule.Services
                 ReportedAt = reportedAt
             };
 
-            _eventAggregator.GetEvent<VehicleStatusUpdatedEvent>().Publish(normalizedSnapshot);
+            _vehicleStateStore.UpsertStatus(normalizedSnapshot);
 
             var result = new VehicleStatusIngestionResult
             {
@@ -50,7 +48,6 @@ namespace AgvDispatcher.Modules.MonitoringModule.Services
                     OccurredAt = normalizedSnapshot.ReportedAt
                 };
 
-                _eventAggregator.GetEvent<RobotLowBatteryEvent>().Publish(result.LowBatteryAlert);
             }
 
             return result;

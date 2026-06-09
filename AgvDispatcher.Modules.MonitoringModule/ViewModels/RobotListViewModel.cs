@@ -13,7 +13,7 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
 {
     public class RobotListViewModel : BindableBase
     {
-        private readonly IVehicleStatusPublisher _vehicleStatusPublisher;
+        private readonly IVehicleStateStore _vehicleStateStore;
 
         private ObservableCollection<RobotModel> _robotList = new();
         private string _vehicleId = "AGV-001";
@@ -85,21 +85,23 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
 
         public DelegateCommand PublishStatusCommand { get; }
 
-        public RobotListViewModel(IEventAggregator eventAggregator, IVehicleStatusPublisher vehicleStatusPublisher)
+        public RobotListViewModel(IEventAggregator eventAggregator, IVehicleStateStore vehicleStateStore)
         {
-            _vehicleStatusPublisher = vehicleStatusPublisher;
+            _vehicleStateStore = vehicleStateStore;
             PublishStatusCommand = new DelegateCommand(PublishStatus, CanPublishStatus)
                 .ObservesProperty(() => VehicleId)
                 .ObservesProperty(() => Brand)
                 .ObservesProperty(() => Location);
 
-            var snapshots = CreateMockStatusSnapshots();
-
             RobotList = new ObservableCollection<RobotModel>(
-                snapshots.Select(ToRobotModel));
+                _vehicleStateStore.GetAllVehicles().Select(ToRobotModel));
 
-            PublishLowBatteryAlerts(eventAggregator, snapshots);
-            eventAggregator.GetEvent<VehicleStatusUpdatedEvent>().Subscribe(ApplyVehicleStatus, ThreadOption.UIThread);
+            foreach (var snapshot in _vehicleStateStore.GetAllVehicles())
+            {
+                AddVehicleIdOption(snapshot.VehicleId);
+            }
+
+            eventAggregator.GetEvent<VehicleStateChangedEvent>().Subscribe(ApplyVehicleStateChange, ThreadOption.UIThread);
         }
 
         private bool CanPublishStatus()
@@ -111,22 +113,42 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
 
         private void PublishStatus()
         {
-            var result = _vehicleStatusPublisher.PublishStatus(new VehicleStatusSnapshot
+            var snapshot = new VehicleStatusSnapshot
             {
-                VehicleId = VehicleId,
-                Brand = Brand,
-                BatteryLevel = BatteryLevel,
-                Location = Location,
+                VehicleId = VehicleId.Trim(),
+                Brand = Brand.Trim(),
+                BatteryLevel = Math.Clamp(BatteryLevel, 0, 100),
+                Location = Location.Trim(),
                 State = State,
                 ReportedAt = DateTime.Now
-            });
+            };
 
-            LastPublishMessage = result.LowBatteryDetected
-                ? $"{result.Snapshot.VehicleId} low battery alert published"
-                : $"{result.Snapshot.VehicleId} status updated";
+            _vehicleStateStore.UpsertStatus(snapshot);
+
+            LastPublishMessage = VehicleStatusRules.IsLowBattery(snapshot.BatteryLevel)
+                ? $"{snapshot.VehicleId} low battery alert published"
+                : $"{snapshot.VehicleId} status updated";
         }
 
-        private void ApplyVehicleStatus(VehicleStatusSnapshot snapshot)
+        private void ApplyVehicleStateChange(VehicleStateChangedMessage message)
+        {
+            switch (message.ChangeType)
+            {
+                case VehicleStateChangeType.Added:
+                case VehicleStateChangeType.Updated:
+                    if (message.Snapshot is not null)
+                    {
+                        UpsertRobot(message.Snapshot);
+                    }
+                    break;
+
+                case VehicleStateChangeType.Removed:
+                    RemoveRobot(message.RemovedVehicleId);
+                    break;
+            }
+        }
+
+        private void UpsertRobot(VehicleStatusSnapshot snapshot)
         {
             if (string.IsNullOrWhiteSpace(snapshot.VehicleId))
             {
@@ -146,24 +168,31 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
             }
 
             RobotList.Add(robot);
-            if (!VehicleIdOptions.Contains(snapshot.VehicleId))
+            AddVehicleIdOption(snapshot.VehicleId);
+        }
+
+        private void RemoveRobot(string? vehicleId)
+        {
+            if (string.IsNullOrWhiteSpace(vehicleId))
             {
-                VehicleIdOptions.Add(snapshot.VehicleId);
+                return;
+            }
+
+            var robot = RobotList.FirstOrDefault(item =>
+                string.Equals(item.Id, vehicleId, StringComparison.OrdinalIgnoreCase));
+
+            if (robot is not null)
+            {
+                RobotList.Remove(robot);
             }
         }
 
-        private static IEnumerable<VehicleStatusSnapshot> CreateMockStatusSnapshots()
+        private void AddVehicleIdOption(string vehicleId)
         {
-            var reportedAt = DateTime.Now;
-
-            return new[]
+            if (!string.IsNullOrWhiteSpace(vehicleId) && !VehicleIdOptions.Contains(vehicleId))
             {
-                new VehicleStatusSnapshot { VehicleId = "AGV-001", Brand = "RGV-A", State = RobotState.Running, CurrentTaskId = "TASK20240112001", Location = "A01-02", BatteryLevel = 18, ReportedAt = reportedAt },
-                new VehicleStatusSnapshot { VehicleId = "AGV-003", Brand = "RGV-A", State = RobotState.Running, CurrentTaskId = "TASK20240112002", Location = "A02-08", BatteryLevel = 65, ReportedAt = reportedAt },
-                new VehicleStatusSnapshot { VehicleId = "AGV-008", Brand = "RGV-B", State = RobotState.Fault, CurrentTaskId = null, Location = "B01-05", BatteryLevel = 12, ReportedAt = reportedAt },
-                new VehicleStatusSnapshot { VehicleId = "AGV-010", Brand = "RGV-B", State = RobotState.Running, CurrentTaskId = "TASK20240112003", Location = "A03-01", BatteryLevel = 80, ReportedAt = reportedAt },
-                new VehicleStatusSnapshot { VehicleId = "AGV-017", Brand = "RGV-C", State = RobotState.Idle, CurrentTaskId = null, Location = "Charge-03", BatteryLevel = 92, ReportedAt = reportedAt }
-            };
+                VehicleIdOptions.Add(vehicleId);
+            }
         }
 
         private static RobotModel ToRobotModel(VehicleStatusSnapshot snapshot)
@@ -180,22 +209,6 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
                 Speed = GetMockSpeed(snapshot.State, snapshot.VehicleId),
                 RunningTime = GetMockRunningTime(snapshot.VehicleId)
             };
-        }
-
-        private static void PublishLowBatteryAlerts(IEventAggregator eventAggregator, IEnumerable<VehicleStatusSnapshot> snapshots)
-        {
-            foreach (var snapshot in snapshots.Where(snapshot => VehicleStatusRules.IsLowBattery(snapshot.BatteryLevel)))
-            {
-                eventAggregator.GetEvent<RobotLowBatteryEvent>().Publish(new RobotBatteryAlert
-                {
-                    VehicleId = snapshot.VehicleId,
-                    Brand = snapshot.Brand,
-                    BatteryLevel = snapshot.BatteryLevel,
-                    Location = snapshot.Location,
-                    Threshold = VehicleStatusRules.LowBatteryThreshold,
-                    OccurredAt = snapshot.ReportedAt
-                });
-            }
         }
 
         private static string GetMockTargetPosition(string vehicleId)

@@ -1,4 +1,6 @@
 using AgvDispatcher.Core.Constants;
+using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Modules.MonitoringModule.Services;
 using AgvDispatcher.Modules.MonitoringModule.Views;
 using Prism.Ioc;
 using Prism.Modularity;
@@ -22,7 +24,7 @@ namespace AgvDispatcher.Modules.MonitoringModule
 
         public void RegisterTypes(IContainerRegistry containerRegistry)
         {
-            
+            containerRegistry.RegisterSingleton<IVehicleStatusPublisher, VehicleStatusPublisher>();
         }
     }
 }

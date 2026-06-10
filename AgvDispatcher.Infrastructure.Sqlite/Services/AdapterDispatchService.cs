@@ -12,17 +12,20 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IVehicleService _vehicleService;
         private readonly ITaskService _taskService;
         private readonly IMapService _mapService;
+        private readonly IAuditTrailService _auditTrail;
 
         public AdapterDispatchService(
             IVehicleAdapterManager vehicleAdapterManager,
             IVehicleService vehicleService,
             ITaskService taskService,
-            IMapService mapService)
+            IMapService mapService,
+            IAuditTrailService auditTrail)
         {
             _vehicleAdapterManager = vehicleAdapterManager;
             _vehicleService = vehicleService;
             _taskService = taskService;
             _mapService = mapService;
+            _auditTrail = auditTrail;
         }
 
         public DispatchResult AssignTask(string taskId, string? preferredVehicleId = null)
@@ -30,17 +33,17 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             var task = _taskService.GetTask(taskId);
             if (task is null)
             {
-                return DispatchResult.Failure("TaskNotFound", $"Task {taskId} was not found.", taskId);
+                return AuditAndReturn(DispatchResult.Failure("TaskNotFound", $"Task {taskId} was not found.", taskId), "AssignTask");
             }
 
             if (task.State != TaskState.Pending)
             {
-                return DispatchResult.Failure("TaskNotPending", $"Task {taskId} is {task.State} and cannot be dispatched.", taskId, task.AssignedVehicleId);
+                return AuditAndReturn(DispatchResult.Failure("TaskNotPending", $"Task {taskId} is {task.State} and cannot be dispatched.", taskId, task.AssignedVehicleId), "AssignTask");
             }
 
             if (!TaskRouteIsKnown(task))
             {
-                return DispatchResult.Failure("RouteUnavailable", $"Task {taskId} route is not available.", taskId, task.AssignedVehicleId);
+                return AuditAndReturn(DispatchResult.Failure("RouteUnavailable", $"Task {taskId} route is not available.", taskId, task.AssignedVehicleId), "AssignTask");
             }
 
             var selectedVehicleId = string.IsNullOrWhiteSpace(preferredVehicleId)
@@ -49,13 +52,13 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             if (string.IsNullOrWhiteSpace(selectedVehicleId))
             {
-                return DispatchResult.Failure("NoAvailableVehicle", $"No idle online vehicle with battery >= {MinimumDispatchBatteryPercent:0.#}% is available.", taskId);
+                return AuditAndReturn(DispatchResult.Failure("NoAvailableVehicle", $"No idle online vehicle with battery >= {MinimumDispatchBatteryPercent:0.#}% is available.", taskId), "AssignTask");
             }
 
             var selectedStatus = _vehicleService.GetVehicleStatus(selectedVehicleId);
             if (!IsVehicleDispatchable(selectedStatus))
             {
-                return DispatchResult.Failure("VehicleNotAvailable", $"Vehicle {selectedVehicleId} is not available for dispatch.", taskId, selectedVehicleId);
+                return AuditAndReturn(DispatchResult.Failure("VehicleNotAvailable", $"Vehicle {selectedVehicleId} is not available for dispatch.", taskId, selectedVehicleId), "AssignTask");
             }
 
             var result = SendCommand(new DispatchCommand
@@ -71,19 +74,21 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             if (!result.Succeeded)
             {
-                return result;
+                return AuditAndReturn(result, "AssignTask");
             }
 
             _taskService.AssignVehicle(taskId, selectedVehicleId);
             _taskService.UpdateTaskState(taskId, TaskState.Running);
-            return DispatchResult.Success($"Task {taskId} dispatched to {selectedVehicleId}.", taskId, selectedVehicleId, result.CommandId);
+            return AuditAndReturn(DispatchResult.Success($"Task {taskId} dispatched to {selectedVehicleId}.", taskId, selectedVehicleId, result.CommandId), "AssignTask");
         }
 
         public DispatchResult SendCommand(DispatchCommand command)
         {
-            return _vehicleAdapterManager.SendCommandAsync(command, CancellationToken.None)
+            var result = _vehicleAdapterManager.SendCommandAsync(command, CancellationToken.None)
                 .GetAwaiter()
                 .GetResult();
+
+            return AuditAndReturn(result, command.CommandType.ToString());
         }
 
         public DispatchResult PauseVehicle(string vehicleId)
@@ -111,7 +116,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             var task = _taskService.GetTask(taskId);
             if (task is null)
             {
-                return DispatchResult.Failure("TaskNotFound", $"Task {taskId} was not found.", taskId);
+                return AuditAndReturn(DispatchResult.Failure("TaskNotFound", $"Task {taskId} was not found.", taskId), "CancelTask");
             }
 
             if (!string.IsNullOrWhiteSpace(task.AssignedVehicleId))
@@ -126,12 +131,18 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
                 if (!result.Succeeded)
                 {
-                    return result;
+                    return AuditAndReturn(result, "CancelTask");
                 }
             }
 
             _taskService.CancelTask(taskId, reason);
-            return DispatchResult.Success($"Task {taskId} cancelled.", taskId, task.AssignedVehicleId);
+            return AuditAndReturn(DispatchResult.Success($"Task {taskId} cancelled.", taskId, task.AssignedVehicleId), "CancelTask");
+        }
+
+        private DispatchResult AuditAndReturn(DispatchResult result, string action)
+        {
+            _auditTrail.RecordDispatchResult(result, action);
+            return result;
         }
 
         private VehicleStatus? SelectVehicle(TaskOrder task)

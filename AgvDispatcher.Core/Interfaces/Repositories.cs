@@ -51,6 +51,8 @@ namespace AgvDispatcher.Core.Interfaces
 
         Task<IReadOnlyList<AlarmEvent>> GetActiveAsync();
 
+        Task<IReadOnlyList<AlarmEvent>> QueryAsync(AlarmQuery query);
+
         Task<AlarmEvent?> GetByIdAsync(string alarmId);
 
         Task SaveAsync(AlarmEvent alarm);

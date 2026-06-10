@@ -26,7 +26,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IVehicleStateStore, MockVehicleStateStore>();
             containerRegistry.RegisterSingleton<ITaskService, MockTaskService>();
             containerRegistry.RegisterSingleton<ISignalService, MockSignalService>();
-            containerRegistry.RegisterSingleton<IDataQueryService, MockDataQueryService>();
 
             containerRegistry.RegisterSingleton<IVehicleRepository, VehicleRepository>();
             containerRegistry.RegisterSingleton<IChargeStationRepository, ChargeStationRepository>();
@@ -46,6 +45,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IMapService, PersistentMapService>();
             containerRegistry.RegisterSingleton<ITaskConfigService, PersistentTaskConfigService>();
             containerRegistry.RegisterSingleton<IOperationLogService, PersistentOperationLogService>();
+            containerRegistry.RegisterSingleton<IAuditTrailService, PersistentAuditTrailService>();
+            containerRegistry.RegisterSingleton<IDataQueryService, PersistentDataQueryService>();
         }
 
         private static string GetDatabasePath()

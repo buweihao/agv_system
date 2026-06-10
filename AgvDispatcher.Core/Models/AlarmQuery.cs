@@ -1,18 +1,22 @@
+using AgvDispatcher.Core.Enums;
+
 namespace AgvDispatcher.Core.Models
 {
-    public class OperationLogQuery
+    public class AlarmQuery
     {
-        public string? Category { get; set; }
+        public AlarmSeverity? Severity { get; set; }
 
-        public string? Action { get; set; }
+        public AlarmState? State { get; set; }
 
-        public string? Operator { get; set; }
+        public string? AlarmCode { get; set; }
+
+        public string? SourceType { get; set; }
+
+        public string? SourceId { get; set; }
 
         public string? VehicleId { get; set; }
 
         public string? TaskId { get; set; }
-
-        public string? SourceId { get; set; }
 
         public DateTime? From { get; set; }
 

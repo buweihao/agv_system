@@ -63,6 +63,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
                 logs = logs.Where(log => log.TaskId == query.TaskId);
             }
 
+            if (!string.IsNullOrWhiteSpace(query.SourceId))
+            {
+                logs = logs.Where(log => log.SourceId == query.SourceId);
+            }
+
             if (query.From is not null)
             {
                 logs = logs.Where(log => log.OccurredAt >= query.From.Value);

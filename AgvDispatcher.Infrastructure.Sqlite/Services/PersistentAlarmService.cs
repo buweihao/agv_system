@@ -7,10 +7,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
     public class PersistentAlarmService : IAlarmService
     {
         private readonly IAlarmRepository _alarms;
+        private readonly IAuditTrailService _auditTrail;
 
-        public PersistentAlarmService(IAlarmRepository alarms)
+        public PersistentAlarmService(IAlarmRepository alarms, IAuditTrailService auditTrail)
         {
             _alarms = alarms;
+            _auditTrail = auditTrail;
         }
 
         public IReadOnlyList<AlarmEvent> GetActiveAlarms()
@@ -21,6 +23,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         public IReadOnlyList<AlarmEvent> GetAlarmHistory()
         {
             return _alarms.GetAllAsync().GetAwaiter().GetResult();
+        }
+
+        public IReadOnlyList<AlarmEvent> QueryAlarms(AlarmQuery query)
+        {
+            return _alarms.QueryAsync(query).GetAwaiter().GetResult();
         }
 
         public AlarmEvent RaiseAlarm(AlarmEvent alarm)
@@ -39,6 +46,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             alarm.State = AlarmState.Active;
             _alarms.SaveAsync(alarm).GetAwaiter().GetResult();
+            _auditTrail.RecordAlarmRaised(alarm);
             return alarm;
         }
 
@@ -54,6 +62,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             alarm.AcknowledgedBy = acknowledgedBy;
             alarm.AcknowledgedAt = DateTime.Now;
             _alarms.SaveAsync(alarm).GetAwaiter().GetResult();
+            _auditTrail.RecordAlarmAcknowledged(alarm, acknowledgedBy);
         }
 
         public void ClearAlarm(string alarmId, string? reason = null)
@@ -68,6 +77,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             alarm.ClearReason = reason;
             alarm.ClearedAt = DateTime.Now;
             _alarms.SaveAsync(alarm).GetAwaiter().GetResult();
+            _auditTrail.RecordAlarmCleared(alarm, reason);
         }
     }
 }

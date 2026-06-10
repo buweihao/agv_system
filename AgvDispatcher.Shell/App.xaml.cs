@@ -40,6 +40,15 @@ public partial class App : PrismApplication
         base.OnInitialized();
 
         Container.Resolve<LocalPersistenceInitializer>().Initialize();
+        Container.Resolve<IOperationLogService>().WriteLog(new AgvDispatcher.Core.Models.OperationLog
+        {
+            Category = "System",
+            Action = "Started",
+            Message = "AGV dispatcher shell started.",
+            Operator = Environment.UserName,
+            SourceId = Environment.MachineName
+        });
+
         Container.Resolve<IVehicleAdapterManager>().StartAsync(CancellationToken.None).GetAwaiter().GetResult();
 
         var regionManager = Container.Resolve<Prism.Navigation.Regions.IRegionManager>();
@@ -51,6 +60,15 @@ public partial class App : PrismApplication
 
     protected override void OnExit(ExitEventArgs e)
     {
+        Container.Resolve<IOperationLogService>().WriteLog(new AgvDispatcher.Core.Models.OperationLog
+        {
+            Category = "System",
+            Action = "Stopped",
+            Message = "AGV dispatcher shell stopped.",
+            Operator = Environment.UserName,
+            SourceId = Environment.MachineName
+        });
+
         Container.Resolve<IVehicleAdapterManager>().StopAsync(CancellationToken.None).GetAwaiter().GetResult();
         base.OnExit(e);
     }

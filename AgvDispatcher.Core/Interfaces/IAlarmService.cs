@@ -8,6 +8,8 @@ namespace AgvDispatcher.Core.Interfaces
 
         IReadOnlyList<AlarmEvent> GetAlarmHistory();
 
+        IReadOnlyList<AlarmEvent> QueryAlarms(AlarmQuery query);
+
         AlarmEvent RaiseAlarm(AlarmEvent alarm);
 
         void AcknowledgeAlarm(string alarmId, string acknowledgedBy);

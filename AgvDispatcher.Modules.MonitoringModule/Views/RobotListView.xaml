@@ -50,12 +50,18 @@
         </Style>
 
         <Style x:Key="SimulatorInputStyle" TargetType="Control">
-            <Setter Property="Height" Value="28"/>
+            <Setter Property="Height" Value="30"/>
             <Setter Property="Margin" Value="6,0,12,0"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Background" Value="#0A1422"/>
             <Setter Property="BorderBrush" Value="#24507A"/>
             <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- ComboBox 使用与任务管理页面一致的 HandyControl 基础样式 -->
+        <Style TargetType="ComboBox" BasedOn="{StaticResource ComboBoxBaseStyle}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Margin" Value="6,0,12,0"/>
         </Style>
 
         <Style x:Key="SimulatorLabelStyle" TargetType="TextBlock">
@@ -99,15 +105,13 @@
                     <ComboBox Grid.Column="1"
                               IsEditable="True"
                               ItemsSource="{Binding VehicleIdOptions}"
-                              Text="{Binding VehicleId, UpdateSourceTrigger=PropertyChanged}"
-                              Style="{StaticResource SimulatorInputStyle}"/>
+                              Text="{Binding VehicleId, UpdateSourceTrigger=PropertyChanged}"/>
 
                     <TextBlock Grid.Column="2" Text="Brand" Style="{StaticResource SimulatorLabelStyle}"/>
                     <ComboBox Grid.Column="3"
                               IsEditable="True"
                               ItemsSource="{Binding BrandOptions}"
-                              Text="{Binding Brand, UpdateSourceTrigger=PropertyChanged}"
-                              Style="{StaticResource SimulatorInputStyle}"/>
+                              Text="{Binding Brand, UpdateSourceTrigger=PropertyChanged}"/>
 
                     <TextBlock Grid.Column="4" Text="Battery" Style="{StaticResource SimulatorLabelStyle}"/>
                     <TextBox Grid.Column="5"
@@ -123,8 +127,7 @@
                     <TextBlock Grid.Column="8" Text="State" Style="{StaticResource SimulatorLabelStyle}"/>
                     <ComboBox Grid.Column="9"
                               ItemsSource="{Binding StateOptions}"
-                              SelectedItem="{Binding State}"
-                              Style="{StaticResource SimulatorInputStyle}"/>
+                              SelectedItem="{Binding State}"/>
 
                     <Button Grid.Column="10"
                             Content="上报状态"

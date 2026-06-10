@@ -1,4 +1,5 @@
-using AgvDispatcher.Infrastructure.Mock;
+using AgvDispatcher.Infrastructure.Sqlite;
+using AgvDispatcher.Infrastructure.Sqlite.Persistence;
 using Prism.DryIoc;
 using Prism.Ioc;
 using Prism.Modularity;
@@ -19,7 +20,7 @@ public partial class App : PrismApplication
 
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
-        MockServiceRegistration.RegisterMockServices(containerRegistry);
+        LocalPersistenceRegistration.RegisterLocalPersistence(containerRegistry);
     }
 
     protected override IModuleCatalog CreateModuleCatalog()
@@ -35,6 +36,8 @@ public partial class App : PrismApplication
     protected override void OnInitialized()
     {
         base.OnInitialized();
+
+        Container.Resolve<LocalPersistenceInitializer>().Initialize();
 
         var regionManager = Container.Resolve<Prism.Navigation.Regions.IRegionManager>();
         var eventAggregator = Container.Resolve<Prism.Events.IEventAggregator>();

@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
+    <ProjectReference Include="..\AgvDispatcher.Infrastructure.Sqlite\AgvDispatcher.Infrastructure.Sqlite.csproj" />
     
     <!-- 引入所有模块项目以确保它们在主程序启动前被编译，但设置 ReferenceOutputAssembly=false 以避免静态耦合 -->
     <ProjectReference Include="..\AgvDispatcher.Modules.TemplateModule\AgvDispatcher.Modules.TemplateModule.csproj">

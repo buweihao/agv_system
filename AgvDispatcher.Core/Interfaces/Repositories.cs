@@ -1,0 +1,65 @@
+using AgvDispatcher.Core.Models;
+
+namespace AgvDispatcher.Core.Interfaces
+{
+    public interface IVehicleRepository
+    {
+        Task<IReadOnlyList<Vehicle>> GetAllAsync();
+
+        Task<Vehicle?> GetByIdAsync(string vehicleId);
+
+        Task SaveAsync(Vehicle vehicle);
+    }
+
+    public interface IChargeStationRepository
+    {
+        Task<IReadOnlyList<ChargeStation>> GetAllAsync();
+
+        Task<ChargeStation?> GetByIdAsync(string stationId);
+
+        Task SaveAsync(ChargeStation station);
+    }
+
+    public interface IMapRepository
+    {
+        Task<IReadOnlyList<MapNode>> GetNodesAsync();
+
+        Task<IReadOnlyList<MapEdge>> GetEdgesAsync();
+
+        Task SaveNodeAsync(MapNode node);
+
+        Task SaveEdgeAsync(MapEdge edge);
+    }
+
+    public interface ITaskTemplateRepository
+    {
+        Task<IReadOnlyList<TaskTemplateConfig>> GetAllAsync();
+
+        Task SaveAsync(TaskTemplateConfig template);
+    }
+
+    public interface ISystemParameterRepository
+    {
+        Task<IReadOnlyList<ParameterConfig>> GetAllAsync();
+
+        Task SaveAsync(ParameterConfig parameter);
+    }
+
+    public interface IAlarmRepository
+    {
+        Task<IReadOnlyList<AlarmEvent>> GetAllAsync();
+
+        Task<IReadOnlyList<AlarmEvent>> GetActiveAsync();
+
+        Task<AlarmEvent?> GetByIdAsync(string alarmId);
+
+        Task SaveAsync(AlarmEvent alarm);
+    }
+
+    public interface IOperationLogRepository
+    {
+        Task AddAsync(OperationLog log);
+
+        Task<IReadOnlyList<OperationLog>> QueryAsync(OperationLogQuery query);
+    }
+}

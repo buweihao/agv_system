@@ -106,23 +106,23 @@
                     <StackPanel VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Margin="0,2">
                             <Ellipse Width="8" Height="8" Fill="#00FF7F" Margin="0,0,5,0"/>
-                            <TextBlock Text="运行中 30%" Foreground="White" FontSize="12"/>
+                            <TextBlock Text="{Binding RunningPercent, StringFormat=运行中 {0}%}" Foreground="White" FontSize="12"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
                             <Ellipse Width="8" Height="8" Fill="#FFD700" Margin="0,0,5,0"/>
-                            <TextBlock Text="空闲 20%" Foreground="White" FontSize="12"/>
+                            <TextBlock Text="{Binding IdlePercent, StringFormat=空闲 {0}%}" Foreground="White" FontSize="12"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
                             <Ellipse Width="8" Height="8" Fill="#9370DB" Margin="0,0,5,0"/>
-                            <TextBlock Text="充电中 10%" Foreground="White" FontSize="12"/>
+                            <TextBlock Text="{Binding ChargingPercent, StringFormat=充电中 {0}%}" Foreground="White" FontSize="12"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
                             <Ellipse Width="8" Height="8" Fill="#1E90FF" Margin="0,0,5,0"/>
-                            <TextBlock Text="执行任务 36%" Foreground="White" FontSize="12"/>
+                            <TextBlock Text="{Binding TaskPercent, StringFormat=执行任务 {0}%}" Foreground="White" FontSize="12"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,2">
                             <Ellipse Width="8" Height="8" Fill="#FF4500" Margin="0,0,5,0"/>
-                            <TextBlock Text="故障 4%" Foreground="White" FontSize="12"/>
+                            <TextBlock Text="{Binding FaultPercent, StringFormat=故障 {0}%}" Foreground="White" FontSize="12"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -170,23 +170,23 @@
                             
                             <!-- Points -->
                             <StackPanel Canvas.Left="15" Canvas.Top="60" Width="20">
-                                <TextBlock Text="4" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding SpeedBucket0}" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
                                 <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                             </StackPanel>
                             <StackPanel Canvas.Left="65" Canvas.Top="35" Width="20">
-                                <TextBlock Text="8" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding SpeedBucket1}" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
                                 <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                             </StackPanel>
                             <StackPanel Canvas.Left="115" Canvas.Top="5" Width="20">
-                                <TextBlock Text="16" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding SpeedBucket2}" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
                                 <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                             </StackPanel>
                             <StackPanel Canvas.Left="165" Canvas.Top="25" Width="20">
-                                <TextBlock Text="10" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding SpeedBucket3}" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
                                 <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                             </StackPanel>
                             <StackPanel Canvas.Left="215" Canvas.Top="65" Width="20">
-                                <TextBlock Text="2" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding SpeedBucket4}" Foreground="White" FontSize="10" HorizontalAlignment="Center"/>
                                 <Ellipse Width="6" Height="6" Fill="#00BFFF" Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                             </StackPanel>
                         </Canvas>

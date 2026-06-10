@@ -23,6 +23,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         private string _location = "A01-01";
         private RobotState _state = RobotState.Running;
         private string _lastPublishMessage = "Ready";
+        private RobotModel? _selectedRobot;
+        private readonly IEventAggregator _eventAggregator;
 
         public ObservableCollection<RobotModel> RobotList
         {
@@ -84,6 +86,18 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             set => SetProperty(ref _lastPublishMessage, value);
         }
 
+        public RobotModel? SelectedRobot
+        {
+            get => _selectedRobot;
+            set
+            {
+                if (SetProperty(ref _selectedRobot, value))
+                {
+                    _eventAggregator.GetEvent<SelectedVehicleChangedEvent>().Publish(value?.Id);
+                }
+            }
+        }
+
         public DelegateCommand PublishStatusCommand { get; }
 
         public RobotListViewModel(
@@ -91,6 +105,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             IVehicleStateStore vehicleStateStore,
             IVehicleStatusPublisher vehicleStatusPublisher)
         {
+            _eventAggregator = eventAggregator;
             _vehicleStateStore = vehicleStateStore;
             _vehicleStatusPublisher = vehicleStatusPublisher;
             PublishStatusCommand = new DelegateCommand(PublishStatus, CanPublishStatus)
@@ -105,6 +120,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             {
                 AddVehicleIdOption(snapshot.VehicleId);
             }
+
+            SelectedRobot = RobotList.FirstOrDefault();
 
             eventAggregator.GetEvent<VehicleStateChangedEvent>().Subscribe(ApplyVehicleStateChange, ThreadOption.UIThread);
         }
@@ -169,11 +186,17 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             if (existingIndex.HasValue)
             {
                 RobotList[existingIndex.Value] = robot;
+                if (string.Equals(SelectedRobot?.Id, robot.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    SelectedRobot = robot;
+                }
+
                 return;
             }
 
             RobotList.Add(robot);
             AddVehicleIdOption(snapshot.VehicleId);
+            SelectedRobot ??= robot;
         }
 
         private void RemoveRobot(string? vehicleId)
@@ -189,6 +212,10 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             if (robot is not null)
             {
                 RobotList.Remove(robot);
+                if (string.Equals(SelectedRobot?.Id, robot.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    SelectedRobot = RobotList.FirstOrDefault();
+                }
             }
         }
 

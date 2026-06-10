@@ -1,4 +1,4 @@
-<UserControl x:Class="AgvDispatcher.Modules.TaskModule.Views.TaskMainPanelView"
+﻿<UserControl x:Class="AgvDispatcher.Modules.TaskModule.Views.TaskMainPanelView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:prism="http://prismlibrary.com/"
@@ -92,6 +92,19 @@
             </StackPanel>
             
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button Content="创建测试任务"
+                        Command="{Binding CreateDemoTaskCommand}"
+                        Background="#00BFFF"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Width="96"
+                        Height="30"
+                        Margin="0,0,12,0"
+                        Cursor="Hand"/>
+                <TextBlock Text="{Binding DispatchMessage}"
+                           Foreground="#8FB8D8"
+                           VerticalAlignment="Center"
+                           Margin="0,0,18,0"/>
                 <Ellipse Width="10" Height="10" Fill="#FFD700" Margin="0,0,5,0"/><TextBlock Text="待执行" Foreground="White" Margin="0,0,15,0"/>
                 <Ellipse Width="10" Height="10" Fill="#00FF7F" Margin="0,0,5,0"/><TextBlock Text="运行中" Foreground="White" Margin="0,0,15,0"/>
                 <Ellipse Width="10" Height="10" Fill="#2E8B57" Margin="0,0,5,0"/><TextBlock Text="已完成" Foreground="White" Margin="0,0,15,0"/>
@@ -128,7 +141,7 @@
                 <ComboBox SelectedIndex="0"><ComboBoxItem Content="全部优先级"/><ComboBoxItem Content="高"/><ComboBoxItem Content="中"/><ComboBoxItem Content="低"/></ComboBox>
                 <ComboBox SelectedIndex="0"><ComboBoxItem Content="全部AGV"/><ComboBoxItem Content="AGV-001"/><ComboBoxItem Content="AGV-002"/></ComboBox>
                 <TextBox Width="150" Margin="0,0,10,0" Text="请选择创建时间" Foreground="Gray"/> <!-- Fake DatePicker to avoid complex styling overhead -->
-                <TextBox Width="200" Margin="0,0,10,0" Text="🔍 输入任务ID/起点/终点"/>
+                <TextBox Width="200" Margin="0,0,10,0" Text="输入任务ID/起点/终点"/>
                 
                 <Button Content="搜索" Background="#00BFFF" Foreground="White" BorderThickness="0" Width="60" Height="30" Margin="0,0,10,0" Cursor="Hand">
                     <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
@@ -250,7 +263,15 @@
                 <DataGridTemplateColumn Header="操作" Width="*">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Content="详情" Background="#00BFFF" Foreground="White" BorderThickness="0" Padding="10,4" Cursor="Hand" HorizontalAlignment="Left">
+                            <Button Content="自动派发"
+                                    Command="{Binding DataContext.AutoDispatchCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    CommandParameter="{Binding}"
+                                    Background="#00BFFF"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Padding="10,4"
+                                    Cursor="Hand"
+                                    HorizontalAlignment="Left">
                                 <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
                             </Button>
                         </DataTemplate>

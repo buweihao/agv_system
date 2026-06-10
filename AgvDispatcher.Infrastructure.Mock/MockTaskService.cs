@@ -47,6 +47,17 @@ namespace AgvDispatcher.Infrastructure.Mock
             return task;
         }
 
+        public void AssignVehicle(string taskId, string vehicleId)
+        {
+            var task = GetTask(taskId);
+            if (task is null || string.IsNullOrWhiteSpace(vehicleId))
+            {
+                return;
+            }
+
+            task.AssignedVehicleId = vehicleId.Trim();
+        }
+
         public void UpdateTaskState(string taskId, TaskState state, string? reason = null)
         {
             var task = GetTask(taskId);

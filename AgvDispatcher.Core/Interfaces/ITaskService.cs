@@ -11,6 +11,8 @@ namespace AgvDispatcher.Core.Interfaces
 
         TaskOrder CreateTask(TaskCreateRequest request);
 
+        void AssignVehicle(string taskId, string vehicleId);
+
         void UpdateTaskState(string taskId, TaskState state, string? reason = null);
 
         void CancelTask(string taskId, string? reason = null);

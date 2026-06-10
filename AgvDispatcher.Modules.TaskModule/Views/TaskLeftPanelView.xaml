@@ -3,8 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:prism="http://prismlibrary.com/"
              mc:Ignorable="d" 
              d:DesignHeight="900" d:DesignWidth="320"
+             prism:ViewModelLocator.AutoWireViewModel="True"
              Background="#0A111E">
     <UserControl.Resources>
         <Style TargetType="TextBlock">
@@ -42,27 +44,27 @@
                 <UniformGrid Columns="3" Rows="2" VerticalAlignment="Top">
                     <StackPanel Margin="5">
                         <TextBlock Text="任务总数" Foreground="Gray" FontSize="12"/>
-                        <TextBlock Text="168" Foreground="#00BFFF" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding TotalTasks}" Foreground="#00BFFF" FontSize="20" FontWeight="Bold"/>
                     </StackPanel>
                     <StackPanel Margin="5">
                         <TextBlock Text="运行中" Foreground="Gray" FontSize="12"/>
-                        <TextBlock Text="48" Foreground="#00FF7F" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding RunningTasks}" Foreground="#00FF7F" FontSize="20" FontWeight="Bold"/>
                     </StackPanel>
                     <StackPanel Margin="5">
                         <TextBlock Text="待执行" Foreground="Gray" FontSize="12"/>
-                        <TextBlock Text="12" Foreground="#FFD700" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding PendingTasks}" Foreground="#FFD700" FontSize="20" FontWeight="Bold"/>
                     </StackPanel>
                     <StackPanel Margin="5">
                         <TextBlock Text="已完成" Foreground="Gray" FontSize="12"/>
-                        <TextBlock Text="108" Foreground="#00FF7F" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding CompletedTasks}" Foreground="#00FF7F" FontSize="20" FontWeight="Bold"/>
                     </StackPanel>
                     <StackPanel Margin="5">
                         <TextBlock Text="失败" Foreground="Gray" FontSize="12"/>
-                        <TextBlock Text="0" Foreground="#FF4500" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding FailedTasks}" Foreground="#FF4500" FontSize="20" FontWeight="Bold"/>
                     </StackPanel>
                     <StackPanel Margin="5">
                         <TextBlock Text="成功率" Foreground="Gray" FontSize="12"/>
-                        <TextBlock Text="100%" Foreground="#00BFFF" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding SuccessRateText}" Foreground="#00BFFF" FontSize="20" FontWeight="Bold"/>
                     </StackPanel>
                 </UniformGrid>
             </StackPanel>
@@ -83,7 +85,7 @@
                         <Ellipse Width="100" Height="100" Stroke="#00BFFF" StrokeThickness="10" StrokeDashArray="30 4" />
                         <Viewbox StretchDirection="DownOnly" MaxHeight="40" Margin="15,0">
                             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                                <TextBlock Text="168" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding TotalTasks}" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
                                 <TextBlock Text="总数" FontSize="12" Foreground="Gray" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Viewbox>
@@ -93,19 +95,19 @@
                         <StackPanel VerticalAlignment="Center" MinWidth="100">
                             <Grid Margin="0,3">
                                 <TextBlock Text="运行中" Foreground="White" FontSize="12" HorizontalAlignment="Left"/>
-                                <TextBlock Text="28%" Foreground="#00FF7F" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding RunningPercentText}" Foreground="#00FF7F" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
                             </Grid>
                             <Grid Margin="0,3">
                                 <TextBlock Text="待执行" Foreground="White" FontSize="12" HorizontalAlignment="Left"/>
-                                <TextBlock Text="7%" Foreground="#FFD700" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding PendingPercentText}" Foreground="#FFD700" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
                             </Grid>
                             <Grid Margin="0,3">
                                 <TextBlock Text="已完成" Foreground="White" FontSize="12" HorizontalAlignment="Left"/>
-                                <TextBlock Text="65%" Foreground="#00BFFF" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding CompletedPercentText}" Foreground="#00BFFF" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
                             </Grid>
                             <Grid Margin="0,3">
                                 <TextBlock Text="失败" Foreground="White" FontSize="12" HorizontalAlignment="Left"/>
-                                <TextBlock Text="0%" Foreground="#FF4500" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
+                                <TextBlock Text="{Binding FailedPercentText}" Foreground="#FF4500" FontSize="12" HorizontalAlignment="Right" FontWeight="Bold"/>
                             </Grid>
                         </StackPanel>
                     </Viewbox>

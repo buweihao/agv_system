@@ -153,7 +153,7 @@
         </Grid>
 
         <!-- 3. 数据表格 -->
-        <DataGrid Grid.Row="1" ItemsSource="{Binding TaskList}" AutoGenerateColumns="False" Background="Transparent" 
+        <DataGrid Grid.Row="1" ItemsSource="{Binding PagedTaskList}" AutoGenerateColumns="False" Background="Transparent" 
                   RowBackground="Transparent" AlternatingRowBackground="#0A111E" 
                   Foreground="White" GridLinesVisibility="None" BorderThickness="0" HeadersVisibility="Column"
                   CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True">
@@ -282,21 +282,17 @@
 
         <!-- 4. 底部分页栏 -->
         <Grid Grid.Row="2" Margin="0,15,0,0">
-            <TextBlock Text="共 168 条记录" Foreground="Gray" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+            <TextBlock Text="{Binding TotalRecordText}" Foreground="Gray" VerticalAlignment="Center" HorizontalAlignment="Left"/>
             
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <ComboBox SelectedIndex="0" Width="80" Margin="0,0,15,0">
-                    <ComboBoxItem Content="10条/页"/>
-                    <ComboBoxItem Content="20条/页"/>
-                </ComboBox>
+                <ComboBox ItemsSource="{Binding PageSizeOptions}"
+                          SelectedItem="{Binding PageSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Width="80"
+                          Margin="0,0,15,0"/>
                 
-                <Button Content="&lt;" Background="Transparent" Foreground="Gray" BorderBrush="#1F3A60" BorderThickness="1" Width="30" Height="30" Margin="0,0,5,0"/>
-                <Button Content="1" Background="#00BFFF" Foreground="White" BorderThickness="0" Width="30" Height="30" Margin="0,0,5,0"/>
-                <Button Content="2" Background="Transparent" Foreground="White" BorderBrush="#1F3A60" BorderThickness="1" Width="30" Height="30" Margin="0,0,5,0"/>
-                <Button Content="3" Background="Transparent" Foreground="White" BorderBrush="#1F3A60" BorderThickness="1" Width="30" Height="30" Margin="0,0,5,0"/>
-                <TextBlock Text="..." Foreground="Gray" VerticalAlignment="Center" Margin="5,0,10,0"/>
-                <Button Content="17" Background="Transparent" Foreground="White" BorderBrush="#1F3A60" BorderThickness="1" Width="30" Height="30" Margin="0,0,5,0"/>
-                <Button Content="&gt;" Background="Transparent" Foreground="Gray" BorderBrush="#1F3A60" BorderThickness="1" Width="30" Height="30"/>
+                <Button Content="&lt;" Command="{Binding PreviousPageCommand}" Background="Transparent" Foreground="Gray" BorderBrush="#1F3A60" BorderThickness="1" Width="30" Height="30" Margin="0,0,8,0"/>
+                <TextBlock Text="{Binding PageSummaryText}" Foreground="White" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Button Content="&gt;" Command="{Binding NextPageCommand}" Background="Transparent" Foreground="Gray" BorderBrush="#1F3A60" BorderThickness="1" Width="30" Height="30"/>
             </StackPanel>
         </Grid>
             </Grid>

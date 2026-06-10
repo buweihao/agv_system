@@ -5,6 +5,7 @@ using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
+using AgvDispatcher.Modules.TaskModule.Events;
 using AgvDispatcher.Modules.TaskModule.Models;
 using Prism.Commands;
 using Prism.Events;
@@ -15,6 +16,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
     public class TaskMainPanelViewModel : BindableBase
     {
         private readonly Dictionary<string, string> _pausedAgvReasons = new(StringComparer.OrdinalIgnoreCase);
+        private readonly IEventAggregator _eventAggregator;
         private readonly ITaskService _taskService;
         private readonly IDispatchService _dispatchService;
 
@@ -24,6 +26,54 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             get => _taskList;
             set => SetProperty(ref _taskList, value);
         }
+
+        private ObservableCollection<TaskModel> _pagedTaskList = new();
+        public ObservableCollection<TaskModel> PagedTaskList
+        {
+            get => _pagedTaskList;
+            set => SetProperty(ref _pagedTaskList, value);
+        }
+
+        private int _pageIndex = 1;
+        public int PageIndex
+        {
+            get => _pageIndex;
+            set
+            {
+                if (SetProperty(ref _pageIndex, value))
+                {
+                    RefreshPagedTasks();
+                }
+            }
+        }
+
+        private int _pageSize = 10;
+        public int PageSize
+        {
+            get => _pageSize;
+            set
+            {
+                if (SetProperty(ref _pageSize, value))
+                {
+                    PageIndex = 1;
+                    RefreshPagedTasks();
+                }
+            }
+        }
+
+        public IReadOnlyList<int> PageSizeOptions { get; } = new[] { 10, 20, 50 };
+
+        public int TotalTaskCount => TaskList.Count;
+
+        public int TotalPageCount => Math.Max(1, (int)Math.Ceiling((double)TotalTaskCount / PageSize));
+
+        public string TotalRecordText => $"共 {TotalTaskCount} 条记录";
+
+        public string PageSummaryText => $"第 {PageIndex} / {TotalPageCount} 页";
+
+        public bool CanGoPreviousPage => PageIndex > 1;
+
+        public bool CanGoNextPage => PageIndex < TotalPageCount;
 
         private string _dispatchMessage = "等待调度";
         public string DispatchMessage
@@ -36,15 +86,26 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
         public DelegateCommand<TaskModel> AutoDispatchCommand { get; }
 
+        public DelegateCommand PreviousPageCommand { get; }
+
+        public DelegateCommand NextPageCommand { get; }
+
         public TaskMainPanelViewModel(
             IEventAggregator eventAggregator,
             ITaskService taskService,
             IDispatchService dispatchService)
         {
+            _eventAggregator = eventAggregator;
             _taskService = taskService;
             _dispatchService = dispatchService;
             CreateDemoTaskCommand = new DelegateCommand(CreateDemoTask);
             AutoDispatchCommand = new DelegateCommand<TaskModel>(AutoDispatch, CanAutoDispatch);
+            PreviousPageCommand = new DelegateCommand(
+                () => PageIndex--,
+                () => CanGoPreviousPage);
+            NextPageCommand = new DelegateCommand(
+                () => PageIndex++,
+                () => CanGoNextPage);
 
             RefreshTasks();
 
@@ -56,6 +117,44 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         private void RefreshTasks()
         {
             TaskList = new ObservableCollection<TaskModel>(_taskService.GetTasks().Select(ToTaskModel));
+            if (PageIndex > TotalPageCount)
+            {
+                _pageIndex = TotalPageCount;
+                RaisePropertyChanged(nameof(PageIndex));
+            }
+
+            RefreshPagedTasks();
+            _eventAggregator.GetEvent<TaskDataChangedEvent>().Publish();
+        }
+
+        private void RefreshPagedTasks()
+        {
+            int safePageSize = Math.Max(PageSize, 1);
+            int safePageIndex = Math.Clamp(PageIndex, 1, TotalPageCount);
+            if (safePageIndex != PageIndex)
+            {
+                _pageIndex = safePageIndex;
+                RaisePropertyChanged(nameof(PageIndex));
+            }
+
+            PagedTaskList = new ObservableCollection<TaskModel>(
+                TaskList
+                    .Skip((safePageIndex - 1) * safePageSize)
+                    .Take(safePageSize));
+
+            RaisePagingPropertiesChanged();
+        }
+
+        private void RaisePagingPropertiesChanged()
+        {
+            RaisePropertyChanged(nameof(TotalTaskCount));
+            RaisePropertyChanged(nameof(TotalPageCount));
+            RaisePropertyChanged(nameof(TotalRecordText));
+            RaisePropertyChanged(nameof(PageSummaryText));
+            RaisePropertyChanged(nameof(CanGoPreviousPage));
+            RaisePropertyChanged(nameof(CanGoNextPage));
+            PreviousPageCommand.RaiseCanExecuteChanged();
+            NextPageCommand.RaiseCanExecuteChanged();
         }
 
         private void CreateDemoTask()
@@ -109,6 +208,11 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             _pausedAgvReasons[alert.VehicleId] = reason;
 
             foreach (TaskModel task in TaskList)
+            {
+                ApplyDispatchPauseState(task);
+            }
+
+            foreach (TaskModel task in PagedTaskList)
             {
                 ApplyDispatchPauseState(task);
             }

@@ -2,6 +2,7 @@ using Prism.Ioc;
 using Prism.Modularity;
 using Prism.Navigation.Regions;
 using AgvDispatcher.Core.Constants;
+using AgvDispatcher.Modules.TaskModule.ViewModels;
 using AgvDispatcher.Modules.TaskModule.Views;
 
 namespace AgvDispatcher.Modules.TaskModule
@@ -21,6 +22,8 @@ namespace AgvDispatcher.Modules.TaskModule
 
         public void RegisterTypes(IContainerRegistry containerRegistry)
         {
+            containerRegistry.RegisterSingleton<TaskMainPanelViewModel>();
+            containerRegistry.RegisterSingleton<TaskLeftPanelViewModel>();
             containerRegistry.RegisterForNavigation<TaskWorkspaceView>();
         }
     }

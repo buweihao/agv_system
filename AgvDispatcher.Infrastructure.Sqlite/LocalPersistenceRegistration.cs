@@ -3,6 +3,7 @@ using AgvDispatcher.Infrastructure.Mock;
 using AgvDispatcher.Infrastructure.Sqlite.Persistence;
 using AgvDispatcher.Infrastructure.Sqlite.Repositories;
 using AgvDispatcher.Infrastructure.Sqlite.Services;
+using AgvDispatcher.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Prism.Ioc;
 
@@ -20,6 +21,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterInstance(options);
             containerRegistry.RegisterSingleton<AgvDispatcherDbContext>();
             containerRegistry.RegisterSingleton<LocalPersistenceInitializer>();
+            containerRegistry.RegisterSingleton<IPathPlanningService, DijkstraPathPlanningService>();
 
             containerRegistry.RegisterSingleton<IVehicleStateStore, MockVehicleStateStore>();
             containerRegistry.RegisterSingleton<ITaskService, MockTaskService>();

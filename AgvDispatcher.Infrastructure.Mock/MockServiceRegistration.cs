@@ -1,4 +1,5 @@
 using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Core.Services;
 using Prism.Ioc;
 
 namespace AgvDispatcher.Infrastructure.Mock
@@ -7,6 +8,7 @@ namespace AgvDispatcher.Infrastructure.Mock
     {
         public static void RegisterMockServices(IContainerRegistry containerRegistry)
         {
+            containerRegistry.RegisterSingleton<IPathPlanningService, DijkstraPathPlanningService>();
             containerRegistry.RegisterSingleton<IVehicleStateStore, MockVehicleStateStore>();
             containerRegistry.RegisterSingleton<IVehicleService, MockVehicleService>();
             containerRegistry.RegisterSingleton<ITaskService, MockTaskService>();

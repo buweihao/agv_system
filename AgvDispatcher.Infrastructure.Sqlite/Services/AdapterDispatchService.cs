@@ -47,12 +47,9 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 ? SelectVehicle(task)?.VehicleId
                 : preferredVehicleId.Trim();
 
-            if (string.IsNullOrWhiteSpace(preferredVehicleId))
+            if (string.IsNullOrWhiteSpace(selectedVehicleId))
             {
-                if (string.IsNullOrWhiteSpace(selectedVehicleId))
-                {
-                    return DispatchResult.Failure("NoAvailableVehicle", $"No idle online vehicle with battery >= {MinimumDispatchBatteryPercent:0.#}% is available.", taskId);
-                }
+                return DispatchResult.Failure("NoAvailableVehicle", $"No idle online vehicle with battery >= {MinimumDispatchBatteryPercent:0.#}% is available.", taskId);
             }
 
             var selectedStatus = _vehicleService.GetVehicleStatus(selectedVehicleId);
@@ -162,8 +159,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 return false;
             }
 
-            return _mapService.GetNode(task.SourceNodeId) is not null
-                && _mapService.GetNode(task.TargetNodeId) is not null;
+            return _mapService.IsPathAvailable(task.SourceNodeId, task.TargetNodeId);
         }
     }
 }

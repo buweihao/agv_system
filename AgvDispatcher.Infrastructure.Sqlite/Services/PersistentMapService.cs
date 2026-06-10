@@ -6,10 +6,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
     public class PersistentMapService : IMapService
     {
         private readonly IMapRepository _maps;
+        private readonly IPathPlanningService _pathPlanningService;
 
-        public PersistentMapService(IMapRepository maps)
+        public PersistentMapService(IMapRepository maps, IPathPlanningService pathPlanningService)
         {
             _maps = maps;
+            _pathPlanningService = pathPlanningService;
         }
 
         public IReadOnlyList<MapNode> GetNodes()
@@ -30,25 +32,17 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public IReadOnlyList<MapNode> FindPath(string startNodeId, string endNodeId)
         {
-            var start = GetNode(startNodeId);
-            var end = GetNode(endNodeId);
-            if (start is null || end is null)
-            {
-                return Array.Empty<MapNode>();
-            }
+            return FindPlannedPath(startNodeId, endNodeId).Nodes;
+        }
 
-            return new[] { start, end };
+        public PlannedPath FindPlannedPath(string startNodeId, string endNodeId)
+        {
+            return _pathPlanningService.PlanPath(GetNodes(), GetEdges(), startNodeId, endNodeId);
         }
 
         public bool IsPathAvailable(string startNodeId, string endNodeId)
         {
-            return GetEdges().Any(edge =>
-                !edge.IsLocked
-                && edge.IsEnabled
-                && ((string.Equals(edge.FromNodeId, startNodeId, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(edge.ToNodeId, endNodeId, StringComparison.OrdinalIgnoreCase))
-                    || (string.Equals(edge.FromNodeId, endNodeId, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(edge.ToNodeId, startNodeId, StringComparison.OrdinalIgnoreCase))));
+            return FindPlannedPath(startNodeId, endNodeId).IsAvailable;
         }
     }
 }

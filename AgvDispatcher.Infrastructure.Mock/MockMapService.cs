@@ -7,6 +7,12 @@ namespace AgvDispatcher.Infrastructure.Mock
     {
         private readonly IReadOnlyList<MapNode> _nodes = MockData.CreateMapNodes();
         private readonly IReadOnlyList<MapEdge> _edges = MockData.CreateMapEdges();
+        private readonly IPathPlanningService _pathPlanningService;
+
+        public MockMapService(IPathPlanningService pathPlanningService)
+        {
+            _pathPlanningService = pathPlanningService;
+        }
 
         public IReadOnlyList<MapNode> GetNodes()
         {
@@ -26,25 +32,17 @@ namespace AgvDispatcher.Infrastructure.Mock
 
         public IReadOnlyList<MapNode> FindPath(string startNodeId, string endNodeId)
         {
-            var start = GetNode(startNodeId);
-            var end = GetNode(endNodeId);
-            if (start is null || end is null)
-            {
-                return Array.Empty<MapNode>();
-            }
+            return FindPlannedPath(startNodeId, endNodeId).Nodes;
+        }
 
-            return new[] { start, end };
+        public PlannedPath FindPlannedPath(string startNodeId, string endNodeId)
+        {
+            return _pathPlanningService.PlanPath(_nodes, _edges, startNodeId, endNodeId);
         }
 
         public bool IsPathAvailable(string startNodeId, string endNodeId)
         {
-            return GetNode(startNodeId) is not null
-                && GetNode(endNodeId) is not null
-                && _edges.Any(edge =>
-                    !edge.IsLocked
-                    && edge.IsEnabled
-                    && ((edge.FromNodeId == startNodeId && edge.ToNodeId == endNodeId)
-                        || (edge.FromNodeId == endNodeId && edge.ToNodeId == startNodeId)));
+            return FindPlannedPath(startNodeId, endNodeId).IsAvailable;
         }
     }
 }

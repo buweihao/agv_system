@@ -12,6 +12,8 @@ namespace AgvDispatcher.Core.Interfaces
 
         IReadOnlyList<MapNode> FindPath(string startNodeId, string endNodeId);
 
+        PlannedPath FindPlannedPath(string startNodeId, string endNodeId);
+
         bool IsPathAvailable(string startNodeId, string endNodeId);
     }
 }

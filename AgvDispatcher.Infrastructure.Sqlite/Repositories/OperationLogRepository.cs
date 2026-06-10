@@ -20,7 +20,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 
             if (string.IsNullOrWhiteSpace(log.LogId))
             {
-                log.LogId = $"LOG-{DateTime.Now:yyyyMMddHHmmssfff}";
+                log.LogId = $"LOG-{Guid.NewGuid():N}";
             }
 
             if (log.OccurredAt == default)

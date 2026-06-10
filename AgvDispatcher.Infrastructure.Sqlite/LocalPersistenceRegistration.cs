@@ -34,6 +34,10 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IAlarmRepository, AlarmRepository>();
             containerRegistry.RegisterSingleton<IOperationLogRepository, OperationLogRepository>();
 
+            containerRegistry.RegisterSingleton<IVehicleStatusPublisher, VehicleStatusPublisher>();
+            containerRegistry.RegisterSingleton<IVehicleAdapterFactory, MockVehicleAdapterFactory>();
+            containerRegistry.RegisterSingleton<IVehicleAdapterManager, VehicleAdapterManager>();
+            containerRegistry.RegisterSingleton<IDispatchService, AdapterDispatchService>();
             containerRegistry.RegisterSingleton<IVehicleService, PersistentVehicleService>();
             containerRegistry.RegisterSingleton<IChargeService, PersistentChargeService>();
             containerRegistry.RegisterSingleton<IAlarmService, PersistentAlarmService>();

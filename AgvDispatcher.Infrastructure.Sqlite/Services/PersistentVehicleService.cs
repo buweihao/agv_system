@@ -43,10 +43,21 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             ArgumentNullException.ThrowIfNull(status);
 
             var vehicle = GetVehicle(status.VehicleId);
+            if (vehicle is null)
+            {
+                return;
+            }
+
+            if (!vehicle.IsEnabled)
+            {
+                _vehicleStateStore.RemoveVehicle(status.VehicleId);
+                return;
+            }
+
             _vehicleStateStore.UpsertStatus(new VehicleStatusSnapshot
             {
                 VehicleId = status.VehicleId,
-                Brand = vehicle?.Brand ?? string.Empty,
+                Brand = vehicle.Brand,
                 BatteryLevel = status.BatteryLevel,
                 Location = status.LocationText,
                 State = status.State,

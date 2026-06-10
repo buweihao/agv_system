@@ -11,4 +11,5 @@
   <Project Path="AgvDispatcher.Modules.SignalModule\AgvDispatcher.Modules.SignalModule.csproj" />
   <Project Path="AgvDispatcher.Modules.DataQueryModule\AgvDispatcher.Modules.DataQueryModule.csproj" />
   <Project Path="AgvDispatcher.Modules.TaskConfigModule\AgvDispatcher.Modules.TaskConfigModule.csproj" />
+  <Project Path="AgvDispatcher.Modules.SystemConfigModule\AgvDispatcher.Modules.SystemConfigModule.csproj" />
 </Solution>

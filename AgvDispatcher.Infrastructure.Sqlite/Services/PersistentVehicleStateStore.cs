@@ -5,23 +5,21 @@ using AgvDispatcher.Core.Models;
 using AgvDispatcher.Core.Rules;
 using Prism.Events;
 
-namespace AgvDispatcher.Infrastructure.Mock
+namespace AgvDispatcher.Infrastructure.Sqlite.Services
 {
-    public class MockVehicleStateStore : IVehicleStateStore
+    public class PersistentVehicleStateStore : IVehicleStateStore
     {
         private readonly Dictionary<string, VehicleStatusSnapshot> _vehicles = new(StringComparer.OrdinalIgnoreCase);
         private readonly IEventAggregator _eventAggregator;
+        private readonly IVehicleRepository _vehicleRepository;
         private readonly object _syncRoot = new();
 
-        public MockVehicleStateStore(IEventAggregator eventAggregator)
+        public PersistentVehicleStateStore(IEventAggregator eventAggregator, IVehicleRepository vehicleRepository)
         {
             _eventAggregator = eventAggregator;
+            _vehicleRepository = vehicleRepository;
 
-            foreach (var snapshot in MockData.CreateVehicleSnapshots(DateTime.Now))
-            {
-                CreateVehicle(snapshot);
-            }
-
+            SeedFromConfiguration();
             _eventAggregator.GetEvent<VehicleConfigurationChangedEvent>().Subscribe(ApplyVehicleConfigurationChange);
         }
 
@@ -123,7 +121,9 @@ namespace AgvDispatcher.Infrastructure.Mock
 
             lock (_syncRoot)
             {
-                return _vehicles.TryGetValue(vehicleId, out var snapshot) ? snapshot : null;
+                return _vehicles.TryGetValue(vehicleId, out var snapshot)
+                    ? snapshot
+                    : null;
             }
         }
 
@@ -132,6 +132,31 @@ namespace AgvDispatcher.Infrastructure.Mock
             lock (_syncRoot)
             {
                 return _vehicles.Values.ToArray();
+            }
+        }
+
+        private void SeedFromConfiguration()
+        {
+            var vehicles = _vehicleRepository.GetAllAsync().GetAwaiter().GetResult();
+            var now = DateTime.Now;
+
+            foreach (var vehicle in vehicles.Where(vehicle => vehicle.IsEnabled))
+            {
+                var snapshot = new VehicleStatusSnapshot
+                {
+                    VehicleId = vehicle.VehicleId,
+                    Brand = vehicle.Brand,
+                    State = RobotState.Idle,
+                    Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
+                    BatteryLevel = 100,
+                    CurrentTaskId = null,
+                    ReportedAt = now
+                };
+
+                lock (_syncRoot)
+                {
+                    _vehicles[snapshot.VehicleId] = snapshot;
+                }
             }
         }
 

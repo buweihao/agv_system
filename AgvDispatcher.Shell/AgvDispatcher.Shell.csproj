@@ -45,6 +45,9 @@
     <ProjectReference Include="..\AgvDispatcher.Modules.TaskConfigModule\AgvDispatcher.Modules.TaskConfigModule.csproj">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="..\AgvDispatcher.Modules.SystemConfigModule\AgvDispatcher.Modules.SystemConfigModule.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

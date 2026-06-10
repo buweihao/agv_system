@@ -23,7 +23,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<LocalPersistenceInitializer>();
             containerRegistry.RegisterSingleton<IPathPlanningService, DijkstraPathPlanningService>();
 
-            containerRegistry.RegisterSingleton<IVehicleStateStore, MockVehicleStateStore>();
             containerRegistry.RegisterSingleton<ITaskService, MockTaskService>();
             containerRegistry.RegisterSingleton<ISignalService, MockSignalService>();
 
@@ -35,6 +34,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IAlarmRepository, AlarmRepository>();
             containerRegistry.RegisterSingleton<IOperationLogRepository, OperationLogRepository>();
 
+            containerRegistry.RegisterSingleton<IVehicleStateStore, PersistentVehicleStateStore>();
             containerRegistry.RegisterSingleton<IVehicleStatusPublisher, VehicleStatusPublisher>();
             containerRegistry.RegisterSingleton<IVehicleAdapterFactory, MockVehicleAdapterFactory>();
             containerRegistry.RegisterSingleton<IVehicleAdapterManager, VehicleAdapterManager>();

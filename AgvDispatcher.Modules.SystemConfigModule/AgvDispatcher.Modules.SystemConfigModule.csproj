@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Prism.DryIoc" Version="9.0.537" />
+    <PackageReference Include="Prism.Wpf" Version="9.0.537" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
+  </ItemGroup>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(SkipModuleCopy)' != 'true'">
+    <Exec Command="xcopy &quot;$(TargetDir)*.*&quot; &quot;$(ProjectDir)..\AgvDispatcher.Shell\bin\$(Configuration)\$(TargetFramework)\Modules\&quot; /Y /I /E" />
+  </Target>
+
+</Project>

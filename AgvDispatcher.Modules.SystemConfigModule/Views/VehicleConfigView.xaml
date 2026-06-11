@@ -8,7 +8,11 @@
             <Setter Property="Foreground" Value="#E6F4FF"/>
             <Setter Property="FontFamily" Value="Microsoft YaHei"/>
         </Style>
-
+        <Style TargetType="ComboBox" BasedOn="{StaticResource ComboBoxBaseStyle}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Width" Value="120"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
         <Style x:Key="PanelBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="#0D1724"/>
             <Setter Property="BorderBrush" Value="#1F3A60"/>
@@ -173,7 +177,7 @@
 
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="车辆类型" Style="{StaticResource FieldLabelStyle}"/>
-                                <ComboBox ItemsSource="{Binding VehicleTypes}" SelectedItem="{Binding CurrentVehicle.Type}" Style="{StaticResource InputStyle}"/>
+                                <ComboBox ItemsSource="{Binding VehicleTypes}" SelectedItem="{Binding CurrentVehicle.Type}" Width="auto" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="所属区域" Style="{StaticResource FieldLabelStyle}"/>

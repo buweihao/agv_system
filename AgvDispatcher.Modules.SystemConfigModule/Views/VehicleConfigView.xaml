@@ -86,8 +86,16 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="{Binding TotalCount, StringFormat=总数 {0}}" Foreground="#8EA8C3" VerticalAlignment="Center" Margin="0,0,16,0"/>
                     <TextBlock Text="{Binding EnabledCount, StringFormat=启用 {0}}" Foreground="#00FF7F" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    
+                    <!-- Filters -->
+                    <ComboBox ItemsSource="{Binding AvailableBrands}" SelectedItem="{Binding FilterBrand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" Margin="0,0,10,0"/>
+                    <ComboBox ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding FilterStatus, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" Margin="0,0,10,0"/>
+                    <ComboBox ItemsSource="{Binding CapabilityOptions}" SelectedItem="{Binding FilterCapability, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="100" Margin="0,0,10,0"/>
+
                     <Button Content="刷新" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButtonStyle}"/>
                     <Button Content="新增车辆" Command="{Binding AddCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                    <Button Content="复制" Command="{Binding CopyCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                    <Button Content="删除" Command="{Binding DeleteCommand}" Background="#FF4500" Foreground="White" BorderThickness="0" Style="{StaticResource ActionButtonStyle}"/>
                     <Button Content="保存配置" Command="{Binding SaveCommand}" Style="{StaticResource PrimaryButtonStyle}"/>
                 </StackPanel>
             </Grid>
@@ -100,7 +108,7 @@
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}" Margin="0,0,10,0">
-                <DataGrid ItemsSource="{Binding Vehicles}"
+                <DataGrid ItemsSource="{Binding VehiclesView}"
                           SelectedItem="{Binding SelectedVehicle, Mode=TwoWay}"
                           AutoGenerateColumns="False"
                           IsReadOnly="True"
@@ -230,6 +238,80 @@
 
                         <TextBlock Text="电池容量(Ah)" Style="{StaticResource FieldLabelStyle}"/>
                         <TextBox Text="{Binding CurrentVehicle.BatteryCapacityAh, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F0}}" Style="{StaticResource InputStyle}"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="适配器类型" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.AdapterType, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="协议类型" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.ProtocolType, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="端点(IP/URL)" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.Endpoint, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="端口" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.Port, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="导航方式" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.NavigationType, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="取放货方式" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.LoadMode, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="车辆能力(数字枚举和)" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox Text="{Binding CurrentVehicle.CapabilityFlags, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+
+                        <TextBlock Text="支持指令(数字枚举和)" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox Text="{Binding CurrentVehicle.SupportedCommandFlags, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="默认停靠点" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.HomeNodeId, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="默认充电点" Style="{StaticResource FieldLabelStyle}"/>
+                                <TextBox Text="{Binding CurrentVehicle.ChargeNodeId, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
 
                         <CheckBox Content="启用该车辆"
                                   IsChecked="{Binding CurrentVehicle.IsEnabled}"

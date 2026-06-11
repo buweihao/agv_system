@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using AgvDispatcher.Core.Enums;
@@ -90,6 +90,11 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
         public DelegateCommand NextPageCommand { get; }
 
+        public DelegateCommand<TaskModel> RetryInterruptedCommand { get; }
+        public DelegateCommand<TaskModel> FailInterruptedCommand { get; }
+        public DelegateCommand<TaskModel> CancelInterruptedCommand { get; }
+        public DelegateCommand<TaskModel> CompleteInterruptedCommand { get; }
+
         public TaskMainPanelViewModel(
             IEventAggregator eventAggregator,
             ITaskService taskService,
@@ -106,6 +111,11 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             NextPageCommand = new DelegateCommand(
                 () => PageIndex++,
                 () => CanGoNextPage);
+
+            RetryInterruptedCommand = new DelegateCommand<TaskModel>(RetryInterrupted, CanOperateInterrupted);
+            FailInterruptedCommand = new DelegateCommand<TaskModel>(FailInterrupted, CanOperateInterrupted);
+            CancelInterruptedCommand = new DelegateCommand<TaskModel>(CancelInterrupted, CanOperateInterrupted);
+            CompleteInterruptedCommand = new DelegateCommand<TaskModel>(CompleteInterrupted, CanOperateInterrupted);
 
             RefreshTasks();
 
@@ -200,6 +210,39 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 : $"派发失败：{result.Code}，{result.Message}";
 
             RefreshTasks();
+        }
+
+        private bool CanOperateInterrupted(TaskModel? task)
+        {
+            return task is not null && task.State == TaskState.Interrupted;
+        }
+
+        private void RetryInterrupted(TaskModel? task)
+        {
+            if (task is null) return;
+            _taskService.UpdateTaskState(task.Id, TaskState.Pending, "操作员手动恢复：重新派发");
+            DispatchMessage = $"已恢复任务 {task.Id} 为待处理";
+        }
+
+        private void FailInterrupted(TaskModel? task)
+        {
+            if (task is null) return;
+            _taskService.UpdateTaskState(task.Id, TaskState.Failed, "操作员手动恢复：标记失败");
+            DispatchMessage = $"已标记任务 {task.Id} 为失败";
+        }
+
+        private void CancelInterrupted(TaskModel? task)
+        {
+            if (task is null) return;
+            _taskService.CancelTask(task.Id, "操作员手动恢复：取消任务");
+            DispatchMessage = $"已取消任务 {task.Id}";
+        }
+
+        private void CompleteInterrupted(TaskModel? task)
+        {
+            if (task is null) return;
+            _taskService.UpdateTaskState(task.Id, TaskState.Completed, "操作员手动恢复：强制完成");
+            DispatchMessage = $"已强制完成任务 {task.Id}";
         }
 
         private void OnRobotLowBattery(RobotBatteryAlert alert)

@@ -10,7 +10,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IAlarmService _alarms;
         private readonly IOperationLogService _operationLogs;
         private readonly ITaskService _taskService;
-        private readonly MockDataQueryService _fallback = new();
 
         public PersistentDataQueryService(
             IAlarmService alarms, 
@@ -25,10 +24,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         public IReadOnlyList<TaskRunRecord> GetTaskRunRecords()
         {
             var tasks = _taskService.GetTasks();
-            if (tasks.Count == 0)
-            {
-                return _fallback.GetTaskRunRecords();
-            }
 
             return tasks.Select((t, index) => new TaskRunRecord
             {
@@ -50,7 +45,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public IReadOnlyList<ChargeRecord> GetChargeRecords()
         {
-            return _fallback.GetChargeRecords();
+            return Array.Empty<ChargeRecord>();
         }
 
         public IReadOnlyList<AlarmRecord> GetAlarmRecords()
@@ -68,17 +63,17 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 })
                 .ToArray();
 
-            return alarmRecords.Length == 0 ? _fallback.GetAlarmRecords() : alarmRecords;
+            return alarmRecords;
         }
 
         public IReadOnlyList<InteractionRecord> GetInteractionRecords()
         {
-            return _fallback.GetInteractionRecords();
+            return Array.Empty<InteractionRecord>();
         }
 
         public IReadOnlyList<EnergyRecord> GetEnergyRecords()
         {
-            return _fallback.GetEnergyRecords();
+            return Array.Empty<EnergyRecord>();
         }
 
         public IReadOnlyList<DeviceLogRecord> GetDeviceLogRecords()
@@ -95,7 +90,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 })
                 .ToArray();
 
-            return logRecords.Length == 0 ? _fallback.GetDeviceLogRecords() : logRecords;
+            return logRecords;
         }
 
         private static string ToDisplayText(AlarmSeverity severity)

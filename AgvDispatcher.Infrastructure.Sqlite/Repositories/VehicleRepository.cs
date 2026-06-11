@@ -43,5 +43,15 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 
             await _db.SaveChangesAsync();
         }
+
+        public async Task DeleteAsync(string vehicleId)
+        {
+            var vehicle = await _db.Vehicles.FirstOrDefaultAsync(v => v.VehicleId == vehicleId);
+            if (vehicle != null)
+            {
+                _db.Vehicles.Remove(vehicle);
+                await _db.SaveChangesAsync();
+            }
+        }
     }
 }

@@ -30,6 +30,10 @@ namespace AgvDispatcher.Core.Models
 
         public string AreaCode { get; set; } = string.Empty;
 
+        public string AllowedBrands { get; set; } = string.Empty;
+
+        public int MaxVehicleFlow { get; set; } = 1;
+
         public string Remark { get; set; } = string.Empty;
     }
 }

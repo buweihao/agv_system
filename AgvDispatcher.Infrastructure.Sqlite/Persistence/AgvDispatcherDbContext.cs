@@ -54,6 +54,15 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.Property(vehicle => vehicle.Brand).HasMaxLength(64);
                 entity.Property(vehicle => vehicle.Model).HasMaxLength(64);
                 entity.Property(vehicle => vehicle.AreaCode).HasMaxLength(32);
+                
+                entity.Property(vehicle => vehicle.AdapterType).HasMaxLength(64);
+                entity.Property(vehicle => vehicle.ProtocolType).HasMaxLength(32);
+                entity.Property(vehicle => vehicle.Endpoint).HasMaxLength(128);
+                entity.Property(vehicle => vehicle.NavigationType).HasMaxLength(32);
+                entity.Property(vehicle => vehicle.LoadMode).HasMaxLength(32);
+                entity.Property(vehicle => vehicle.HomeNodeId).HasMaxLength(64);
+                entity.Property(vehicle => vehicle.ChargeNodeId).HasMaxLength(64);
+
                 entity.HasIndex(vehicle => vehicle.VehicleCode).IsUnique();
             });
         }
@@ -89,6 +98,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.Property(node => node.Tags)
                     .HasConversion(dictionaryConverter)
                     .Metadata.SetValueComparer(dictionaryComparer);
+                entity.Property(node => node.AllowedBrands).HasMaxLength(256);
             });
 
             modelBuilder.Entity<MapEdge>(entity =>
@@ -98,6 +108,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.Property(edge => edge.EdgeId).HasMaxLength(64);
                 entity.Property(edge => edge.FromNodeId).HasMaxLength(64);
                 entity.Property(edge => edge.ToNodeId).HasMaxLength(64);
+                entity.Property(edge => edge.AllowedBrands).HasMaxLength(256);
                 entity.HasIndex(edge => new { edge.FromNodeId, edge.ToNodeId });
             });
         }
@@ -180,14 +191,18 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.Property(task => task.TemplateId).HasMaxLength(128);
                 entity.Property(task => task.TaskType).HasMaxLength(64);
                 entity.Property(task => task.SourceNodeId).HasMaxLength(64);
-                entity.Property(task => task.TargetNodeId).HasMaxLength(64);
-                entity.Property(task => task.CurrentNodeId).HasMaxLength(64);
-                entity.Property(task => task.AssignedVehicleId).HasMaxLength(64);
-                entity.Property(task => task.CargoCode).HasMaxLength(64);
-                entity.Property(task => task.CargoName).HasMaxLength(128);
-                entity.Property(task => task.CreatedBy).HasMaxLength(128);
-                entity.Property(task => task.CancelReason).HasMaxLength(512);
-                entity.Property(task => task.FailureReason).HasMaxLength(512);
+                entity.Property(e => e.TargetNodeId).HasMaxLength(64);
+                entity.Property(e => e.CurrentNodeId).HasMaxLength(64);
+                entity.Property(e => e.AssignedVehicleId).HasMaxLength(64);
+                entity.Property(e => e.CargoCode).HasMaxLength(64);
+                entity.Property(e => e.CargoName).HasMaxLength(128);
+                entity.Property(e => e.CreatedBy).HasMaxLength(64);
+                entity.Property(e => e.CancelReason).HasMaxLength(256);
+                entity.Property(e => e.FailureReason).HasMaxLength(512);
+                
+                entity.Property(e => e.AllowedBrands).HasMaxLength(256);
+                entity.Property(e => e.ForbiddenBrands).HasMaxLength(256);
+
                 entity.Property(task => task.Attributes)
                     .HasConversion(dictionaryConverter)
                     .Metadata.SetValueComparer(dictionaryComparer);

@@ -8,7 +8,29 @@ namespace AgvDispatcher.Modules.TaskModule.Models
         public string Id { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public string Priority { get; set; } = string.Empty;
-        public TaskState State { get; set; }
+        private TaskState _state;
+        public TaskState State
+        {
+            get => _state;
+            set
+            {
+                if (SetProperty(ref _state, value))
+                {
+                    RaisePropertyChanged(nameof(StateDisplay));
+                }
+            }
+        }
+        
+        public string StateDisplay => State switch
+        {
+            TaskState.Pending => "待处理",
+            TaskState.Running => "运行中",
+            TaskState.Completed => "已完成",
+            TaskState.Failed => "失败",
+            TaskState.Cancelled => "取消",
+            TaskState.Interrupted => "中断待处理",
+            _ => State.ToString()
+        };
         public string AgvId { get; set; } = string.Empty;
         public string StartPoint { get; set; } = string.Empty;
         public string EndPoint { get; set; } = string.Empty;

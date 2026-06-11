@@ -28,6 +28,10 @@ namespace AgvDispatcher.Core.Models
 
         public int ParkingCapacity { get; set; } = 1;
 
+        public string AllowedBrands { get; set; } = string.Empty;
+
+        public VehicleCapability RequiredCapabilities { get; set; } = VehicleCapability.None;
+
         public Dictionary<string, string> Tags { get; set; } = new();
     }
 }

@@ -40,6 +40,19 @@ namespace AgvDispatcher.Core.Models
 
         public DateTime? LastMaintenanceAt { get; set; }
 
+        public string AdapterType { get; set; } = string.Empty;
+        public string ProtocolType { get; set; } = string.Empty;
+        public string Endpoint { get; set; } = string.Empty;
+        public int Port { get; set; }
+        public int HeartbeatTimeoutSeconds { get; set; } = 30;
+        public string NavigationType { get; set; } = string.Empty;
+        public string LoadMode { get; set; } = string.Empty;
+        public VehicleCapability CapabilityFlags { get; set; } = VehicleCapability.None;
+        public VehicleCommandCapability SupportedCommandFlags { get; set; } = VehicleCommandCapability.None;
+        public string HomeNodeId { get; set; } = string.Empty;
+        public string ChargeNodeId { get; set; } = string.Empty;
+        public double? MinDispatchBattery { get; set; }
+
         public string Remark { get; set; } = string.Empty;
     }
 }

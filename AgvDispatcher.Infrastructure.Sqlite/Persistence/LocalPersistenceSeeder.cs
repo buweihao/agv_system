@@ -113,12 +113,16 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
 
         private static IReadOnlyList<ParameterConfig> CreateSystemParameters()
         {
-            return new[]
+            return new List<ParameterConfig>
             {
-                new ParameterConfig { ParamKey = "MAX_WAIT_TIME", ParamName = "Max Wait Time", ParamValue = "300", DataType = "Int(seconds)", Description = "Maximum allowed waiting time at task nodes." },
-                new ParameterConfig { ParamKey = "DEFAULT_SPEED", ParamName = "Default Speed", ParamValue = "1.2", DataType = "Float(m/s)", Description = "Default speed for created tasks." },
-                new ParameterConfig { ParamKey = "RETRY_COUNT", ParamName = "Retry Count", ParamValue = "3", DataType = "Int", Description = "Automatic retry count after dispatch failures." },
-                new ParameterConfig { ParamKey = "LOG_RETENTION_DAYS", ParamName = "Log Retention Days", ParamValue = "90", DataType = "Int(days)", Description = "Local operation log retention window." }
+                new ParameterConfig { ParamKey = "MAX_WAIT_TIME", ParamName = "最大等待时间", ParamValue = "300", DataType = "Int(seconds)", Description = "任务节点最大允许等待时间。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "DEFAULT_SPEED", ParamName = "默认速度", ParamValue = "1.2", DataType = "Float(m/s)", Description = "创建任务时的默认速度。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "RETRY_COUNT", ParamName = "重试次数", ParamValue = "3", DataType = "Int", Description = "派发失败后的自动重试次数。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "LOG_RETENTION_DAYS", ParamName = "日志保留天数", ParamValue = "90", DataType = "Int(days)", Description = "本地操作日志保留窗口。", RequiresRestart = true },
+                new ParameterConfig { ParamKey = "MIN_DISPATCH_BATTERY", ParamName = "最低派发电量", ParamValue = "20", DataType = "Float(%)", Description = "全局最低派发电量，低于此电量不派发任务。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "LOW_BATTERY_ALARM", ParamName = "低电量告警阈值", ParamValue = "15", DataType = "Float(%)", Description = "低于此电量触发告警。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "TASK_TIMEOUT_MINUTES", ParamName = "任务超时时间", ParamValue = "60", DataType = "Int(minutes)", Description = "任务执行超时时间。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "AUTO_DISPATCH_ENABLED", ParamName = "自动派发开关", ParamValue = "true", DataType = "Boolean", Description = "是否开启自动任务派发。", RequiresRestart = false }
             };
         }
 

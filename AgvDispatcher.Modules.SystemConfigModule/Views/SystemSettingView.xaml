@@ -63,9 +63,9 @@
 
                 <StackPanel Grid.Row="1">
                     <RadioButton x:Name="RbVehicleConfig" Tag="&#xE950;" Content="车辆配置" Style="{StaticResource ConfigNavStyle}" IsChecked="True"/>
-                    <RadioButton Tag="&#xE81E;" Content="地图配置" Style="{StaticResource ConfigNavStyle}" IsEnabled="False"/>
-                    <RadioButton Tag="&#xE945;" Content="充电桩配置" Style="{StaticResource ConfigNavStyle}" IsEnabled="False"/>
-                    <RadioButton Tag="&#xE713;" Content="系统参数" Style="{StaticResource ConfigNavStyle}" IsEnabled="False"/>
+                    <RadioButton x:Name="RbMapConfig" Tag="&#xE81E;" Content="地图配置" Style="{StaticResource ConfigNavStyle}"/>
+                    <RadioButton x:Name="RbChargeStationConfig" Tag="&#xE945;" Content="充电桩配置" Style="{StaticResource ConfigNavStyle}"/>
+                    <RadioButton x:Name="RbSystemParamConfig" Tag="&#xE713;" Content="系统参数" Style="{StaticResource ConfigNavStyle}"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -83,6 +83,45 @@
                     </Style>
                 </local:VehicleConfigView.Style>
             </local:VehicleConfigView>
+
+            <local:MapConfigView>
+                <local:MapConfigView.Style>
+                    <Style TargetType="UserControl">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=RbMapConfig}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </local:MapConfigView.Style>
+            </local:MapConfigView>
+
+            <local:ChargeStationConfigView>
+                <local:ChargeStationConfigView.Style>
+                    <Style TargetType="UserControl">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=RbChargeStationConfig}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </local:ChargeStationConfigView.Style>
+            </local:ChargeStationConfigView>
+
+            <local:SystemParameterConfigView>
+                <local:SystemParameterConfigView.Style>
+                    <Style TargetType="UserControl">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=RbSystemParamConfig}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </local:SystemParameterConfigView.Style>
+            </local:SystemParameterConfigView>
         </Grid>
     </Grid>
 </UserControl>

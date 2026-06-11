@@ -9,6 +9,8 @@ namespace AgvDispatcher.Core.Interfaces
         Task<Vehicle?> GetByIdAsync(string vehicleId);
 
         Task SaveAsync(Vehicle vehicle);
+        
+        Task DeleteAsync(string vehicleId);
     }
 
     public interface IChargeStationRepository

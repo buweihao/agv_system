@@ -48,6 +48,14 @@ namespace AgvDispatcher.Core.Models
 
         public int ProgressPercent { get; set; }
 
+        public VehicleCapability RequiredCapabilities { get; set; } = VehicleCapability.None;
+
+        public string AllowedBrands { get; set; } = string.Empty;
+
+        public string ForbiddenBrands { get; set; } = string.Empty;
+
+        public double? MinBatteryRequired { get; set; }
+
         public Dictionary<string, string> Attributes { get; set; } = new();
     }
 }

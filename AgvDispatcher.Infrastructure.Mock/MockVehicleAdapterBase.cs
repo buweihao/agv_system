@@ -4,18 +4,18 @@ using AgvDispatcher.Core.Models;
 
 namespace AgvDispatcher.Infrastructure.Mock
 {
-    public class MockVehicleAdapter : IVehicleAdapter
+    public abstract class MockVehicleAdapterBase : IVehicleAdapter
     {
-        private readonly Vehicle _vehicle;
-        private readonly object _syncRoot = new();
-        private CancellationTokenSource? _runCancellation;
-        private Task? _runTask;
-        private double _batteryLevel;
-        private RobotState _state = RobotState.Idle;
-        private string _location;
-        private string? _currentTaskId;
+        protected readonly Vehicle _vehicle;
+        protected readonly object _syncRoot = new();
+        protected CancellationTokenSource? _runCancellation;
+        protected Task? _runTask;
+        protected double _batteryLevel;
+        protected RobotState _state = RobotState.Idle;
+        protected string _location;
+        protected string? _currentTaskId;
 
-        public MockVehicleAdapter(Vehicle vehicle)
+        protected MockVehicleAdapterBase(Vehicle vehicle)
         {
             _vehicle = vehicle;
             _batteryLevel = 70 + Math.Abs(vehicle.VehicleId.GetHashCode()) % 25;
@@ -27,6 +27,9 @@ namespace AgvDispatcher.Infrastructure.Mock
         public string Brand => _vehicle.Brand;
 
         public event EventHandler<VehicleStatusSnapshot>? StatusReceived;
+
+        protected abstract double BatteryDrainPerTick { get; }
+        protected abstract TimeSpan TickInterval { get; }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -65,7 +68,7 @@ namespace AgvDispatcher.Infrastructure.Mock
             }
         }
 
-        public Task SendCommandAsync(DispatchCommand command, CancellationToken cancellationToken)
+        public virtual Task SendCommandAsync(DispatchCommand command, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(command);
 
@@ -121,7 +124,7 @@ namespace AgvDispatcher.Infrastructure.Mock
             return Task.CompletedTask;
         }
 
-        public VehicleStatusSnapshot ConvertStatus(object rawStatus)
+        public virtual VehicleStatusSnapshot ConvertStatus(object rawStatus)
         {
             return rawStatus switch
             {
@@ -140,9 +143,9 @@ namespace AgvDispatcher.Infrastructure.Mock
             };
         }
 
-        private async Task RunStatusLoopAsync(CancellationToken cancellationToken)
+        protected virtual async Task RunStatusLoopAsync(CancellationToken cancellationToken)
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            using var timer = new PeriodicTimer(TickInterval);
 
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
@@ -150,7 +153,7 @@ namespace AgvDispatcher.Infrastructure.Mock
                 {
                     if (_state == RobotState.Running)
                     {
-                        _batteryLevel = Math.Max(0, _batteryLevel - 0.2);
+                        _batteryLevel = Math.Max(0, _batteryLevel - BatteryDrainPerTick);
                     }
                 }
 
@@ -158,7 +161,7 @@ namespace AgvDispatcher.Infrastructure.Mock
             }
         }
 
-        private void PublishCurrentStatus()
+        protected void PublishCurrentStatus()
         {
             VehicleStatusSnapshot snapshot;
             lock (_syncRoot)
@@ -178,7 +181,7 @@ namespace AgvDispatcher.Infrastructure.Mock
             StatusReceived?.Invoke(this, snapshot);
         }
 
-        private VehicleStatusSnapshot Normalize(VehicleStatusSnapshot snapshot)
+        protected VehicleStatusSnapshot Normalize(VehicleStatusSnapshot snapshot)
         {
             snapshot.VehicleId = string.IsNullOrWhiteSpace(snapshot.VehicleId) ? VehicleId : snapshot.VehicleId;
             snapshot.Brand = string.IsNullOrWhiteSpace(snapshot.Brand) ? Brand : snapshot.Brand;

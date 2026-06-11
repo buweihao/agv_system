@@ -9,17 +9,43 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
     {
         private readonly IAlarmService _alarms;
         private readonly IOperationLogService _operationLogs;
+        private readonly ITaskService _taskService;
         private readonly MockDataQueryService _fallback = new();
 
-        public PersistentDataQueryService(IAlarmService alarms, IOperationLogService operationLogs)
+        public PersistentDataQueryService(
+            IAlarmService alarms, 
+            IOperationLogService operationLogs,
+            ITaskService taskService)
         {
             _alarms = alarms;
             _operationLogs = operationLogs;
+            _taskService = taskService;
         }
 
         public IReadOnlyList<TaskRunRecord> GetTaskRunRecords()
         {
-            return _fallback.GetTaskRunRecords();
+            var tasks = _taskService.GetTasks();
+            if (tasks.Count == 0)
+            {
+                return _fallback.GetTaskRunRecords();
+            }
+
+            return tasks.Select((t, index) => new TaskRunRecord
+            {
+                Seq = index + 1,
+                QueryTime = t.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                AgvId = string.IsNullOrWhiteSpace(t.AssignedVehicleId) ? "-" : t.AssignedVehicleId,
+                TaskId = t.TaskNo,
+                TaskType = t.TaskType,
+                StartPoint = t.SourceNodeId,
+                EndPoint = t.TargetNodeId,
+                Status = t.State.ToString(),
+                Duration = t.FinishedAt.HasValue && t.StartedAt.HasValue 
+                    ? $"{(t.FinishedAt.Value - t.StartedAt.Value).TotalMinutes:F1} min" 
+                    : (t.StartedAt.HasValue ? $"{(DateTime.Now - t.StartedAt.Value).TotalMinutes:F1} min" : "-"),
+                Distance = "-",
+                AvgSpeed = "-"
+            }).ToArray();
         }
 
         public IReadOnlyList<ChargeRecord> GetChargeRecords()

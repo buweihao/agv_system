@@ -146,7 +146,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 {
                     VehicleId = vehicle.VehicleId,
                     Brand = vehicle.Brand,
-                    State = RobotState.Idle,
+                    State = RobotState.Offline,
                     Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
                     BatteryLevel = 100,
                     CurrentTaskId = null,
@@ -187,7 +187,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             {
                 VehicleId = vehicle.VehicleId,
                 Brand = vehicle.Brand,
-                State = RobotState.Idle,
+                State = RobotState.Offline,
                 Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
                 BatteryLevel = 100,
                 ReportedAt = DateTime.Now

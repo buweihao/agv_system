@@ -12,14 +12,17 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
     {
         private readonly DbContextOptions<AgvDispatcherDbContext> _dbOptions;
         private readonly IEventAggregator _eventAggregator;
+        private readonly IOperationLogService _operationLogService;
         private readonly object _syncRoot = new();
 
         public PersistentTaskService(
             DbContextOptions<AgvDispatcherDbContext> dbOptions,
-            IEventAggregator eventAggregator)
+            IEventAggregator eventAggregator,
+            IOperationLogService operationLogService)
         {
             _dbOptions = dbOptions;
             _eventAggregator = eventAggregator;
+            _operationLogService = operationLogService;
         }
 
         public IReadOnlyList<TaskOrder> GetTasks()
@@ -73,6 +76,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 db.SaveChanges();
             }
 
+            WriteTaskLog("Created", task, "Task created successfully.");
             PublishTaskUpdated(task);
             return task;
         }
@@ -98,6 +102,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 db.SaveChanges();
             }
 
+            WriteTaskLog("Dispatched", task, $"Task dispatched to vehicle {vehicleId}.");
             PublishTaskUpdated(task);
         }
 
@@ -161,6 +166,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 db.SaveChanges();
             }
 
+            WriteTaskLog(state.ToString(), task, $"Task state changed to {state}. Reason: {reason ?? "N/A"}");
             PublishTaskUpdated(task);
         }
 
@@ -177,6 +183,20 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private void PublishTaskUpdated(TaskOrder task)
         {
             _eventAggregator.GetEvent<TaskOrderUpdatedEvent>().Publish(task);
+        }
+
+        private void WriteTaskLog(string action, TaskOrder task, string message)
+        {
+            _operationLogService.WriteLog(new OperationLog
+            {
+                Category = "Task",
+                Action = action,
+                Message = message,
+                TaskId = task.TaskId,
+                VehicleId = task.AssignedVehicleId,
+                Operator = "System", // Or from task context if available
+                OccurredAt = DateTime.Now
+            });
         }
     }
 }

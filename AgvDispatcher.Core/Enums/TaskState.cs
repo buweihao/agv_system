@@ -6,6 +6,7 @@ namespace AgvDispatcher.Core.Enums
         Running,
         Completed,
         Failed,
-        Cancelled
+        Cancelled,
+        Interrupted
     }
 }

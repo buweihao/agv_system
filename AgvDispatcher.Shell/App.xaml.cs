@@ -51,6 +51,9 @@ public partial class App : PrismApplication
             SourceId = Environment.MachineName
         });
 
+        // 恢复意外中断的任务
+        Container.Resolve<ITaskRecoveryService>().RecoverInterruptedTasks();
+
         Container.Resolve<IVehicleAdapterManager>().StartAsync(CancellationToken.None).GetAwaiter().GetResult();
 
         var regionManager = Container.Resolve<Prism.Navigation.Regions.IRegionManager>();

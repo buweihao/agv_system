@@ -77,6 +77,10 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 .Subscribe(RefreshStats, ThreadOption.UIThread);
 
             eventAggregator
+                .GetEvent<TaskOrderUpdatedEvent>()
+                .Subscribe(_ => RefreshStats(), ThreadOption.UIThread);
+
+            eventAggregator
                 .GetEvent<VehicleStateChangedEvent>()
                 .Subscribe(_ => RefreshStats(), ThreadOption.UIThread);
         }

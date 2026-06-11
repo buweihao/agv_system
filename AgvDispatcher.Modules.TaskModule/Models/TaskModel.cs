@@ -14,6 +14,8 @@ namespace AgvDispatcher.Modules.TaskModule.Models
         public string EndPoint { get; set; } = string.Empty;
         public string CreatedTime { get; set; } = string.Empty;
         public string EstimatedTime { get; set; } = string.Empty;
+        public int ProgressPercent { get; set; }
+        public string ProgressText => $"{ProgressPercent}%";
 
         private bool _isDispatchPaused;
         public bool IsDispatchPaused

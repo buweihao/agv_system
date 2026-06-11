@@ -79,7 +79,6 @@ namespace AgvDispatcher.Infrastructure.Mock
                         _state = RobotState.Idle;
                         break;
                     case DispatchCommandType.Resume:
-                    case DispatchCommandType.AssignTask:
                     case DispatchCommandType.MoveToNode:
                     case DispatchCommandType.ReturnHome:
                     case DispatchCommandType.GoCharge:
@@ -88,6 +87,21 @@ namespace AgvDispatcher.Infrastructure.Mock
                         {
                             _location = command.TargetNodeId;
                         }
+                        break;
+                    case DispatchCommandType.AssignTask:
+                        _state = RobotState.Running;
+                        if (!string.IsNullOrWhiteSpace(command.SourceNodeId))
+                        {
+                            _location = command.SourceNodeId;
+                        }
+                        break;
+                    case DispatchCommandType.CompleteTask:
+                        _state = RobotState.Idle;
+                        if (!string.IsNullOrWhiteSpace(command.TargetNodeId))
+                        {
+                            _location = command.TargetNodeId;
+                        }
+                        _currentTaskId = null;
                         break;
                     case DispatchCommandType.CancelTask:
                     case DispatchCommandType.StopCharge:

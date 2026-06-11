@@ -112,6 +112,10 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             eventAggregator
                 .GetEvent<RobotLowBatteryEvent>()
                 .Subscribe(OnRobotLowBattery, ThreadOption.UIThread);
+
+            eventAggregator
+                .GetEvent<TaskOrderUpdatedEvent>()
+                .Subscribe(_ => RefreshTasks(), ThreadOption.UIThread);
         }
 
         private void RefreshTasks()
@@ -125,6 +129,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
             RefreshPagedTasks();
             _eventAggregator.GetEvent<TaskDataChangedEvent>().Publish();
+            AutoDispatchCommand.RaiseCanExecuteChanged();
         }
 
         private void RefreshPagedTasks()
@@ -245,7 +250,8 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 StartPoint = task.SourceNodeId,
                 EndPoint = task.TargetNodeId,
                 CreatedTime = task.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                EstimatedTime = task.FinishedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-"
+                EstimatedTime = task.FinishedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-",
+                ProgressPercent = task.ProgressPercent
             };
 
             ApplyDispatchPauseState(model);

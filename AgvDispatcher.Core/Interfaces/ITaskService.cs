@@ -13,6 +13,8 @@ namespace AgvDispatcher.Core.Interfaces
 
         void AssignVehicle(string taskId, string vehicleId);
 
+        void UpdateTaskProgress(string taskId, int progressPercent, string? currentNodeId = null);
+
         void UpdateTaskState(string taskId, TaskState state, string? reason = null);
 
         void CancelTask(string taskId, string? reason = null);

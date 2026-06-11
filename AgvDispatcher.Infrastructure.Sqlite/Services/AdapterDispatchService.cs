@@ -13,19 +13,22 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly ITaskService _taskService;
         private readonly IMapService _mapService;
         private readonly IAuditTrailService _auditTrail;
+        private readonly ITaskExecutionSimulator _taskExecutionSimulator;
 
         public AdapterDispatchService(
             IVehicleAdapterManager vehicleAdapterManager,
             IVehicleService vehicleService,
             ITaskService taskService,
             IMapService mapService,
-            IAuditTrailService auditTrail)
+            IAuditTrailService auditTrail,
+            ITaskExecutionSimulator taskExecutionSimulator)
         {
             _vehicleAdapterManager = vehicleAdapterManager;
             _vehicleService = vehicleService;
             _taskService = taskService;
             _mapService = mapService;
             _auditTrail = auditTrail;
+            _taskExecutionSimulator = taskExecutionSimulator;
         }
 
         public DispatchResult AssignTask(string taskId, string? preferredVehicleId = null)
@@ -79,6 +82,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             _taskService.AssignVehicle(taskId, selectedVehicleId);
             _taskService.UpdateTaskState(taskId, TaskState.Running);
+            _taskExecutionSimulator.Start(task, selectedVehicleId);
             return AuditAndReturn(DispatchResult.Success($"Task {taskId} dispatched to {selectedVehicleId}.", taskId, selectedVehicleId, result.CommandId), "AssignTask");
         }
 
@@ -135,6 +139,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 }
             }
 
+            _taskExecutionSimulator.Cancel(taskId);
             _taskService.CancelTask(taskId, reason);
             return AuditAndReturn(DispatchResult.Success($"Task {taskId} cancelled.", taskId, task.AssignedVehicleId), "CancelTask");
         }

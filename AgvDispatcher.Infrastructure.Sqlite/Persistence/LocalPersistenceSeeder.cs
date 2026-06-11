@@ -57,11 +57,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             return new[]
             {
-                new Vehicle { VehicleId = "AGV-002", VehicleCode = "AGV-002", Name = "AGV 002", Brand = "RGV-A", Model = "A100", AreaCode = "A", MaxSpeed = 1.5, RatedLoad = 500 },
-                new Vehicle { VehicleId = "AGV-003", VehicleCode = "AGV-003", Name = "AGV 003", Brand = "RGV-A", Model = "A100", AreaCode = "A", MaxSpeed = 1.5, RatedLoad = 500 },
-                new Vehicle { VehicleId = "AGV-008", VehicleCode = "AGV-008", Name = "AGV 008", Brand = "RGV-B", Model = "B200", AreaCode = "B", MaxSpeed = 1.2, RatedLoad = 800 },
-                new Vehicle { VehicleId = "AGV-010", VehicleCode = "AGV-010", Name = "AGV 010", Brand = "RGV-B", Model = "B200", AreaCode = "A", MaxSpeed = 1.2, RatedLoad = 800 },
-                new Vehicle { VehicleId = "AGV-017", VehicleCode = "AGV-017", Name = "AGV 017", Brand = "RGV-C", Model = "C300", AreaCode = "C", MaxSpeed = 1.0, RatedLoad = 1000 }
+                new Vehicle { VehicleId = "AGV-002", VehicleCode = "AGV-002", Name = "AGV 002", Brand = "RGV-A", Model = "A100", AreaCode = "A", MaxSpeed = 1.5, RatedLoad = 500, AdapterType = "MockBrandA", ProtocolType = "HTTP", Endpoint = "http://192.168.1.10:8000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Lift, MinDispatchBattery = 30.0 },
+                new Vehicle { VehicleId = "AGV-003", VehicleCode = "AGV-003", Name = "AGV 003", Brand = "RGV-A", Model = "A100", AreaCode = "A", MaxSpeed = 1.5, RatedLoad = 500, AdapterType = "MockBrandA", ProtocolType = "HTTP", Endpoint = "http://192.168.1.11:8000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Lift, MinDispatchBattery = 30.0 },
+                new Vehicle { VehicleId = "AGV-008", VehicleCode = "AGV-008", Name = "AGV 008", Brand = "RGV-B", Model = "B200", AreaCode = "B", MaxSpeed = 1.2, RatedLoad = 800, AdapterType = "MockBrandB", ProtocolType = "TCP", Endpoint = "192.168.1.20:5000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Tow, MinDispatchBattery = 40.0 },
+                new Vehicle { VehicleId = "AGV-010", VehicleCode = "AGV-010", Name = "AGV 010", Brand = "RGV-B", Model = "B200", AreaCode = "A", MaxSpeed = 1.2, RatedLoad = 800, AdapterType = "MockBrandB", ProtocolType = "TCP", Endpoint = "192.168.1.21:5000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Tow, MinDispatchBattery = 40.0 },
+                new Vehicle { VehicleId = "AGV-017", VehicleCode = "AGV-017", Name = "AGV 017", Brand = "RGV-C", Model = "C300", AreaCode = "C", MaxSpeed = 1.0, RatedLoad = 1000, AdapterType = "RealTcp", ProtocolType = "TCP", Endpoint = "192.168.1.30:4000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Fork, MinDispatchBattery = 20.0 }
             };
         }
 
@@ -69,11 +69,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             return new[]
             {
-                CreateStation("C-01", "Charge Station 01", ChargeStationState.Charging, "AGV-002", 30, 0, 760, 500),
-                CreateStation("C-02", "Charge Station 02", ChargeStationState.Occupied, "AGV-015", 10, 1, 820, 500),
-                CreateStation("C-03", "Charge Station 03", ChargeStationState.Available, null, 20, 0, 880, 500),
-                CreateStation("C-04", "Charge Station 04", ChargeStationState.Fault, null, 0, 0, 940, 500),
-                CreateStation("C-05", "Charge Station 05", ChargeStationState.Offline, null, 0, 0, 1000, 500)
+                CreateStation("C-01", "Charge Station 01", ChargeStationState.Charging, "AGV-002", 30, 0, 760, 500, "RGV-A", "HTTP", "192.168.1.100", 80),
+                CreateStation("C-02", "Charge Station 02", ChargeStationState.Occupied, "AGV-015", 10, 1, 820, 500, "RGV-B", "TCP", "192.168.1.101", 502),
+                CreateStation("C-03", "Charge Station 03", ChargeStationState.Available, null, 20, 0, 880, 500, "RGV-A,RGV-B", "TCP", "192.168.1.102", 502),
+                CreateStation("C-04", "Charge Station 04", ChargeStationState.Fault, null, 0, 0, 940, 500, "RGV-C", "MQTT", "192.168.1.103", 1883),
+                CreateStation("C-05", "Charge Station 05", ChargeStationState.Offline, null, 0, 0, 1000, 500, "", "", "", 0)
             };
         }
 
@@ -122,7 +122,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 new ParameterConfig { ParamKey = "MIN_DISPATCH_BATTERY", ParamName = "最低派发电量", ParamValue = "20", DataType = "Float(%)", Description = "全局最低派发电量，低于此电量不派发任务。", RequiresRestart = false },
                 new ParameterConfig { ParamKey = "LOW_BATTERY_ALARM", ParamName = "低电量告警阈值", ParamValue = "15", DataType = "Float(%)", Description = "低于此电量触发告警。", RequiresRestart = false },
                 new ParameterConfig { ParamKey = "TASK_TIMEOUT_MINUTES", ParamName = "任务超时时间", ParamValue = "60", DataType = "Int(minutes)", Description = "任务执行超时时间。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "AUTO_DISPATCH_ENABLED", ParamName = "自动派发开关", ParamValue = "true", DataType = "Boolean", Description = "是否开启自动任务派发。", RequiresRestart = false }
+                new ParameterConfig { ParamKey = "AUTO_DISPATCH_ENABLED", ParamName = "自动派发开关", ParamValue = "true", DataType = "Boolean", Description = "是否开启自动任务派发。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_BATTERY", ParamName = "电量评分权重", ParamValue = "25.0", DataType = "Float", Description = "调度时电量的得分权重 (0-100)。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_DISTANCE", ParamName = "距离评分权重", ParamValue = "35.0", DataType = "Float", Description = "调度时距离的得分权重 (0-100)。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_LOAD", ParamName = "载重评分权重", ParamValue = "10.0", DataType = "Float", Description = "调度时载重能力的得分权重 (0-100)。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_PRIORITY", ParamName = "优先级评分权重", ParamValue = "15.0", DataType = "Float", Description = "调度时优先级的得分权重 (0-100)。", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_AREA", ParamName = "区域评分权重", ParamValue = "15.0", DataType = "Float", Description = "调度时同区域的得分权重 (0-100)。", RequiresRestart = false }
             };
         }
 
@@ -146,7 +151,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             };
         }
 
-        private static ChargeStation CreateStation(string id, string name, ChargeStationState state, string? vehicleId, double power, double queueWeight, double x, double y)
+        private static ChargeStation CreateStation(string id, string name, ChargeStationState state, string? vehicleId, double power, double queueWeight, double x, double y, string allowedBrands, string protocolType, string endpoint, int port)
         {
             return new ChargeStation
             {
@@ -159,6 +164,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 BoundVehicleId = vehicleId,
                 RatedPowerKw = power,
                 QueueWeight = queueWeight,
+                AllowedBrands = allowedBrands,
+                ProtocolType = protocolType,
+                Endpoint = endpoint,
+                Port = port,
+                OutputVoltage = 48,
+                OutputCurrent = 30,
                 Position = new MapPosition { MapId = "MAIN", X = x, Y = y, NodeId = id.Replace("C-", "Charge-"), AreaCode = "C" }
             };
         }

@@ -18,5 +18,11 @@ namespace AgvDispatcher.Core.Interfaces
         void UpdateTaskState(string taskId, TaskState state, string? reason = null);
 
         void CancelTask(string taskId, string? reason = null);
+
+        void RequeueInterruptedTask(string taskId, string? reason = null);
+
+        void CompleteInterruptedTaskManually(string taskId, string? reason = null);
+
+        void FailInterruptedTask(string taskId, string? reason = null);
     }
 }

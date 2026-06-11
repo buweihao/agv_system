@@ -6,34 +6,54 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 {
     public class DispatchScoringService : IDispatchScoringService
     {
+        private readonly IMapRepository _mapRepository;
+        private readonly ISystemParameterRepository _parameterRepository;
+        private IReadOnlyList<MapNode>? _nodesCache;
+        private IReadOnlyList<ParameterConfig>? _paramsCache;
+
+        public DispatchScoringService(IMapRepository mapRepository, ISystemParameterRepository parameterRepository)
+        {
+            _mapRepository = mapRepository;
+            _parameterRepository = parameterRepository;
+        }
+
         public DispatchScoringResult ScoreAndSelectVehicle(TaskOrder task, IEnumerable<(Vehicle Vehicle, VehicleStatus Status)> availableVehicles)
         {
-            var result = new DispatchScoringResult();
-            var candidates = new List<(Vehicle Vehicle, VehicleStatus Status, double Score)>();
-            
-            var rejectionReasons = new List<string>();
+            if (_nodesCache == null)
+            {
+                _nodesCache = _mapRepository.GetNodesAsync().GetAwaiter().GetResult();
+            }
+            if (_paramsCache == null)
+            {
+                _paramsCache = _parameterRepository.GetAllAsync().GetAwaiter().GetResult();
+            }
 
+            var result = new DispatchScoringResult();
+            
             foreach (var (vehicle, status) in availableVehicles)
             {
                 // Hard Veto: Status
                 if (status.State != RobotState.Idle)
                 {
-                    continue; // Skip silently or log debug
+                    result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "State is not Idle" });
+                    continue;
                 }
                 if (!status.IsOnline)
                 {
+                    result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "Vehicle is Offline" });
                     continue;
                 }
                 if (status.HasAlarm)
                 {
+                    result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "Vehicle has Alarm" });
                     continue;
                 }
 
                 // Hard Veto: Battery
-                double minBattery = (task.MinBatteryRequired ?? 0) > 0 ? task.MinBatteryRequired.Value : 30.0;
+                double minBattery = (task.MinBatteryRequired ?? 0) > 0 ? task.MinBatteryRequired.Value : GetParamValue("MIN_DISPATCH_BATTERY", 20.0);
                 if (status.BatteryLevel < minBattery)
                 {
-                    rejectionReasons.Add($"[{vehicle.VehicleId}] Battery {status.BatteryLevel:0.#}% < required {minBattery:0.#}%");
+                    result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Battery {status.BatteryLevel:0.#}% < required {minBattery:0.#}%" });
                     continue;
                 }
 
@@ -42,7 +62,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 {
                     if ((vehicle.CapabilityFlags & task.RequiredCapabilities) != task.RequiredCapabilities)
                     {
-                        rejectionReasons.Add($"[{vehicle.VehicleId}] Missing required capability {task.RequiredCapabilities}");
+                        result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Missing required capability {task.RequiredCapabilities}" });
                         continue;
                     }
                 }
@@ -53,7 +73,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     var forbidden = task.ForbiddenBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
                     if (forbidden.Any(b => string.Equals(b.Trim(), vehicle.Brand, StringComparison.OrdinalIgnoreCase)))
                     {
-                        rejectionReasons.Add($"[{vehicle.VehicleId}] Brand '{vehicle.Brand}' is forbidden for this task");
+                        result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Brand '{vehicle.Brand}' is forbidden" });
                         continue;
                     }
                 }
@@ -64,64 +84,166 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     var allowed = task.AllowedBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
                     if (!allowed.Any(b => string.Equals(b.Trim(), vehicle.Brand, StringComparison.OrdinalIgnoreCase)))
                     {
-                        rejectionReasons.Add($"[{vehicle.VehicleId}] Brand '{vehicle.Brand}' is not in allowed list");
+                        result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Brand '{vehicle.Brand}' is not in allowed list" });
                         continue;
                     }
                 }
 
+                // Hard Veto: Map Source/Target Node Constraints
+                bool mapConstrained = false;
+                if (!string.IsNullOrWhiteSpace(task.SourceNodeId))
+                {
+                    var sourceNode = _nodesCache?.FirstOrDefault(n => n.NodeId == task.SourceNodeId);
+                    if (sourceNode != null)
+                    {
+                        if (sourceNode.RequiredCapabilities != VehicleCapability.None && 
+                            (vehicle.CapabilityFlags & sourceNode.RequiredCapabilities) != sourceNode.RequiredCapabilities)
+                        {
+                            result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Missing capability {sourceNode.RequiredCapabilities} for Source Node" });
+                            mapConstrained = true;
+                            continue;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(sourceNode.AllowedBrands))
+                        {
+                            var allowedBrands = sourceNode.AllowedBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (!allowedBrands.Any(b => string.Equals(b.Trim(), vehicle.Brand, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "Brand not allowed at Source Node" });
+                                mapConstrained = true;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                if (mapConstrained) continue;
+
+                if (!string.IsNullOrWhiteSpace(task.TargetNodeId))
+                {
+                    var targetNode = _nodesCache?.FirstOrDefault(n => n.NodeId == task.TargetNodeId);
+                    if (targetNode != null)
+                    {
+                        if (targetNode.RequiredCapabilities != VehicleCapability.None && 
+                            (vehicle.CapabilityFlags & targetNode.RequiredCapabilities) != targetNode.RequiredCapabilities)
+                        {
+                            result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Missing capability {targetNode.RequiredCapabilities} for Target Node" });
+                            continue;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(targetNode.AllowedBrands))
+                        {
+                            var allowedBrands = targetNode.AllowedBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (!allowedBrands.Any(b => string.Equals(b.Trim(), vehicle.Brand, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "Brand not allowed at Target Node" });
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 // Soft Scoring
-                double score = CalculateScore(task, vehicle, status);
-                candidates.Add((vehicle, status, score));
+                var candidate = CalculateScore(task, vehicle, status);
+                result.Candidates.Add(candidate);
             }
 
-            if (!candidates.Any())
+            if (!result.Candidates.Any())
             {
-                result.Reason = rejectionReasons.Any() 
-                    ? "No vehicles passed constraints: " + string.Join("; ", rejectionReasons.Take(3))
+                result.Reason = result.Rejections.Any() 
+                    ? "No vehicles passed constraints."
                     : "No idle/online vehicles available.";
                 return result;
             }
 
             // Pick highest score
-            var bestCandidate = candidates.OrderByDescending(c => c.Score).First();
-            result.SelectedVehicleId = bestCandidate.Vehicle.VehicleId;
-            result.Reason = $"Selected with score {bestCandidate.Score:0.##}";
+            var bestCandidate = result.Candidates.OrderByDescending(c => c.TotalScore).First();
+            result.SelectedVehicleId = bestCandidate.VehicleId;
+            result.Reason = $"Selected with score {bestCandidate.TotalScore:0.##}";
 
             return result;
         }
 
-        private double CalculateScore(TaskOrder task, Vehicle vehicle, VehicleStatus status)
+        private double GetParamValue(string key, double defaultValue)
         {
-            double score = 0;
-
-            // 1. Battery (Max 25 points)
-            // Higher battery gives more points. Normalize 0-100% to 0-25 points.
-            score += Math.Min(25, status.BatteryLevel * 0.25);
-
-            // 2. Distance to Source Node (Max 35 points)
-            // Assuming we don't have real map routing distance here, we can mock it or use a heuristic.
-            // If location matches task source exactly -> 35 points.
-            if (!string.IsNullOrWhiteSpace(status.LocationText) && status.LocationText.Equals(task.SourceNodeId, StringComparison.OrdinalIgnoreCase))
+            var param = _paramsCache?.FirstOrDefault(p => p.ParamKey == key);
+            if (param != null && double.TryParse(param.ParamValue, out var val))
             {
-                score += 35;
+                return val;
+            }
+            return defaultValue;
+        }
+
+        private CandidateScore CalculateScore(TaskOrder task, Vehicle vehicle, VehicleStatus status)
+        {
+            var score = new CandidateScore { VehicleId = vehicle.VehicleId };
+
+            // Fetch dynamic weights or use defaults
+            double weightBattery = GetParamValue("SCORE_WEIGHT_BATTERY", 25.0);
+            double weightDistance = GetParamValue("SCORE_WEIGHT_DISTANCE", 35.0);
+            double weightLoad = GetParamValue("SCORE_WEIGHT_LOAD", 10.0);
+            double weightPriority = GetParamValue("SCORE_WEIGHT_PRIORITY", 15.0);
+            double weightArea = GetParamValue("SCORE_WEIGHT_AREA", 15.0);
+
+            // 1. Battery Score
+            double batteryPoints = Math.Min(weightBattery, status.BatteryLevel * (weightBattery / 100.0));
+            score.Breakdown["Battery"] = batteryPoints;
+
+            // 2. Distance Score
+            double distancePoints = 0;
+            if (!string.IsNullOrWhiteSpace(status.LocationText) && !string.IsNullOrWhiteSpace(task.SourceNodeId))
+            {
+                if (status.LocationText.Equals(task.SourceNodeId, StringComparison.OrdinalIgnoreCase))
+                {
+                    distancePoints = weightDistance;
+                }
+                else
+                {
+                    var vehicleNode = _nodesCache?.FirstOrDefault(n => n.NodeId == status.LocationText);
+                    var taskNode = _nodesCache?.FirstOrDefault(n => n.NodeId == task.SourceNodeId);
+
+                    if (vehicleNode != null && taskNode != null)
+                    {
+                        double dx = vehicleNode.Position.X - taskNode.Position.X;
+                        double dy = vehicleNode.Position.Y - taskNode.Position.Y;
+                        double distance = Math.Sqrt(dx * dx + dy * dy);
+                        // Assuming max map distance is ~2000 units.
+                        double distScore = weightDistance - (distance / 2000.0 * weightDistance);
+                        distancePoints = Math.Max(0, distScore);
+                    }
+                    else
+                    {
+                        distancePoints = weightDistance * 0.3; // Give small fixed points if unknown
+                    }
+                }
             }
             else
             {
-                // Just a fallback heuristic: 10 points for being idle somewhere else
-                score += 10;
+                distancePoints = weightDistance * 0.3;
             }
+            score.Breakdown["Distance"] = distancePoints;
 
-            // 3. Area Match (Max 15 points)
-            // No AreaCode on task currently, skip area points
+            // 3. Area Match
+            double areaPoints = 0;
+            if (!string.IsNullOrWhiteSpace(vehicle.AreaCode) && !string.IsNullOrWhiteSpace(task.SourceNodeId))
+            {
+                var taskNode = _nodesCache?.FirstOrDefault(n => n.NodeId == task.SourceNodeId);
+                if (taskNode != null && string.Equals(vehicle.AreaCode, taskNode.AreaCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    areaPoints = weightArea;
+                }
+            }
+            score.Breakdown["Area"] = areaPoints;
 
-            // 4. Capability / Load (Max 10 points)
-            // If vehicle has the exact capabilities or more, give points.
-            score += 10;
+            // 4. Capability / Load Score
+            double loadPoints = weightLoad; // Assume full score if it passed hard check, but could be adjusted if load size varies
+            score.Breakdown["Load"] = loadPoints;
 
-            // 5. Priority / Custom rules (Max 15 points)
-            // TBD: priority based scoring
-            score += 15;
+            // 5. Priority / Priority Rules
+            double priorityPoints = weightPriority; 
+            score.Breakdown["Priority"] = priorityPoints;
 
+            score.TotalScore = score.Breakdown.Values.Sum();
             return score;
         }
     }

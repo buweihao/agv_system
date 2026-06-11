@@ -129,12 +129,33 @@
                 </Grid.Style>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
+        <!-- 1.5. 任务创建约束 (测试区) -->
+        <Border Grid.Row="0" Background="#0A111E" CornerRadius="4" Padding="10" Margin="0,0,0,15" BorderBrush="#1F3A60" BorderThickness="1">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="测试任务参数：" Foreground="#00BFFF" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                
+                <TextBlock Text="能力要求:" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <!-- Binding to SelectedCapabilities (Note: WPF doesn't natively support enum flags in simple ComboBox, we bind to string or int, or for simplicity use a TextBox here to manually input comma separated, or a simple binding to the enum if a converter is used. Let's use TextBox for simplicity in this demo form) -->
+                <TextBox Text="{Binding SelectedCapabilities, UpdateSourceTrigger=PropertyChanged}" Width="120" Margin="0,0,15,0" ToolTip="例如: Lift, Forklift, Charge"/>
+                
+                <TextBlock Text="允许品牌:" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox Text="{Binding AllowedBrands, UpdateSourceTrigger=PropertyChanged}" Width="100" Margin="0,0,15,0" ToolTip="例如: Brand A"/>
+                
+                <TextBlock Text="禁止品牌:" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox Text="{Binding ForbiddenBrands, UpdateSourceTrigger=PropertyChanged}" Width="100" Margin="0,0,15,0"/>
+                
+                <TextBlock Text="最低电量:" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <TextBox Text="{Binding MinBatteryRequired, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
+            </StackPanel>
+        </Border>
+
         <!-- 2. 搜索过滤栏 -->
-        <Grid Grid.Row="0" Margin="0,0,0,15">
+        <Grid Grid.Row="1" Margin="0,0,0,15">
             <StackPanel Orientation="Horizontal">
                 <ComboBox SelectedIndex="0"><ComboBoxItem Content="全部任务类型"/><ComboBoxItem Content="搬运任务"/><ComboBoxItem Content="充电任务"/></ComboBox>
                 <ComboBox SelectedIndex="0"><ComboBoxItem Content="全部状态"/><ComboBoxItem Content="运行中"/><ComboBoxItem Content="已完成"/></ComboBox>
@@ -153,7 +174,7 @@
         </Grid>
 
         <!-- 3. 数据表格 -->
-        <DataGrid Grid.Row="1" ItemsSource="{Binding PagedTaskList}" AutoGenerateColumns="False" Background="Transparent" 
+        <DataGrid Grid.Row="2" ItemsSource="{Binding PagedTaskList}" AutoGenerateColumns="False" Background="Transparent" 
                   RowBackground="Transparent" AlternatingRowBackground="#0A111E" 
                   Foreground="White" GridLinesVisibility="None" BorderThickness="0" HeadersVisibility="Column"
                   CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True">
@@ -345,7 +366,7 @@
         </DataGrid>
 
         <!-- 4. 底部分页栏 -->
-        <Grid Grid.Row="2" Margin="0,15,0,0">
+        <Grid Grid.Row="3" Margin="0,15,0,0">
             <TextBlock Text="{Binding TotalRecordText}" Foreground="Gray" VerticalAlignment="Center" HorizontalAlignment="Left"/>
             
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

@@ -17,6 +17,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
 
         public DbSet<ChargeStation> ChargeStations => Set<ChargeStation>();
 
+        public DbSet<ChargeSessionRecord> ChargeSessionRecords => Set<ChargeSessionRecord>();
+
         public DbSet<MapNode> MapNodes => Set<MapNode>();
 
         public DbSet<MapEdge> MapEdges => Set<MapEdge>();
@@ -77,7 +79,24 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.Property(station => station.StationCode).HasMaxLength(64);
                 entity.Property(station => station.Name).HasMaxLength(128);
                 entity.Property(station => station.NodeId).HasMaxLength(64);
+                
+                entity.Property(station => station.AllowedBrands).HasMaxLength(256);
+                entity.Property(station => station.ProtocolType).HasMaxLength(64);
+                entity.Property(station => station.Endpoint).HasMaxLength(128);
+
                 entity.OwnsOne(station => station.Position);
+            });
+
+            modelBuilder.Entity<ChargeSessionRecord>(entity =>
+            {
+                entity.ToTable("ChargeSessionRecords");
+                entity.HasKey(session => session.SessionId);
+                entity.Property(session => session.SessionId).HasMaxLength(64);
+                entity.Property(session => session.StationId).HasMaxLength(64);
+                entity.Property(session => session.VehicleId).HasMaxLength(64);
+                entity.Property(session => session.Status).HasMaxLength(64);
+                entity.HasIndex(session => session.StationId);
+                entity.HasIndex(session => session.VehicleId);
             });
         }
 

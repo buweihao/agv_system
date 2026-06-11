@@ -54,6 +54,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             string? selectedVehicleId;
             string? failReason = null;
+            DispatchScoringResult? scoreResult = null;
 
             if (!string.IsNullOrWhiteSpace(preferredVehicleId))
             {
@@ -68,7 +69,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
                 // Call ScoreAndSelectVehicle just to check constraints, but forcing the only candidate
                 var availableList = new List<(Vehicle, VehicleStatus)> { (vehicle, selectedStatus) };
-                var scoreResult = _scoringService.ScoreAndSelectVehicle(task, availableList);
+                scoreResult = _scoringService.ScoreAndSelectVehicle(task, availableList);
                 if (!scoreResult.Success)
                 {
                     return AuditAndReturn(DispatchResult.Failure("VehicleNotAvailable", $"Preferred vehicle {selectedVehicleId} rejected: {scoreResult.Reason}", taskId, selectedVehicleId), "AssignTask");
@@ -77,15 +78,37 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             else
             {
                 var availableList = GetAvailableVehicles();
-                var scoreResult = _scoringService.ScoreAndSelectVehicle(task, availableList);
+                scoreResult = _scoringService.ScoreAndSelectVehicle(task, availableList);
                 selectedVehicleId = scoreResult.SelectedVehicleId;
                 failReason = scoreResult.Reason;
             }
 
             if (string.IsNullOrWhiteSpace(selectedVehicleId))
             {
+                var failLog = new OperationLog
+                {
+                    Category = "Dispatch",
+                    Action = "ScoreFailed",
+                    Message = $"No vehicle available. Candidates: {scoreResult.Candidates.Count}, Rejections: {scoreResult.Rejections.Count}",
+                    TaskId = taskId,
+                    Operator = "System"
+                };
+                failLog.Metadata["ScoreData"] = System.Text.Json.JsonSerializer.Serialize(scoreResult);
+                _auditTrail.Record(failLog);
                 return AuditAndReturn(DispatchResult.Failure("NoAvailableVehicle", $"No vehicle available. Reason: {failReason}", taskId), "AssignTask");
             }
+
+            var successLog = new OperationLog
+            {
+                Category = "Dispatch",
+                Action = "ScoreSuccess",
+                Message = $"Vehicle {selectedVehicleId} selected. Score: {scoreResult.Candidates.FirstOrDefault(c => c.VehicleId == selectedVehicleId)?.TotalScore:0.##}",
+                TaskId = taskId,
+                VehicleId = selectedVehicleId,
+                Operator = "System"
+            };
+            successLog.Metadata["ScoreData"] = System.Text.Json.JsonSerializer.Serialize(scoreResult);
+            _auditTrail.Record(successLog);
 
             var result = SendCommand(new DispatchCommand
             {

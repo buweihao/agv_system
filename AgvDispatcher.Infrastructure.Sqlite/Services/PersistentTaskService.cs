@@ -66,7 +66,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 PlannedStartAt = request.PlannedStartAt,
                 DeadlineAt = request.DeadlineAt,
                 CreatedBy = request.CreatedBy,
-                Attributes = new Dictionary<string, string>(request.Attributes)
+                Attributes = new Dictionary<string, string>(request.Attributes),
+                RequiredCapabilities = request.RequiredCapabilities,
+                AllowedBrands = request.AllowedBrands,
+                ForbiddenBrands = request.ForbiddenBrands,
+                MinBatteryRequired = request.MinBatteryRequired
             };
 
             lock (_syncRoot)
@@ -173,6 +177,78 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         public void CancelTask(string taskId, string? reason = null)
         {
             UpdateTaskState(taskId, TaskState.Cancelled, reason);
+        }
+
+        public void RequeueInterruptedTask(string taskId, string? reason = null)
+        {
+            if (string.IsNullOrWhiteSpace(taskId)) return;
+
+            TaskOrder? task;
+            lock (_syncRoot)
+            {
+                using var db = CreateContext();
+                task = db.TaskOrders.Find(taskId);
+                if (task is null || task.State != TaskState.Interrupted)
+                {
+                    return;
+                }
+
+                task.State = TaskState.Pending;
+                // clear assigned vehicle so it can be redispatched
+                task.AssignedVehicleId = null;
+                db.SaveChanges();
+            }
+
+            WriteTaskLog("Requeued", task, $"Task requeued manually. Reason: {reason ?? "N/A"}");
+            PublishTaskUpdated(task);
+        }
+
+        public void CompleteInterruptedTaskManually(string taskId, string? reason = null)
+        {
+            if (string.IsNullOrWhiteSpace(taskId)) return;
+
+            TaskOrder? task;
+            lock (_syncRoot)
+            {
+                using var db = CreateContext();
+                task = db.TaskOrders.Find(taskId);
+                if (task is null || task.State != TaskState.Interrupted)
+                {
+                    return;
+                }
+
+                task.State = TaskState.Completed;
+                task.FinishedAt = DateTime.Now;
+                task.ProgressPercent = 100;
+                db.SaveChanges();
+            }
+
+            WriteTaskLog("ManualCompleted", task, $"Task marked as completed manually. Reason: {reason ?? "N/A"}");
+            PublishTaskUpdated(task);
+        }
+
+        public void FailInterruptedTask(string taskId, string? reason = null)
+        {
+            if (string.IsNullOrWhiteSpace(taskId)) return;
+
+            TaskOrder? task;
+            lock (_syncRoot)
+            {
+                using var db = CreateContext();
+                task = db.TaskOrders.Find(taskId);
+                if (task is null || task.State != TaskState.Interrupted)
+                {
+                    return;
+                }
+
+                task.State = TaskState.Failed;
+                task.FailureReason = reason;
+                task.FinishedAt = DateTime.Now;
+                db.SaveChanges();
+            }
+
+            WriteTaskLog("Failed", task, $"Task marked as failed manually. Reason: {reason ?? "N/A"}");
+            PublishTaskUpdated(task);
         }
 
         private AgvDispatcherDbContext CreateContext()

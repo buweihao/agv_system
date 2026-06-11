@@ -313,6 +313,9 @@
                             </StackPanel>
                         </Grid>
 
+                        <TextBlock Text="最低派发电量(选填)" Style="{StaticResource FieldLabelStyle}"/>
+                        <TextBox Text="{Binding CurrentVehicle.MinDispatchBattery, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+
                         <CheckBox Content="启用该车辆"
                                   IsChecked="{Binding CurrentVehicle.IsEnabled}"
                                   Foreground="#DCEFFF"

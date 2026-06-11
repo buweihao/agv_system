@@ -62,5 +62,25 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 
             await _db.SaveChangesAsync();
         }
+
+        public async Task DeleteNodeAsync(string nodeId)
+        {
+            var node = await _db.MapNodes.FindAsync(nodeId);
+            if (node is not null)
+            {
+                _db.MapNodes.Remove(node);
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        public async Task DeleteEdgeAsync(string edgeId)
+        {
+            var edge = await _db.MapEdges.FindAsync(edgeId);
+            if (edge is not null)
+            {
+                _db.MapEdges.Remove(edge);
+                await _db.SaveChangesAsync();
+            }
+        }
     }
 }

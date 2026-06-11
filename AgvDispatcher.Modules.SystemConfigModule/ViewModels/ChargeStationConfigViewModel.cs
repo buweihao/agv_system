@@ -12,8 +12,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         
         public ObservableCollection<ChargeStation> Stations { get; } = new();
 
+        private ChargeStation? _selectedStation;
+        public ChargeStation? SelectedStation
+        {
+            get => _selectedStation;
+            set => SetProperty(ref _selectedStation, value);
+        }
+
         public DelegateCommand RefreshCommand { get; }
         
+        public DelegateCommand AddStationCommand { get; }
+        public DelegateCommand SaveStationCommand { get; }
+        public DelegateCommand DeleteStationCommand { get; }
+
         public int TotalStations => Stations.Count;
 
         public ChargeStationConfigViewModel(IChargeStationRepository chargeStationRepository)
@@ -21,6 +32,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             _chargeStationRepository = chargeStationRepository;
 
             RefreshCommand = new DelegateCommand(LoadData);
+
+            AddStationCommand = new DelegateCommand(AddStation);
+            SaveStationCommand = new DelegateCommand(SaveStation, () => SelectedStation != null).ObservesProperty(() => SelectedStation);
+            DeleteStationCommand = new DelegateCommand(DeleteStation, () => SelectedStation != null).ObservesProperty(() => SelectedStation);
 
             LoadData();
         }
@@ -32,6 +47,40 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             foreach (var s in stations) Stations.Add(s);
 
             RaisePropertyChanged(nameof(TotalStations));
+        }
+
+        private void AddStation()
+        {
+            var nextNumber = Stations.Count + 1;
+            var newStation = new ChargeStation
+            {
+                StationId = $"CS{nextNumber:000}",
+                StationCode = $"CS{nextNumber:000}",
+                Name = $"Charge Station {nextNumber}",
+                NodeId = $"N1{nextNumber:00}",
+                Position = new MapPosition { MapId = "MAIN", NodeId = $"N1{nextNumber:00}", X = 0, Y = 0 },
+                IsEnabled = true,
+                RatedPowerKw = 3.3,
+                OutputVoltage = 48,
+                OutputCurrent = 30
+            };
+            Stations.Add(newStation);
+            SelectedStation = newStation;
+            RaisePropertyChanged(nameof(TotalStations));
+        }
+
+        private void SaveStation()
+        {
+            if (SelectedStation == null) return;
+            _chargeStationRepository.SaveAsync(SelectedStation).GetAwaiter().GetResult();
+            LoadData();
+        }
+
+        private void DeleteStation()
+        {
+            if (SelectedStation == null) return;
+            _chargeStationRepository.DeleteAsync(SelectedStation.StationId).GetAwaiter().GetResult();
+            LoadData();
         }
     }
 }

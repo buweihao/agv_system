@@ -64,28 +64,48 @@
         </Border>
 
         <Border Grid.Row="1" Style="{StaticResource PanelBorderStyle}">
-            <DataGrid ItemsSource="{Binding Stations}"
-                      AutoGenerateColumns="False"
-                      IsReadOnly="True"
-                      HeadersVisibility="Column"
-                      GridLinesVisibility="None"
-                      RowHeight="36"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      RowBackground="Transparent"
-                      AlternatingRowBackground="#101E30"
-                      Foreground="#DCEFFF"
-                      ColumnHeaderStyle="{StaticResource DataGridHeaderStyle}">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="充电桩ID" Binding="{Binding StationId}" Width="*"/>
-                    <DataGridTextColumn Header="充电桩名称" Binding="{Binding Name}" Width="*"/>
-                    <DataGridTextColumn Header="绑定节点ID" Binding="{Binding MapNodeId}" Width="*"/>
-                    <DataGridTextColumn Header="所属区域" Binding="{Binding AreaCode}" Width="*"/>
-                    <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="*"/>
-                    <DataGridTextColumn Header="额定功率" Binding="{Binding RatedPowerKw, StringFormat='\{0:F1\} kW'}" Width="*"/>
-                    <DataGridCheckBoxColumn Header="是否启用" Binding="{Binding IsEnabled}" Width="0.8*"/>
-                </DataGrid.Columns>
-            </DataGrid>
+            <DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="充电桩列表" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="新增电桩" Command="{Binding AddStationCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="删除选中" Command="{Binding DeleteStationCommand}" Background="#FF4500" Foreground="White" BorderThickness="0" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="保存选中" Command="{Binding SaveStationCommand}" Style="{StaticResource ActionButtonStyle}" Background="#00BFFF" Foreground="#04101C" BorderThickness="0" FontWeight="Bold"/>
+                    </StackPanel>
+                </Grid>
+                <DataGrid ItemsSource="{Binding Stations}"
+                          SelectedItem="{Binding SelectedStation, Mode=TwoWay}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="False"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="None"
+                          RowHeight="36"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          RowBackground="Transparent"
+                          AlternatingRowBackground="#101E30"
+                          Foreground="#DCEFFF"
+                          ColumnHeaderStyle="{StaticResource DataGridHeaderStyle}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="充电桩ID" Binding="{Binding StationId}" Width="*"/>
+                        <DataGridTextColumn Header="充电桩名称" Binding="{Binding Name}" Width="*"/>
+                        <DataGridTextColumn Header="绑定节点ID" Binding="{Binding NodeId}" Width="*"/>
+                        <DataGridTextColumn Header="所属区域" Binding="{Binding AreaCode}" Width="*"/>
+                        <DataGridTextColumn Header="支持品牌" Binding="{Binding AllowedBrands}" Width="*"/>
+                        <DataGridTextColumn Header="协议" Binding="{Binding ProtocolType}" Width="*"/>
+                        <DataGridTextColumn Header="地址" Binding="{Binding Endpoint}" Width="*"/>
+                        <DataGridTextColumn Header="端口" Binding="{Binding Port}" Width="0.6*"/>
+                        <DataGridTextColumn Header="额定功率" Binding="{Binding RatedPowerKw, StringFormat='\{0:F1\} kW'}" Width="*"/>
+                        <DataGridTextColumn Header="电压" Binding="{Binding OutputVoltage, StringFormat='\{0:F1\} V'}" Width="0.8*"/>
+                        <DataGridTextColumn Header="电流" Binding="{Binding OutputCurrent, StringFormat='\{0:F1\} A'}" Width="0.8*"/>
+                        <DataGridCheckBoxColumn Header="是否启用" Binding="{Binding IsEnabled}" Width="0.8*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
         </Border>
     </Grid>
 </UserControl>

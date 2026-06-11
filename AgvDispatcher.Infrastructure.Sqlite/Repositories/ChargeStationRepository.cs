@@ -44,5 +44,47 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 
             await _db.SaveChangesAsync();
         }
+
+        public async Task DeleteAsync(string stationId)
+        {
+            var existing = await _db.ChargeStations.FindAsync(stationId);
+            if (existing is not null)
+            {
+                _db.ChargeStations.Remove(existing);
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        public async Task<IReadOnlyList<ChargeSessionRecord>> GetSessionsAsync(string? vehicleId = null, string? stationId = null)
+        {
+            var query = _db.ChargeSessionRecords.AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(vehicleId))
+            {
+                query = query.Where(s => s.VehicleId == vehicleId);
+            }
+            if (!string.IsNullOrWhiteSpace(stationId))
+            {
+                query = query.Where(s => s.StationId == stationId);
+            }
+            return await query.OrderByDescending(s => s.StartTime).ToArrayAsync();
+        }
+
+        public async Task AddSessionAsync(ChargeSessionRecord session)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+            _db.ChargeSessionRecords.Add(session);
+            await _db.SaveChangesAsync();
+        }
+
+        public async Task UpdateSessionAsync(ChargeSessionRecord session)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+            var existing = await _db.ChargeSessionRecords.FindAsync(session.SessionId);
+            if (existing is not null)
+            {
+                _db.Entry(existing).CurrentValues.SetValues(session);
+                await _db.SaveChangesAsync();
+            }
+        }
     }
 }

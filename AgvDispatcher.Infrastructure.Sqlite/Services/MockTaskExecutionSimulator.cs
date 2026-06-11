@@ -14,18 +14,24 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IMapService _mapService;
         private readonly IVehicleAdapterManager _vehicleAdapterManager;
         private readonly IAuditTrailService _auditTrail;
+        private readonly IChargeStationRepository _chargeStationRepository;
+        private readonly IVehicleStateStore _vehicleStateStore;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _runningTasks = new(StringComparer.OrdinalIgnoreCase);
 
         public MockTaskExecutionSimulator(
             ITaskService taskService,
             IMapService mapService,
             IVehicleAdapterManager vehicleAdapterManager,
-            IAuditTrailService auditTrail)
+            IAuditTrailService auditTrail,
+            IChargeStationRepository chargeStationRepository,
+            IVehicleStateStore vehicleStateStore)
         {
             _taskService = taskService;
             _mapService = mapService;
             _vehicleAdapterManager = vehicleAdapterManager;
             _auditTrail = auditTrail;
+            _chargeStationRepository = chargeStationRepository;
+            _vehicleStateStore = vehicleStateStore;
         }
 
         public void Start(TaskOrder task, string vehicleId)
@@ -139,6 +145,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 }, cancellationToken);
 
                 _taskService.UpdateTaskProgress(taskId, 100, task.TargetNodeId);
+
+                if (task.TaskType == "Charge")
+                {
+                    await SimulateChargingAsync(task, vehicleId, cancellationToken);
+                }
+
                 _taskService.UpdateTaskState(taskId, TaskState.Completed);
 
                 _auditTrail.Record(new OperationLog
@@ -190,6 +202,58 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             }
 
             return route;
+        }
+
+        private async System.Threading.Tasks.Task SimulateChargingAsync(TaskOrder task, string vehicleId, CancellationToken cancellationToken)
+        {
+            if (!task.Attributes.TryGetValue("StationId", out var stationId))
+            {
+                return;
+            }
+
+            var station = await _chargeStationRepository.GetByIdAsync(stationId);
+            if (station == null) return;
+
+            station.State = ChargeStationState.Charging;
+            station.BoundVehicleId = vehicleId;
+            await _chargeStationRepository.SaveAsync(station);
+
+            var sessionId = Guid.NewGuid().ToString("N");
+            var record = new ChargeSessionRecord
+            {
+                SessionId = sessionId,
+                StationId = stationId,
+                VehicleId = vehicleId,
+                StartTime = DateTime.Now,
+                Status = "Charging",
+                EnergyConsumedKwh = 0,
+                EndBatteryLevel = 0
+            };
+            await _chargeStationRepository.AddSessionAsync(record);
+
+            var vehicle = _vehicleStateStore.GetVehicle(vehicleId);
+            if (vehicle != null)
+            {
+                record.StartBatteryLevel = vehicle.BatteryLevel;
+                while (vehicle.BatteryLevel < 100)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await System.Threading.Tasks.Task.Delay(500, cancellationToken);
+                    vehicle.BatteryLevel += 5;
+                    if (vehicle.BatteryLevel > 100) vehicle.BatteryLevel = 100;
+                    _vehicleStateStore.UpsertStatus(vehicle);
+                }
+                record.EndBatteryLevel = vehicle.BatteryLevel;
+            }
+
+            record.EndTime = DateTime.Now;
+            record.Status = "Completed";
+            record.EnergyConsumedKwh = (record.EndBatteryLevel - record.StartBatteryLevel) * 0.1; // Mock formula
+            await _chargeStationRepository.UpdateSessionAsync(record);
+
+            station.State = ChargeStationState.Available;
+            station.BoundVehicleId = null;
+            await _chargeStationRepository.SaveAsync(station);
         }
     }
 }

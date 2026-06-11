@@ -13,11 +13,11 @@ namespace AgvDispatcher.Infrastructure.Mock
         public IVehicleAdapter Create(Vehicle vehicle)
         {
             var brand = vehicle.Brand?.ToUpperInvariant();
-            if (brand == "BRAND B")
+            if (brand == "BRAND B" || brand == "RGV-B")
             {
                 return new MockBrandBVehicleAdapter(vehicle);
             }
-            if (brand == "BRAND C")
+            if (brand == "BRAND C" || brand == "RGV-C")
             {
                 return new MockBrandCVehicleAdapter(vehicle);
             }

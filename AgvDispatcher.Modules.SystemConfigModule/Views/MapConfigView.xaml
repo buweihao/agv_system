@@ -67,10 +67,22 @@
 
         <Border Grid.Row="1" Style="{StaticResource PanelBorderStyle}" Margin="0,0,0,10">
             <DockPanel>
-                <TextBlock Text="地图节点" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" DockPanel.Dock="Top" Margin="0,0,0,10"/>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="地图节点" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="新增节点" Command="{Binding AddNodeCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="删除选中" Command="{Binding DeleteNodeCommand}" Background="#FF4500" Foreground="White" BorderThickness="0" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="保存选中" Command="{Binding SaveNodeCommand}" Style="{StaticResource ActionButtonStyle}" Background="#00BFFF" Foreground="#04101C" BorderThickness="0" FontWeight="Bold"/>
+                    </StackPanel>
+                </Grid>
                 <DataGrid ItemsSource="{Binding Nodes}"
+                          SelectedItem="{Binding SelectedNode, Mode=TwoWay}"
                           AutoGenerateColumns="False"
-                          IsReadOnly="True"
+                          IsReadOnly="False"
                           HeadersVisibility="Column"
                           GridLinesVisibility="None"
                           RowHeight="36"
@@ -85,7 +97,6 @@
                         <DataGridTextColumn Header="节点名称" Binding="{Binding Name}" Width="*"/>
                         <DataGridTextColumn Header="类型" Binding="{Binding NodeType}" Width="*"/>
                         <DataGridTextColumn Header="区域代码" Binding="{Binding AreaCode}" Width="*"/>
-                        <DataGridTextColumn Header="X, Y" Binding="{Binding Position, StringFormat='\{0:X\}, \{0:Y\}'}" Width="*"/>
                         <DataGridTextColumn Header="约束品牌" Binding="{Binding AllowedBrands}" Width="*"/>
                         <DataGridCheckBoxColumn Header="是否启用" Binding="{Binding IsEnabled}" Width="0.5*"/>
                     </DataGrid.Columns>
@@ -95,10 +106,22 @@
 
         <Border Grid.Row="2" Style="{StaticResource PanelBorderStyle}">
             <DockPanel>
-                <TextBlock Text="路线边缘" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" DockPanel.Dock="Top" Margin="0,0,0,10"/>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="路线边缘" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="新增路径" Command="{Binding AddEdgeCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="删除选中" Command="{Binding DeleteEdgeCommand}" Background="#FF4500" Foreground="White" BorderThickness="0" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="保存选中" Command="{Binding SaveEdgeCommand}" Style="{StaticResource ActionButtonStyle}" Background="#00BFFF" Foreground="#04101C" BorderThickness="0" FontWeight="Bold"/>
+                    </StackPanel>
+                </Grid>
                 <DataGrid ItemsSource="{Binding Edges}"
+                          SelectedItem="{Binding SelectedEdge, Mode=TwoWay}"
                           AutoGenerateColumns="False"
-                          IsReadOnly="True"
+                          IsReadOnly="False"
                           HeadersVisibility="Column"
                           GridLinesVisibility="None"
                           RowHeight="36"
@@ -114,7 +137,9 @@
                         <DataGridTextColumn Header="结束节点" Binding="{Binding ToNodeId}" Width="*"/>
                         <DataGridTextColumn Header="方向" Binding="{Binding Direction}" Width="*"/>
                         <DataGridTextColumn Header="约束品牌" Binding="{Binding AllowedBrands}" Width="*"/>
+                        <DataGridTextColumn Header="限速(m/s)" Binding="{Binding MaxSpeed}" Width="0.8*"/>
                         <DataGridTextColumn Header="最大车流量" Binding="{Binding MaxVehicleFlow}" Width="0.8*"/>
+                        <DataGridCheckBoxColumn Header="单向/锁" Binding="{Binding IsLocked}" Width="0.5*"/>
                         <DataGridCheckBoxColumn Header="是否启用" Binding="{Binding IsEnabled}" Width="0.5*"/>
                     </DataGrid.Columns>
                 </DataGrid>

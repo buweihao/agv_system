@@ -1,6 +1,7 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
+using Prism.Commands;
 using Prism.Mvvm;
 
 namespace AgvDispatcher.Modules.DataQueryModule.ViewModels
@@ -70,27 +71,36 @@ namespace AgvDispatcher.Modules.DataQueryModule.ViewModels
 
     public class DataQueryChargeDataViewModel : BindableBase
     {
-        public ObservableCollection<ChargeDataModel> DataList { get; set; }
+        private readonly IDataQueryService _dataQueryService;
+        public ObservableCollection<ChargeDataModel> DataList { get; set; } = new();
+
+        public DelegateCommand RefreshCommand { get; }
 
         public DataQueryChargeDataViewModel(IDataQueryService dataQueryService)
         {
-            DataList = new ObservableCollection<ChargeDataModel>(
-                dataQueryService.GetChargeRecords().Select(ToChargeDataModel));
+            _dataQueryService = dataQueryService;
+            RefreshCommand = new DelegateCommand(LoadData);
+            LoadData();
         }
 
-        private static ChargeDataModel ToChargeDataModel(ChargeRecord record)
+        private void LoadData()
         {
-            return new ChargeDataModel
+            DataList.Clear();
+            var records = _dataQueryService.GetChargeRecords();
+            foreach (var record in records)
             {
-                Seq = record.Seq,
-                Time = record.Time,
-                AgvId = record.AgvId,
-                ChargeStation = record.ChargeStation,
-                StartBattery = record.StartBattery,
-                EndBattery = record.EndBattery,
-                ChargeDuration = record.ChargeDuration,
-                ChargeAmount = record.ChargeAmount
-            };
+                DataList.Add(new ChargeDataModel
+                {
+                    Seq = record.Seq,
+                    Time = record.Time,
+                    AgvId = record.AgvId,
+                    ChargeStation = record.ChargeStation,
+                    StartBattery = record.StartBattery,
+                    EndBattery = record.EndBattery,
+                    ChargeDuration = record.ChargeDuration,
+                    ChargeAmount = record.ChargeAmount
+                });
+            }
         }
     }
 

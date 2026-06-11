@@ -54,7 +54,11 @@ namespace AgvDispatcher.Infrastructure.Mock
                 PlannedStartAt = request.PlannedStartAt,
                 DeadlineAt = request.DeadlineAt,
                 CreatedBy = request.CreatedBy,
-                Attributes = new Dictionary<string, string>(request.Attributes)
+                Attributes = new Dictionary<string, string>(request.Attributes),
+                RequiredCapabilities = request.RequiredCapabilities,
+                AllowedBrands = request.AllowedBrands,
+                ForbiddenBrands = request.ForbiddenBrands,
+                MinBatteryRequired = request.MinBatteryRequired
             };
 
             lock (_syncRoot)
@@ -133,6 +137,56 @@ namespace AgvDispatcher.Infrastructure.Mock
         public void CancelTask(string taskId, string? reason = null)
         {
             UpdateTaskState(taskId, TaskState.Cancelled, reason);
+        }
+
+        public void RequeueInterruptedTask(string taskId, string? reason = null)
+        {
+            TaskOrder? task;
+            lock (_syncRoot)
+            {
+                task = FindTaskNoLock(taskId);
+                if (task is null || task.State != TaskState.Interrupted)
+                {
+                    return;
+                }
+                task.State = TaskState.Pending;
+                task.AssignedVehicleId = null;
+            }
+            PublishTaskUpdated(task);
+        }
+
+        public void CompleteInterruptedTaskManually(string taskId, string? reason = null)
+        {
+            TaskOrder? task;
+            lock (_syncRoot)
+            {
+                task = FindTaskNoLock(taskId);
+                if (task is null || task.State != TaskState.Interrupted)
+                {
+                    return;
+                }
+                task.State = TaskState.Completed;
+                task.FinishedAt = DateTime.Now;
+                task.ProgressPercent = 100;
+            }
+            PublishTaskUpdated(task);
+        }
+
+        public void FailInterruptedTask(string taskId, string? reason = null)
+        {
+            TaskOrder? task;
+            lock (_syncRoot)
+            {
+                task = FindTaskNoLock(taskId);
+                if (task is null || task.State != TaskState.Interrupted)
+                {
+                    return;
+                }
+                task.State = TaskState.Failed;
+                task.FailureReason = reason;
+                task.FinishedAt = DateTime.Now;
+            }
+            PublishTaskUpdated(task);
         }
 
         private void PublishTaskUpdated(TaskOrder task)

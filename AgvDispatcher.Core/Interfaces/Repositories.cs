@@ -20,6 +20,14 @@ namespace AgvDispatcher.Core.Interfaces
         Task<ChargeStation?> GetByIdAsync(string stationId);
 
         Task SaveAsync(ChargeStation station);
+
+        Task DeleteAsync(string stationId);
+
+        Task<IReadOnlyList<ChargeSessionRecord>> GetSessionsAsync(string? vehicleId = null, string? stationId = null);
+
+        Task AddSessionAsync(ChargeSessionRecord session);
+
+        Task UpdateSessionAsync(ChargeSessionRecord session);
     }
 
     public interface IMapRepository
@@ -31,6 +39,10 @@ namespace AgvDispatcher.Core.Interfaces
         Task SaveNodeAsync(MapNode node);
 
         Task SaveEdgeAsync(MapEdge edge);
+
+        Task DeleteNodeAsync(string nodeId);
+
+        Task DeleteEdgeAsync(string edgeId);
     }
 
     public interface ITaskTemplateRepository

@@ -94,8 +94,19 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 : command.CommandId;
             command.SentAt = DateTime.Now;
 
-            await adapter.SendCommandAsync(command, cancellationToken);
-            return DispatchResult.Success("Command sent to vehicle adapter.", command.TaskId, command.VehicleId, command.CommandId);
+            try
+            {
+                await adapter.SendCommandAsync(command, cancellationToken);
+                return DispatchResult.Success("Command sent to vehicle adapter.", command.TaskId, command.VehicleId, command.CommandId);
+            }
+            catch (NotSupportedException ex)
+            {
+                return DispatchResult.Failure("CommandNotSupported", ex.Message, command.TaskId, command.VehicleId);
+            }
+            catch (Exception ex)
+            {
+                return DispatchResult.Failure("CommandFailed", ex.Message, command.TaskId, command.VehicleId);
+            }
         }
 
         private void OnStatusReceived(object? sender, VehicleStatusSnapshot snapshot)

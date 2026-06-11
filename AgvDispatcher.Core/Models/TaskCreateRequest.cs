@@ -27,5 +27,13 @@ namespace AgvDispatcher.Core.Models
         public string CreatedBy { get; set; } = string.Empty;
 
         public Dictionary<string, string> Attributes { get; set; } = new();
+
+        public VehicleCapability RequiredCapabilities { get; set; } = VehicleCapability.None;
+
+        public string AllowedBrands { get; set; } = string.Empty;
+
+        public string ForbiddenBrands { get; set; } = string.Empty;
+
+        public double? MinBatteryRequired { get; set; }
     }
 }

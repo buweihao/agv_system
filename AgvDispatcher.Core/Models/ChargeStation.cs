@@ -38,6 +38,14 @@ namespace AgvDispatcher.Core.Models
 
         public DateTime? LastMaintenanceAt { get; set; }
 
+        public string AllowedBrands { get; set; } = string.Empty;
+
+        public string ProtocolType { get; set; } = string.Empty;
+
+        public string Endpoint { get; set; } = string.Empty;
+
+        public int Port { get; set; }
+
         public string Remark { get; set; } = string.Empty;
     }
 }

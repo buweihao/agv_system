@@ -72,6 +72,25 @@ namespace AgvDispatcher.Infrastructure.Mock
         {
             ArgumentNullException.ThrowIfNull(command);
 
+            // 1. Check SupportedCommandFlags
+            if (_vehicle.SupportedCommandFlags != VehicleCommandCapability.None)
+            {
+                var reqCap = MapCommandToCapability(command.CommandType);
+                if (reqCap != VehicleCommandCapability.None && (_vehicle.SupportedCommandFlags & reqCap) != reqCap)
+                {
+                    return Task.FromException(new NotSupportedException($"Command {command.CommandType} is not supported by vehicle {VehicleId} (Requires {reqCap})"));
+                }
+            }
+
+            // 2. MockUnstable: Randomly drop commands
+            if (string.Equals(_vehicle.AdapterType, "MockUnstable", StringComparison.OrdinalIgnoreCase))
+            {
+                if (Random.Shared.NextDouble() < 0.2)
+                {
+                    return Task.FromException(new Exception("MockUnstable: Network timeout or command dropped."));
+                }
+            }
+
             lock (_syncRoot)
             {
                 _currentTaskId = string.IsNullOrWhiteSpace(command.TaskId) ? _currentTaskId : command.TaskId;
@@ -124,6 +143,23 @@ namespace AgvDispatcher.Infrastructure.Mock
             return Task.CompletedTask;
         }
 
+        private VehicleCommandCapability MapCommandToCapability(DispatchCommandType cmd)
+        {
+            return cmd switch
+            {
+                DispatchCommandType.AssignTask => VehicleCommandCapability.AssignTask,
+                DispatchCommandType.MoveToNode => VehicleCommandCapability.MoveToNode,
+                DispatchCommandType.Pause => VehicleCommandCapability.Pause,
+                DispatchCommandType.Resume => VehicleCommandCapability.Resume,
+                DispatchCommandType.CancelTask => VehicleCommandCapability.CancelTask,
+                DispatchCommandType.EmergencyStop => VehicleCommandCapability.EmergencyStop,
+                DispatchCommandType.ResetFault => VehicleCommandCapability.ResetFault,
+                DispatchCommandType.GoCharge => VehicleCommandCapability.GoCharge,
+                DispatchCommandType.StopCharge => VehicleCommandCapability.StopCharge,
+                _ => VehicleCommandCapability.None
+            };
+        }
+
         public virtual VehicleStatusSnapshot ConvertStatus(object rawStatus)
         {
             return rawStatus switch
@@ -151,6 +187,18 @@ namespace AgvDispatcher.Infrastructure.Mock
             {
                 lock (_syncRoot)
                 {
+                    if (string.Equals(_vehicle.AdapterType, "MockOffline", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _state = RobotState.Offline;
+                    }
+                    else if (string.Equals(_vehicle.AdapterType, "MockFault", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (_state != RobotState.Fault && Random.Shared.NextDouble() < 0.05)
+                        {
+                            _state = RobotState.Fault;
+                        }
+                    }
+
                     if (_state == RobotState.Running)
                     {
                         _batteryLevel = Math.Max(0, _batteryLevel - BatteryDrainPerTick);

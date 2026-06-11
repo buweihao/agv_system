@@ -19,5 +19,22 @@ namespace AgvDispatcher.Core.Interfaces
         public string? SelectedVehicleId { get; set; }
         public bool Success => !string.IsNullOrEmpty(SelectedVehicleId);
         public string Reason { get; set; } = string.Empty;
+
+        // Stage F: Extended scoring structure
+        public List<CandidateScore> Candidates { get; set; } = new();
+        public List<RejectionReason> Rejections { get; set; } = new();
+    }
+
+    public class CandidateScore
+    {
+        public string VehicleId { get; set; } = string.Empty;
+        public double TotalScore { get; set; }
+        public Dictionary<string, double> Breakdown { get; set; } = new();
+    }
+
+    public class RejectionReason
+    {
+        public string VehicleId { get; set; } = string.Empty;
+        public string Reason { get; set; } = string.Empty;
     }
 }

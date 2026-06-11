@@ -10,15 +10,18 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IAlarmService _alarms;
         private readonly IOperationLogService _operationLogs;
         private readonly ITaskService _taskService;
+        private readonly IChargeStationRepository _chargeStationRepository;
 
         public PersistentDataQueryService(
             IAlarmService alarms, 
             IOperationLogService operationLogs,
-            ITaskService taskService)
+            ITaskService taskService,
+            IChargeStationRepository chargeStationRepository)
         {
             _alarms = alarms;
             _operationLogs = operationLogs;
             _taskService = taskService;
+            _chargeStationRepository = chargeStationRepository;
         }
 
         public IReadOnlyList<TaskRunRecord> GetTaskRunRecords()
@@ -45,7 +48,24 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public IReadOnlyList<ChargeRecord> GetChargeRecords()
         {
-            return Array.Empty<ChargeRecord>();
+            var sessions = _chargeStationRepository.GetSessionsAsync().GetAwaiter().GetResult();
+            var records = new List<ChargeRecord>();
+            int seq = 1;
+            foreach (var r in sessions)
+            {
+                records.Add(new ChargeRecord
+                {
+                    Seq = seq++,
+                    Time = r.StartTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                    AgvId = r.VehicleId,
+                    ChargeStation = r.StationId,
+                    StartBattery = $"{r.StartBatteryLevel:F1}%",
+                    EndBattery = $"{r.EndBatteryLevel:F1}%",
+                    ChargeDuration = r.EndTime.HasValue ? $"{(r.EndTime.Value - r.StartTime).TotalMinutes:F1} min" : "Charging",
+                    ChargeAmount = $"{r.EnergyConsumedKwh:F2} kWh"
+                });
+            }
+            return records;
         }
 
         public IReadOnlyList<AlarmRecord> GetAlarmRecords()

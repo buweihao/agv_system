@@ -170,6 +170,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 Port = port,
                 OutputVoltage = 48,
                 OutputCurrent = 30,
+                ConnectorType = "GB/T",
+                SupportedVehicleTypes = "AGV,RGV",
+                SupportAutoCharge = true,
+                MaxQueueCount = 2,
+                IsExclusive = false,
                 Position = new MapPosition { MapId = "MAIN", X = x, Y = y, NodeId = id.Replace("C-", "Charge-"), AreaCode = "C" }
             };
         }

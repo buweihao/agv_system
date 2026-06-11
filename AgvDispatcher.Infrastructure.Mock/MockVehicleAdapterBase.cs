@@ -14,10 +14,14 @@ namespace AgvDispatcher.Infrastructure.Mock
         protected RobotState _state = RobotState.Idle;
         protected string _location;
         protected string? _currentTaskId;
+        protected readonly IChargeStationRepository? _chargeRepo;
+        protected ChargeSessionRecord? _currentChargeSession;
+        protected bool _isCharging;
 
-        protected MockVehicleAdapterBase(Vehicle vehicle)
+        protected MockVehicleAdapterBase(Vehicle vehicle, IChargeStationRepository? chargeRepo = null)
         {
             _vehicle = vehicle;
+            _chargeRepo = chargeRepo;
             _batteryLevel = 70 + Math.Abs(vehicle.VehicleId.GetHashCode()) % 25;
             _location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "A01-01" : $"{vehicle.AreaCode}01-01";
         }
@@ -104,10 +108,24 @@ namespace AgvDispatcher.Infrastructure.Mock
                     case DispatchCommandType.MoveToNode:
                     case DispatchCommandType.ReturnHome:
                     case DispatchCommandType.GoCharge:
-                        _state = RobotState.Running;
+                        _state = RobotState.Idle; // usually stays idle while charging
+                        _isCharging = true;
                         if (!string.IsNullOrWhiteSpace(command.TargetNodeId))
                         {
                             _location = command.TargetNodeId;
+                        }
+                        if (_chargeRepo != null)
+                        {
+                            _currentChargeSession = new ChargeSessionRecord
+                            {
+                                SessionId = Guid.NewGuid().ToString("N"),
+                                StationId = command.TargetNodeId ?? "Unknown",
+                                VehicleId = _vehicle.VehicleId,
+                                StartTime = DateTime.Now,
+                                StartBatteryLevel = _batteryLevel,
+                                Status = "Charging"
+                            };
+                            _chargeRepo.AddSessionAsync(_currentChargeSession).GetAwaiter().GetResult();
                         }
                         break;
                     case DispatchCommandType.AssignTask:
@@ -126,9 +144,21 @@ namespace AgvDispatcher.Infrastructure.Mock
                         _currentTaskId = null;
                         break;
                     case DispatchCommandType.CancelTask:
-                    case DispatchCommandType.StopCharge:
                         _state = RobotState.Idle;
                         _currentTaskId = null;
+                        break;
+                    case DispatchCommandType.StopCharge:
+                        _state = RobotState.Idle;
+                        _isCharging = false;
+                        _currentTaskId = null;
+                        if (_chargeRepo != null && _currentChargeSession != null)
+                        {
+                            _currentChargeSession.EndTime = DateTime.Now;
+                            _currentChargeSession.EndBatteryLevel = _batteryLevel;
+                            _currentChargeSession.Status = "Completed";
+                            _chargeRepo.UpdateSessionAsync(_currentChargeSession).GetAwaiter().GetResult();
+                            _currentChargeSession = null;
+                        }
                         break;
                     case DispatchCommandType.EmergencyStop:
                         _state = RobotState.Fault;
@@ -202,6 +232,10 @@ namespace AgvDispatcher.Infrastructure.Mock
                     if (_state == RobotState.Running)
                     {
                         _batteryLevel = Math.Max(0, _batteryLevel - BatteryDrainPerTick);
+                    }
+                    else if (_isCharging)
+                    {
+                        _batteryLevel = Math.Min(100, _batteryLevel + 5.0);
                     }
                 }
 

@@ -72,6 +72,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private void SaveStation()
         {
             if (SelectedStation == null) return;
+            if (string.IsNullOrWhiteSpace(SelectedStation.StationId))
+            {
+                System.Windows.MessageBox.Show("充电桩ID不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
             _chargeStationRepository.SaveAsync(SelectedStation).GetAwaiter().GetResult();
             LoadData();
         }

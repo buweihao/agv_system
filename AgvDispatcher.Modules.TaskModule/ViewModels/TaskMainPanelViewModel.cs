@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using AgvDispatcher.Core.Enums;
@@ -82,11 +83,19 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             set => SetProperty(ref _dispatchMessage, value);
         }
 
-        private VehicleCapability _selectedCapabilities = VehicleCapability.None;
+        public ObservableCollection<CapabilityCheckItem> CapabilityOptions { get; } = new();
+
         public VehicleCapability SelectedCapabilities
         {
-            get => _selectedCapabilities;
-            set => SetProperty(ref _selectedCapabilities, value);
+            get
+            {
+                var flags = VehicleCapability.None;
+                foreach (var item in CapabilityOptions)
+                {
+                    if (item.IsChecked) flags |= item.Value;
+                }
+                return flags;
+            }
         }
 
         private string _allowedBrands = string.Empty;
@@ -131,6 +140,17 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             _eventAggregator = eventAggregator;
             _taskService = taskService;
             _dispatchService = dispatchService;
+
+            foreach (VehicleCapability cap in Enum.GetValues(typeof(VehicleCapability)))
+            {
+                if (cap == VehicleCapability.None) continue;
+                CapabilityOptions.Add(new CapabilityCheckItem
+                {
+                    Name = cap.ToString(),
+                    Value = cap
+                });
+            }
+
             CreateDemoTaskCommand = new DelegateCommand(CreateDemoTask);
             AutoDispatchCommand = new DelegateCommand<TaskModel>(AutoDispatch, CanAutoDispatch);
             PreviousPageCommand = new DelegateCommand(

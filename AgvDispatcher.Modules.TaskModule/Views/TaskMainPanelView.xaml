@@ -140,8 +140,19 @@
                 <TextBlock Text="测试任务参数：" Foreground="#00BFFF" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,15,0"/>
                 
                 <TextBlock Text="能力要求:" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                <!-- Binding to SelectedCapabilities (Note: WPF doesn't natively support enum flags in simple ComboBox, we bind to string or int, or for simplicity use a TextBox here to manually input comma separated, or a simple binding to the enum if a converter is used. Let's use TextBox for simplicity in this demo form) -->
-                <TextBox Text="{Binding SelectedCapabilities, UpdateSourceTrigger=PropertyChanged}" Width="120" Margin="0,0,15,0" ToolTip="例如: Lift, Forklift, Charge"/>
+                <ItemsControl ItemsSource="{Binding CapabilityOptions}" Margin="0,0,15,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" 
+                                      Foreground="#DCEFFF" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
                 
                 <TextBlock Text="允许品牌:" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
                 <TextBox Text="{Binding AllowedBrands, UpdateSourceTrigger=PropertyChanged}" Width="100" Margin="0,0,15,0" ToolTip="例如: Brand A"/>

@@ -5,7 +5,7 @@ namespace AgvDispatcher.Infrastructure.Mock
 {
     public class MockBrandBVehicleAdapter : MockVehicleAdapterBase
     {
-        public MockBrandBVehicleAdapter(Vehicle vehicle) : base(vehicle)
+        public MockBrandBVehicleAdapter(Vehicle vehicle, AgvDispatcher.Core.Interfaces.IChargeStationRepository? chargeRepo = null) : base(vehicle, chargeRepo)
         {
         }
 

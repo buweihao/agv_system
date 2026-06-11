@@ -10,6 +10,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly ISystemParameterRepository _parameterRepository;
         private IReadOnlyList<MapNode>? _nodesCache;
         private IReadOnlyList<ParameterConfig>? _paramsCache;
+        private IReadOnlyList<MapEdge>? _edgesCache;
 
         public DispatchScoringService(IMapRepository mapRepository, ISystemParameterRepository parameterRepository)
         {
@@ -27,11 +28,22 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             {
                 _paramsCache = _parameterRepository.GetAllAsync().GetAwaiter().GetResult();
             }
+            if (_edgesCache == null)
+            {
+                _edgesCache = _mapRepository.GetEdgesAsync().GetAwaiter().GetResult();
+            }
 
             var result = new DispatchScoringResult();
             
             foreach (var (vehicle, status) in availableVehicles)
             {
+                // Hard Veto: Vehicle Disabled
+                if (!vehicle.IsEnabled)
+                {
+                    result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "Vehicle is disabled" });
+                    continue;
+                }
+
                 // Hard Veto: Status
                 if (status.State != RobotState.Idle)
                 {
@@ -46,6 +58,14 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 if (status.HasAlarm)
                 {
                     result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "Vehicle has Alarm" });
+                    continue;
+                }
+
+                // Hard Veto: Must support AssignTask command
+                if (vehicle.SupportedCommandFlags != VehicleCommandCapability.None &&
+                    !vehicle.SupportedCommandFlags.HasFlag(VehicleCommandCapability.AssignTask))
+                {
+                    result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = "Vehicle does not support AssignTask command" });
                     continue;
                 }
 
@@ -65,6 +85,13 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                         result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Missing required capability {task.RequiredCapabilities}" });
                         continue;
                     }
+                }
+
+                // Hard Veto: Load Capacity
+                if (task.CargoWeight > 0 && vehicle.RatedLoad > 0 && vehicle.RatedLoad < task.CargoWeight)
+                {
+                    result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"RatedLoad {vehicle.RatedLoad} kg < required {task.CargoWeight} kg" });
+                    continue;
                 }
 
                 // Hard Veto: Forbidden Brands
@@ -141,6 +168,42 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                             }
                         }
                     }
+                }
+
+                // Hard Veto: Edge Constraints (IsEnabled, IsLocked, AllowedBrands)
+                if (_edgesCache != null && !string.IsNullOrWhiteSpace(task.SourceNodeId) && !string.IsNullOrWhiteSpace(task.TargetNodeId))
+                {
+                    var relevantEdges = _edgesCache.Where(e =>
+                        (e.FromNodeId == task.SourceNodeId || e.ToNodeId == task.SourceNodeId ||
+                         e.FromNodeId == task.TargetNodeId || e.ToNodeId == task.TargetNodeId));
+
+                    bool edgeBlocked = false;
+                    foreach (var edge in relevantEdges)
+                    {
+                        if (!edge.IsEnabled)
+                        {
+                            result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Edge {edge.EdgeId} is disabled" });
+                            edgeBlocked = true;
+                            break;
+                        }
+                        if (edge.IsLocked)
+                        {
+                            result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Edge {edge.EdgeId} is locked" });
+                            edgeBlocked = true;
+                            break;
+                        }
+                        if (!string.IsNullOrWhiteSpace(edge.AllowedBrands))
+                        {
+                            var edgeBrands = edge.AllowedBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (!edgeBrands.Any(b => string.Equals(b.Trim(), vehicle.Brand, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Brand '{vehicle.Brand}' not allowed on edge {edge.EdgeId}" });
+                                edgeBlocked = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (edgeBlocked) continue;
                 }
 
                 // Soft Scoring

@@ -87,8 +87,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             {
                 var failLog = new OperationLog
                 {
-                    Category = "Dispatch",
-                    Action = "ScoreFailed",
+                    Category = "DispatchScore",
+                    Action = "Rejected",
                     Message = $"No vehicle available. Candidates: {scoreResult.Candidates.Count}, Rejections: {scoreResult.Rejections.Count}",
                     TaskId = taskId,
                     Operator = "System"
@@ -100,8 +100,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             var successLog = new OperationLog
             {
-                Category = "Dispatch",
-                Action = "ScoreSuccess",
+                Category = "DispatchScore",
+                Action = "Selected",
                 Message = $"Vehicle {selectedVehicleId} selected. Score: {scoreResult.Candidates.FirstOrDefault(c => c.VehicleId == selectedVehicleId)?.TotalScore:0.##}",
                 TaskId = taskId,
                 VehicleId = selectedVehicleId,

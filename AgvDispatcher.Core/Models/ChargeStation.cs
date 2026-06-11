@@ -47,5 +47,15 @@ namespace AgvDispatcher.Core.Models
         public int Port { get; set; }
 
         public string Remark { get; set; } = string.Empty;
+
+        public string ConnectorType { get; set; } = string.Empty;
+
+        public string SupportedVehicleTypes { get; set; } = string.Empty;
+
+        public bool SupportAutoCharge { get; set; }
+
+        public int MaxQueueCount { get; set; } = 1;
+
+        public bool IsExclusive { get; set; }
     }
 }

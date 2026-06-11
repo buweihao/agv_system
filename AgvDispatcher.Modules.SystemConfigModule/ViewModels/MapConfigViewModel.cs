@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using Prism.Commands;
@@ -93,6 +94,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private void SaveNode()
         {
             if (SelectedNode == null) return;
+            if (string.IsNullOrWhiteSpace(SelectedNode.NodeId))
+            {
+                System.Windows.MessageBox.Show("节点ID不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
             _mapRepository.SaveNodeAsync(SelectedNode).GetAwaiter().GetResult();
             LoadData();
         }
@@ -100,7 +106,13 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private void DeleteNode()
         {
             if (SelectedNode == null) return;
-            _mapRepository.DeleteNodeAsync(SelectedNode.NodeId).GetAwaiter().GetResult();
+            var nodeId = SelectedNode.NodeId;
+            if (Edges.Any(e => e.FromNodeId == nodeId || e.ToNodeId == nodeId))
+            {
+                System.Windows.MessageBox.Show($"节点 {nodeId} 被路径引用，无法删除。请先删除相关路径。", "删除失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            _mapRepository.DeleteNodeAsync(nodeId).GetAwaiter().GetResult();
             LoadData();
         }
 
@@ -122,6 +134,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private void SaveEdge()
         {
             if (SelectedEdge == null) return;
+            if (string.IsNullOrWhiteSpace(SelectedEdge.EdgeId) || string.IsNullOrWhiteSpace(SelectedEdge.FromNodeId) || string.IsNullOrWhiteSpace(SelectedEdge.ToNodeId))
+            {
+                System.Windows.MessageBox.Show("路径ID、起点和终点不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
             _mapRepository.SaveEdgeAsync(SelectedEdge).GetAwaiter().GetResult();
             LoadData();
         }

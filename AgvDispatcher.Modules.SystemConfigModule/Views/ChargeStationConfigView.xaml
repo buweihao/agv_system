@@ -103,6 +103,11 @@
                         <DataGridTextColumn Header="电压" Binding="{Binding OutputVoltage, StringFormat='\{0:F1\} V'}" Width="0.8*"/>
                         <DataGridTextColumn Header="电流" Binding="{Binding OutputCurrent, StringFormat='\{0:F1\} A'}" Width="0.8*"/>
                         <DataGridCheckBoxColumn Header="是否启用" Binding="{Binding IsEnabled}" Width="0.8*"/>
+                        <DataGridTextColumn Header="接口类型" Binding="{Binding ConnectorType}" Width="*"/>
+                        <DataGridTextColumn Header="支持车型" Binding="{Binding SupportedVehicleTypes}" Width="*"/>
+                        <DataGridCheckBoxColumn Header="自动充电" Binding="{Binding SupportAutoCharge}" Width="0.8*"/>
+                        <DataGridTextColumn Header="最大排队" Binding="{Binding MaxQueueCount}" Width="0.8*"/>
+                        <DataGridCheckBoxColumn Header="独占模式" Binding="{Binding IsExclusive}" Width="0.8*"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

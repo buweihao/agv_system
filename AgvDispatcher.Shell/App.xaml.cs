@@ -1,4 +1,4 @@
-﻿using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Infrastructure.Sqlite;
 using AgvDispatcher.Infrastructure.Sqlite.Persistence;
 using Prism.DryIoc;
@@ -16,6 +16,9 @@ public partial class App : PrismApplication
 {
     protected override Window CreateShell()
     {
+        // 确保在解析 MainWindow（及其引发的模块加载、ViewModel 构造）之前初始化数据库
+        Container.Resolve<LocalPersistenceInitializer>().Initialize();
+        
         return Container.Resolve<MainWindow>();
     }
 
@@ -39,7 +42,6 @@ public partial class App : PrismApplication
     {
         base.OnInitialized();
 
-        Container.Resolve<LocalPersistenceInitializer>().Initialize();
         Container.Resolve<IOperationLogService>().WriteLog(new AgvDispatcher.Core.Models.OperationLog
         {
             Category = "System",

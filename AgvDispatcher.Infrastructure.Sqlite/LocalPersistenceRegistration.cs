@@ -23,7 +23,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<LocalPersistenceInitializer>();
             containerRegistry.RegisterSingleton<IPathPlanningService, DijkstraPathPlanningService>();
 
-            containerRegistry.RegisterSingleton<ITaskService, MockTaskService>();
+            containerRegistry.RegisterSingleton<ITaskService, PersistentTaskService>();
             containerRegistry.RegisterSingleton<ISignalService, MockSignalService>();
 
             containerRegistry.RegisterSingleton<IVehicleRepository, VehicleRepository>();
@@ -52,9 +52,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
 
         private static string GetDatabasePath()
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var directory = Path.Combine(appData, "AgvDispatcher");
-            Directory.CreateDirectory(directory);
+            var directory = AppDomain.CurrentDomain.BaseDirectory;
             return Path.Combine(directory, "agv_dispatcher.db");
         }
     }

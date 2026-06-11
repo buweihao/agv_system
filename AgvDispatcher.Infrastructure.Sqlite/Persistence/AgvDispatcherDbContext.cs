@@ -29,6 +29,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
 
         public DbSet<OperationLog> OperationLogs => Set<OperationLog>();
 
+        public DbSet<TaskOrder> TaskOrders => Set<TaskOrder>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             ConfigureVehicle(modelBuilder);
@@ -37,6 +39,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             ConfigureTaskConfig(modelBuilder);
             ConfigureAlarm(modelBuilder);
             ConfigureOperationLog(modelBuilder);
+            ConfigureTaskOrder(modelBuilder);
         }
 
         private static void ConfigureVehicle(ModelBuilder modelBuilder)
@@ -160,6 +163,37 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.HasIndex(log => log.Category);
                 entity.HasIndex(log => log.VehicleId);
                 entity.HasIndex(log => log.TaskId);
+            });
+        }
+
+        private static void ConfigureTaskOrder(ModelBuilder modelBuilder)
+        {
+            var dictionaryConverter = CreateDictionaryConverter();
+            var dictionaryComparer = CreateDictionaryComparer();
+
+            modelBuilder.Entity<TaskOrder>(entity =>
+            {
+                entity.ToTable("TaskOrders");
+                entity.HasKey(task => task.TaskId);
+                entity.Property(task => task.TaskId).HasMaxLength(64);
+                entity.Property(task => task.TaskNo).HasMaxLength(64);
+                entity.Property(task => task.TemplateId).HasMaxLength(128);
+                entity.Property(task => task.TaskType).HasMaxLength(64);
+                entity.Property(task => task.SourceNodeId).HasMaxLength(64);
+                entity.Property(task => task.TargetNodeId).HasMaxLength(64);
+                entity.Property(task => task.CurrentNodeId).HasMaxLength(64);
+                entity.Property(task => task.AssignedVehicleId).HasMaxLength(64);
+                entity.Property(task => task.CargoCode).HasMaxLength(64);
+                entity.Property(task => task.CargoName).HasMaxLength(128);
+                entity.Property(task => task.CreatedBy).HasMaxLength(128);
+                entity.Property(task => task.CancelReason).HasMaxLength(512);
+                entity.Property(task => task.FailureReason).HasMaxLength(512);
+                entity.Property(task => task.Attributes)
+                    .HasConversion(dictionaryConverter)
+                    .Metadata.SetValueComparer(dictionaryComparer);
+                entity.HasIndex(task => task.State);
+                entity.HasIndex(task => task.CreatedAt);
+                entity.HasIndex(task => task.AssignedVehicleId);
             });
         }
 

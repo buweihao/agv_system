@@ -1,4 +1,4 @@
-<UserControl x:Class="AgvDispatcher.Modules.DataQueryModule.Views.DataQueryEnergyDataView"
+﻿<UserControl x:Class="AgvDispatcher.Modules.DataQueryModule.Views.DataQueryEnergyDataView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:prism="http://prismlibrary.com/"
@@ -151,7 +151,7 @@
                         <Button Content="重置" Background="#334455" Foreground="White" BorderThickness="0" Padding="15,6" Margin="0,0,10,0" Cursor="Hand">
                             <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
                         </Button>
-                        <Button Content="查询" Background="#00BFFF" Foreground="White" BorderThickness="0" Padding="15,6" Cursor="Hand">
+                        <Button Command="{Binding RefreshCommand}" Content="查询" Background="#00BFFF" Foreground="White" BorderThickness="0" Padding="15,6" Cursor="Hand">
                             <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
                         </Button>
                     </StackPanel>

@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using AgvDispatcher.Modules.DataQueryModule.Models;
@@ -15,10 +15,25 @@ namespace AgvDispatcher.Modules.DataQueryModule.ViewModels
             set => SetProperty(ref _dataList, value);
         }
 
+        private readonly IDataQueryService _dataQueryService;
+
+        public DelegateCommand RefreshCommand { get; }
+
         public DataQueryCenterPanelViewModel(IDataQueryService dataQueryService)
         {
-            DataList = new ObservableCollection<DataQueryModel>(
-                dataQueryService.GetTaskRunRecords().Select(ToDataQueryModel));
+            _dataQueryService = dataQueryService;
+            RefreshCommand = new DelegateCommand(LoadData);
+            LoadData();
+        }
+
+        private void LoadData()
+        {
+            DataList.Clear();
+            var records = _dataQueryService.GetTaskRunRecords();
+            foreach (var record in records)
+            {
+                DataList.Add(ToDataQueryModel(record));
+            }
         }
 
         private static DataQueryModel ToDataQueryModel(TaskRunRecord record)

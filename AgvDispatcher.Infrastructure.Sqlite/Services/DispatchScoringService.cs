@@ -170,41 +170,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     }
                 }
 
-                // Hard Veto: Edge Constraints (IsEnabled, IsLocked, AllowedBrands)
-                if (_edgesCache != null && !string.IsNullOrWhiteSpace(task.SourceNodeId) && !string.IsNullOrWhiteSpace(task.TargetNodeId))
-                {
-                    var relevantEdges = _edgesCache.Where(e =>
-                        (e.FromNodeId == task.SourceNodeId || e.ToNodeId == task.SourceNodeId ||
-                         e.FromNodeId == task.TargetNodeId || e.ToNodeId == task.TargetNodeId));
-
-                    bool edgeBlocked = false;
-                    foreach (var edge in relevantEdges)
-                    {
-                        if (!edge.IsEnabled)
-                        {
-                            result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Edge {edge.EdgeId} is disabled" });
-                            edgeBlocked = true;
-                            break;
-                        }
-                        if (edge.IsLocked)
-                        {
-                            result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Edge {edge.EdgeId} is locked" });
-                            edgeBlocked = true;
-                            break;
-                        }
-                        if (!string.IsNullOrWhiteSpace(edge.AllowedBrands))
-                        {
-                            var edgeBrands = edge.AllowedBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
-                            if (!edgeBrands.Any(b => string.Equals(b.Trim(), vehicle.Brand, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                result.Rejections.Add(new RejectionReason { VehicleId = vehicle.VehicleId, Reason = $"Brand '{vehicle.Brand}' not allowed on edge {edge.EdgeId}" });
-                                edgeBlocked = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (edgeBlocked) continue;
-                }
+                // Hard Veto: Edge Constraints are removed from Scoring because a single disabled/locked adjacent edge shouldn't block the task. 
+                // Pathfinding will naturally avoid disabled or brand-restricted edges.
 
                 // Soft Scoring
                 var candidate = CalculateScore(task, vehicle, status);

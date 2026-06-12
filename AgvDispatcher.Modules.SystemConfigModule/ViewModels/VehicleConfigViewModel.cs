@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.Linq;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
@@ -26,6 +28,14 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public ICollectionView VehiclesView { get; }
 
         public IReadOnlyList<VehicleType> VehicleTypes { get; } = Enum.GetValues<VehicleType>();
+
+        public IReadOnlyList<string> AdapterTypes { get; } = new[] { "MockBrandA", "MockBrandB", "MockBrandC", "MockUnstable", "MockFault", "MockOffline", "HttpAdapter", "TcpAdapter" };
+        public IReadOnlyList<string> ProtocolTypes { get; } = new[] { "None", "HTTP", "TCP", "UDP", "Modbus", "MQTT" };
+        public IReadOnlyList<string> NavigationTypes { get; } = new[] { "Laser", "QR_Code", "Magnetic", "SLAM", "Unknown" };
+        public IReadOnlyList<string> LoadModes { get; } = new[] { "Lifting", "Forklift", "Roller", "Towing", "None" };
+
+        public IReadOnlyList<VehicleCapability> CapabilityEnumValues { get; } = Enum.GetValues<VehicleCapability>().Where(e => e != VehicleCapability.None).ToList();
+        public IReadOnlyList<VehicleCommandCapability> CommandEnumValues { get; } = Enum.GetValues<VehicleCommandCapability>().Where(e => e != VehicleCommandCapability.None).ToList();
 
         public ObservableCollection<string> AvailableBrands { get; } = new() { "全部" };
         public ObservableCollection<string> StatusOptions { get; } = new() { "全部", "已启用", "已停用" };
@@ -107,6 +117,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         private void LoadVehicles()
         {
+            var oldFilterBrand = _filterBrand;
+
             Vehicles.Clear();
 
             var brands = _vehicleRepository.GetAllAsync().GetAwaiter().GetResult();
@@ -115,7 +127,18 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             AvailableBrands.Add("全部");
             foreach (var b in brands.Select(v => v.Brand).Distinct().Where(b => !string.IsNullOrEmpty(b)))
             {
-                AvailableBrands.Add(b);
+                if (!AvailableBrands.Contains(b))
+                    AvailableBrands.Add(b);
+            }
+
+            // Restore filter brand to prevent UI items from disappearing due to null filter
+            if (oldFilterBrand != null && AvailableBrands.Contains(oldFilterBrand))
+            {
+                FilterBrand = oldFilterBrand;
+            }
+            else
+            {
+                FilterBrand = "全部";
             }
 
             foreach (var vehicle in brands)
@@ -242,6 +265,35 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
     public class EditableVehicle : BindableBase
     {
+        private bool _isSyncingCapabilities = false;
+        private bool _isSyncingCommands = false;
+
+        public ObservableCollection<VehicleCapability> SelectedCapabilities { get; } = new();
+        public ObservableCollection<VehicleCommandCapability> SelectedCommands { get; } = new();
+
+        public EditableVehicle()
+        {
+            SelectedCapabilities.CollectionChanged += (s, e) =>
+            {
+                if (_isSyncingCapabilities) return;
+                _isSyncingCapabilities = true;
+                VehicleCapability flags = VehicleCapability.None;
+                foreach (var item in SelectedCapabilities) flags |= item;
+                CapabilityFlags = flags;
+                _isSyncingCapabilities = false;
+            };
+
+            SelectedCommands.CollectionChanged += (s, e) =>
+            {
+                if (_isSyncingCommands) return;
+                _isSyncingCommands = true;
+                VehicleCommandCapability flags = VehicleCommandCapability.None;
+                foreach (var item in SelectedCommands) flags |= item;
+                SupportedCommandFlags = flags;
+                _isSyncingCommands = false;
+            };
+        }
+
         private string _vehicleId = string.Empty;
         private string _vehicleCode = string.Empty;
         private string _name = string.Empty;
@@ -314,8 +366,49 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public int HeartbeatTimeoutSeconds { get => _heartbeatTimeoutSeconds; set => SetProperty(ref _heartbeatTimeoutSeconds, value); }
         public string NavigationType { get => _navigationType; set => SetProperty(ref _navigationType, value); }
         public string LoadMode { get => _loadMode; set => SetProperty(ref _loadMode, value); }
-        public VehicleCapability CapabilityFlags { get => _capabilityFlags; set => SetProperty(ref _capabilityFlags, value); }
-        public VehicleCommandCapability SupportedCommandFlags { get => _supportedCommandFlags; set => SetProperty(ref _supportedCommandFlags, value); }
+        public VehicleCapability CapabilityFlags
+        {
+            get => _capabilityFlags;
+            set
+            {
+                if (SetProperty(ref _capabilityFlags, value))
+                {
+                    if (_isSyncingCapabilities) return;
+                    _isSyncingCapabilities = true;
+                    SelectedCapabilities.Clear();
+                    foreach (VehicleCapability flag in Enum.GetValues<VehicleCapability>())
+                    {
+                        if (flag != VehicleCapability.None && value.HasFlag(flag))
+                        {
+                            SelectedCapabilities.Add(flag);
+                        }
+                    }
+                    _isSyncingCapabilities = false;
+                }
+            }
+        }
+
+        public VehicleCommandCapability SupportedCommandFlags
+        {
+            get => _supportedCommandFlags;
+            set
+            {
+                if (SetProperty(ref _supportedCommandFlags, value))
+                {
+                    if (_isSyncingCommands) return;
+                    _isSyncingCommands = true;
+                    SelectedCommands.Clear();
+                    foreach (VehicleCommandCapability flag in Enum.GetValues<VehicleCommandCapability>())
+                    {
+                        if (flag != VehicleCommandCapability.None && value.HasFlag(flag))
+                        {
+                            SelectedCommands.Add(flag);
+                        }
+                    }
+                    _isSyncingCommands = false;
+                }
+            }
+        }
         public string HomeNodeId { get => _homeNodeId; set => SetProperty(ref _homeNodeId, value); }
         public string ChargeNodeId { get => _chargeNodeId; set => SetProperty(ref _chargeNodeId, value); }
         public double? MinDispatchBattery { get => _minDispatchBattery; set => SetProperty(ref _minDispatchBattery, value); }

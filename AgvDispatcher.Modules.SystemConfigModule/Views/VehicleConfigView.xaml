@@ -2,6 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:prism="http://prismlibrary.com/"
+             xmlns:hc="https://handyorg.github.io/handycontrol"
+             xmlns:behaviors="clr-namespace:AgvDispatcher.Modules.SystemConfigModule.Behaviors"
              prism:ViewModelLocator.AutoWireViewModel="True">
     <UserControl.Resources>
         <Style TargetType="TextBlock">
@@ -248,11 +250,11 @@
 
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="适配器类型" Style="{StaticResource FieldLabelStyle}"/>
-                                <TextBox Text="{Binding CurrentVehicle.AdapterType, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                                <ComboBox IsEditable="True" ItemsSource="{Binding AdapterTypes}" Text="{Binding CurrentVehicle.AdapterType, UpdateSourceTrigger=PropertyChanged}" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="协议类型" Style="{StaticResource FieldLabelStyle}"/>
-                                <TextBox Text="{Binding CurrentVehicle.ProtocolType, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                                <ComboBox IsEditable="True" ItemsSource="{Binding ProtocolTypes}" Text="{Binding CurrentVehicle.ProtocolType, UpdateSourceTrigger=PropertyChanged}" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                         </Grid>
 
@@ -282,19 +284,20 @@
 
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="导航方式" Style="{StaticResource FieldLabelStyle}"/>
-                                <TextBox Text="{Binding CurrentVehicle.NavigationType, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                                <ComboBox IsEditable="True" ItemsSource="{Binding NavigationTypes}" Text="{Binding CurrentVehicle.NavigationType, UpdateSourceTrigger=PropertyChanged}" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="取放货方式" Style="{StaticResource FieldLabelStyle}"/>
-                                <TextBox Text="{Binding CurrentVehicle.LoadMode, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                                <ComboBox IsEditable="True" ItemsSource="{Binding LoadModes}" Text="{Binding CurrentVehicle.LoadMode, UpdateSourceTrigger=PropertyChanged}" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                         </Grid>
 
-                        <TextBlock Text="车辆能力(数字枚举和)" Style="{StaticResource FieldLabelStyle}"/>
-                        <TextBox Text="{Binding CurrentVehicle.CapabilityFlags, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                        <TextBlock Text="车辆能力(多选)" Style="{StaticResource FieldLabelStyle}"/>
+                        <hc:CheckComboBox ItemsSource="{Binding CapabilityEnumValues}" SelectionMode="Multiple" behaviors:SelectedItemsBehavior.SelectedItems="{Binding CurrentVehicle.SelectedCapabilities}" ShowSelectAllButton="True" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
 
-                        <TextBlock Text="支持指令(数字枚举和)" Style="{StaticResource FieldLabelStyle}"/>
-                        <TextBox Text="{Binding CurrentVehicle.SupportedCommandFlags, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputStyle}"/>
+                        <TextBlock Text="支持指令(多选)" Style="{StaticResource FieldLabelStyle}"/>
+                        <hc:CheckComboBox ItemsSource="{Binding CommandEnumValues}" SelectionMode="Multiple" behaviors:SelectedItemsBehavior.SelectedItems="{Binding CurrentVehicle.SelectedCommands}" ShowSelectAllButton="True" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
+
 
                         <Grid>
                             <Grid.ColumnDefinitions>

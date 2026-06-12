@@ -108,10 +108,25 @@ namespace AgvDispatcher.Modules.DataQueryModule.ViewModels
     {
         public ObservableCollection<AlarmDataModel> DataList { get; set; }
 
+        private readonly IDataQueryService _dataQueryService;
+        public DelegateCommand RefreshCommand { get; }
+
         public DataQueryAlarmDataViewModel(IDataQueryService dataQueryService)
         {
-            DataList = new ObservableCollection<AlarmDataModel>(
-                dataQueryService.GetAlarmRecords().Select(ToAlarmDataModel));
+            _dataQueryService = dataQueryService;
+            DataList = new ObservableCollection<AlarmDataModel>();
+            RefreshCommand = new DelegateCommand(LoadData);
+            LoadData();
+        }
+
+        private void LoadData()
+        {
+            DataList.Clear();
+            var records = _dataQueryService.GetAlarmRecords();
+            foreach (var record in records)
+            {
+                DataList.Add(ToAlarmDataModel(record));
+            }
         }
 
         private static AlarmDataModel ToAlarmDataModel(AlarmRecord record)
@@ -133,10 +148,25 @@ namespace AgvDispatcher.Modules.DataQueryModule.ViewModels
     {
         public ObservableCollection<InteractionDataModel> DataList { get; set; }
 
+        private readonly IDataQueryService _dataQueryService;
+        public DelegateCommand RefreshCommand { get; }
+
         public DataQueryInteractionDataViewModel(IDataQueryService dataQueryService)
         {
-            DataList = new ObservableCollection<InteractionDataModel>(
-                dataQueryService.GetInteractionRecords().Select(ToInteractionDataModel));
+            _dataQueryService = dataQueryService;
+            DataList = new ObservableCollection<InteractionDataModel>();
+            RefreshCommand = new DelegateCommand(LoadData);
+            LoadData();
+        }
+
+        private void LoadData()
+        {
+            DataList.Clear();
+            var records = _dataQueryService.GetInteractionRecords();
+            foreach (var record in records)
+            {
+                DataList.Add(ToInteractionDataModel(record));
+            }
         }
 
         private static InteractionDataModel ToInteractionDataModel(InteractionRecord record)
@@ -158,10 +188,25 @@ namespace AgvDispatcher.Modules.DataQueryModule.ViewModels
     {
         public ObservableCollection<EnergyDataModel> DataList { get; set; }
 
+        private readonly IDataQueryService _dataQueryService;
+        public DelegateCommand RefreshCommand { get; }
+
         public DataQueryEnergyDataViewModel(IDataQueryService dataQueryService)
         {
-            DataList = new ObservableCollection<EnergyDataModel>(
-                dataQueryService.GetEnergyRecords().Select(ToEnergyDataModel));
+            _dataQueryService = dataQueryService;
+            DataList = new ObservableCollection<EnergyDataModel>();
+            RefreshCommand = new DelegateCommand(LoadData);
+            LoadData();
+        }
+
+        private void LoadData()
+        {
+            DataList.Clear();
+            var records = _dataQueryService.GetEnergyRecords();
+            foreach (var record in records)
+            {
+                DataList.Add(ToEnergyDataModel(record));
+            }
         }
 
         private static EnergyDataModel ToEnergyDataModel(EnergyRecord record)
@@ -183,10 +228,25 @@ namespace AgvDispatcher.Modules.DataQueryModule.ViewModels
     {
         public ObservableCollection<DeviceLogModel> DataList { get; set; }
 
+        private readonly IDataQueryService _dataQueryService;
+        public DelegateCommand RefreshCommand { get; }
+
         public DataQueryDeviceLogViewModel(IDataQueryService dataQueryService)
         {
-            DataList = new ObservableCollection<DeviceLogModel>(
-                dataQueryService.GetDeviceLogRecords().Select(ToDeviceLogModel));
+            _dataQueryService = dataQueryService;
+            DataList = new ObservableCollection<DeviceLogModel>();
+            RefreshCommand = new DelegateCommand(LoadData);
+            LoadData();
+        }
+
+        private void LoadData()
+        {
+            DataList.Clear();
+            var records = _dataQueryService.GetDeviceLogRecords();
+            foreach (var record in records)
+            {
+                DataList.Add(ToDeviceLogModel(record));
+            }
         }
 
         private static DeviceLogModel ToDeviceLogModel(DeviceLogRecord record)

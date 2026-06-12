@@ -93,7 +93,20 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="充电桩ID" Binding="{Binding StationId}" Width="*"/>
                         <DataGridTextColumn Header="充电桩名称" Binding="{Binding Name}" Width="*"/>
-                        <DataGridTextColumn Header="绑定节点ID" Binding="{Binding NodeId}" Width="*"/>
+                        <DataGridTemplateColumn Header="绑定节点ID" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding NodeId}" VerticalAlignment="Center" Margin="5,0"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate>
+                                    <ComboBox ItemsSource="{Binding DataContext.AvailableNodeIds, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                              SelectedItem="{Binding NodeId, UpdateSourceTrigger=PropertyChanged}" 
+                                              IsEditable="True"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="所属区域" Binding="{Binding AreaCode}" Width="*"/>
                         <DataGridTextColumn Header="支持品牌" Binding="{Binding AllowedBrands}" Width="*"/>
                         <DataGridTextColumn Header="协议" Binding="{Binding ProtocolType}" Width="*"/>

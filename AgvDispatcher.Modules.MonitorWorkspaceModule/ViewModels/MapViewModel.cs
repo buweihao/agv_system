@@ -14,6 +14,9 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         private readonly IMapService _mapService;
         private readonly IVehicleStateStore _vehicleStateStore;
         private readonly ITaskService _taskService;
+        private readonly IMapLocationAliasRepository _aliasRepo;
+        
+        private IReadOnlyList<MapLocationAlias> _aliases = new List<MapLocationAlias>();
 
         private string? _selectedVehicleId;
         private string _pathSummary = "请选择AGV查看规划路径";
@@ -32,19 +35,74 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             set => SetProperty(ref _pathSummary, value);
         }
 
+        private string _detailTitle = "详情";
+        public string DetailTitle
+        {
+            get => _detailTitle;
+            set => SetProperty(ref _detailTitle, value);
+        }
+
+        private string _detailContent = "点击地图元素查看详情";
+        public string DetailContent
+        {
+            get => _detailContent;
+            set => SetProperty(ref _detailContent, value);
+        }
+
+        public DelegateCommand<object> MapItemClickCommand { get; }
+
         public MapViewModel(
             IEventAggregator eventAggregator,
             IMapService mapService,
             IVehicleStateStore vehicleStateStore,
-            ITaskService taskService)
+            ITaskService taskService,
+            IMapLocationAliasRepository aliasRepo)
         {
             _mapService = mapService;
             _vehicleStateStore = vehicleStateStore;
             _taskService = taskService;
+            _aliasRepo = aliasRepo;
 
-            LoadMap(null);
+            MapItemClickCommand = new DelegateCommand<object>(OnMapItemClicked);
+
+            LoadAliasesAsync().ContinueWith(_ => LoadMap(null), TaskScheduler.FromCurrentSynchronizationContext());
             eventAggregator.GetEvent<SelectedVehicleChangedEvent>().Subscribe(LoadMap, ThreadOption.UIThread);
             eventAggregator.GetEvent<VehicleStateChangedEvent>().Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
+        }
+
+        private void OnMapItemClicked(object item)
+        {
+            if (item is MapNodeViewItem node)
+            {
+                DetailTitle = $"节点详情: {node.Name}";
+                DetailContent = $"节点ID: {node.NodeId}\n类型: {node.NodeType}\n区域: {node.AreaCode}\n" +
+                                $"启用状态: {(node.IsEnabled ? "是" : "否")}\n别名配置: 获取中...";
+                
+                // Fetch aliases asynchronously and update
+                Task.Run(() => 
+                {
+                    var nodeAliases = _aliases.Where(a => a.NodeId == node.NodeId).Select(a => a.AliasValue);
+                    var aliasStr = nodeAliases.Any() ? string.Join(", ", nodeAliases) : "无";
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => DetailContent = DetailContent.Replace("获取中...", aliasStr));
+                });
+            }
+            else if (item is MapEdgeViewItem edge)
+            {
+                DetailTitle = $"路径详情";
+                DetailContent = $"起始节点: {edge.EdgeId}\n从: {edge.FromNodeId}  到: {edge.ToNodeId}\n" +
+                                $"方向: {(edge.IsBidirectional ? "双向" : "单向")}\n限制速度: {edge.MaxSpeed} m/s";
+            }
+            else if (item is VehicleMapViewItem vehicle)
+            {
+                DetailTitle = $"车辆详情: {vehicle.VehicleId}";
+                var taskStr = string.IsNullOrWhiteSpace(vehicle.CurrentTaskId) ? "无任务" : vehicle.CurrentTaskId;
+                DetailContent = $"状态: {vehicle.State}\n当前位置: {vehicle.Location}\n当前任务: {taskStr}\n电量: {vehicle.BatteryLevel:F1}%";
+            }
+        }
+
+        private async Task LoadAliasesAsync()
+        {
+            _aliases = await _aliasRepo.GetAllAsync();
         }
 
         private void LoadMap(string? selectedVehicleId)
@@ -112,7 +170,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 return null;
             }
 
-            var startNode = ResolveNode(vehicle.Location, nodes);
+            var startNode = ResolveNode(vehicle.Location, nodes, _aliases);
             var targetNodeId = ResolveTargetNodeId(vehicle);
 
             if (startNode is null || string.IsNullOrWhiteSpace(targetNodeId))
@@ -120,7 +178,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 return null;
             }
 
-            var targetNode = ResolveNode(targetNodeId, nodes);
+            var targetNode = ResolveNode(targetNodeId, nodes, _aliases);
             if (targetNode is null || string.Equals(startNode.NodeId, targetNode.NodeId, StringComparison.OrdinalIgnoreCase))
             {
                 return null;
@@ -136,7 +194,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 return "请选择AGV查看规划路径";
             }
 
-            var startNode = ResolveNode(vehicle.Location, nodes);
+            var startNode = ResolveNode(vehicle.Location, nodes, _aliases);
             var targetNodeId = ResolveTargetNodeId(vehicle);
 
             if (startNode is null)
@@ -189,6 +247,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 EdgeId = edge.EdgeId,
                 FromNodeId = edge.FromNodeId,
                 ToNodeId = edge.ToNodeId,
+                IsBidirectional = edge.Direction == AgvDispatcher.Core.Enums.EdgeDirection.Bidirectional,
+                MaxSpeed = edge.MaxSpeed,
                 X1 = fromNode.Position.X,
                 Y1 = fromNode.Position.Y,
                 X2 = toNode.Position.X,
@@ -207,6 +267,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 Name = node.Name,
                 NodeCode = string.IsNullOrWhiteSpace(node.NodeCode) ? node.NodeId : node.NodeCode,
                 NodeType = node.NodeType.ToString(),
+                AreaCode = node.AreaCode,
+                IsEnabled = node.IsEnabled,
                 X = node.Position.X,
                 Y = node.Position.Y,
                 CanvasLeft = node.Position.X - 9,
@@ -230,7 +292,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         {
             foreach (var snapshot in _vehicleStateStore.GetAllVehicles())
             {
-                var node = ResolveNode(snapshot.Location, nodes);
+                var node = ResolveNode(snapshot.Location, nodes, _aliases);
                 if (node is null)
                 {
                     continue;
@@ -240,6 +302,9 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 yield return new VehicleMapViewItem
                 {
                     VehicleId = snapshot.VehicleId,
+                    CurrentTaskId = snapshot.CurrentTaskId ?? string.Empty,
+                    State = snapshot.State.ToString(),
+                    Location = snapshot.Location,
                     X = node.Position.X,
                     Y = node.Position.Y,
                     CanvasLeft = node.Position.X - 15,
@@ -260,11 +325,19 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             }
         }
 
-        private static MapNode? ResolveNode(string? location, IReadOnlyList<MapNode> nodes)
+        private static MapNode? ResolveNode(string? location, IReadOnlyList<MapNode> nodes, IReadOnlyList<MapLocationAlias> aliases)
         {
             if (string.IsNullOrWhiteSpace(location))
             {
                 return null;
+            }
+
+            var alias = aliases.FirstOrDefault(a => 
+                a.IsEnabled && string.Equals(a.AliasValue, location, StringComparison.OrdinalIgnoreCase));
+            if (alias != null)
+            {
+                var mappedNode = nodes.FirstOrDefault(n => n.NodeId == alias.NodeId);
+                if (mappedNode != null) return mappedNode;
             }
 
             var exact = nodes.FirstOrDefault(node =>
@@ -308,6 +381,10 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
         public string ToNodeId { get; set; } = string.Empty;
 
+        public bool IsBidirectional { get; set; }
+
+        public double MaxSpeed { get; set; }
+
         public double X1 { get; set; }
 
         public double Y1 { get; set; }
@@ -333,6 +410,10 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
         public string NodeType { get; set; } = string.Empty;
 
+        public string AreaCode { get; set; } = string.Empty;
+
+        public bool IsEnabled { get; set; }
+
         public double X { get; set; }
 
         public double Y { get; set; }
@@ -355,6 +436,12 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     public class VehicleMapViewItem
     {
         public string VehicleId { get; set; } = string.Empty;
+
+        public string CurrentTaskId { get; set; } = string.Empty;
+
+        public string State { get; set; } = string.Empty;
+
+        public string Location { get; set; } = string.Empty;
 
         public double X { get; set; }
 

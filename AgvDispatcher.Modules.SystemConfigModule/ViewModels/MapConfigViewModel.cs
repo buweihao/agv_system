@@ -6,15 +6,32 @@ using Prism.Commands;
 using Prism.Mvvm;
 using System.ComponentModel;
 using System.Windows.Data;
+using System.Windows;
+using System.IO;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Microsoft.Win32;
 
 namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 {
     public class MapConfigViewModel : BindableBase
     {
         private readonly IMapRepository _mapRepository;
+        private readonly IMapValidationService _validationService;
+        private readonly IChargeStationRepository _chargeStationRepo;
+        private readonly IMapLocationAliasRepository _aliasRepo;
         
         public ObservableCollection<MapNode> Nodes { get; } = new();
         public ObservableCollection<MapEdge> Edges { get; } = new();
+        public ObservableCollection<MapValidationResult> ValidationResults { get; } = new();
+
+        private bool _isValidationResultsVisible;
+        public bool IsValidationResultsVisible
+        {
+            get => _isValidationResultsVisible;
+            set => SetProperty(ref _isValidationResultsVisible, value);
+        }
 
         private MapNode? _selectedNode;
         public MapNode? SelectedNode
@@ -40,12 +57,23 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public DelegateCommand SaveEdgeCommand { get; }
         public DelegateCommand DeleteEdgeCommand { get; }
 
+        public DelegateCommand ValidateCommand { get; }
+        public DelegateCommand ImportCommand { get; }
+        public DelegateCommand ExportCommand { get; }
+
         public int TotalNodes => Nodes.Count;
         public int TotalEdges => Edges.Count;
 
-        public MapConfigViewModel(IMapRepository mapRepository)
+        public MapConfigViewModel(
+            IMapRepository mapRepository, 
+            IMapValidationService validationService,
+            IChargeStationRepository chargeStationRepo,
+            IMapLocationAliasRepository aliasRepo)
         {
             _mapRepository = mapRepository;
+            _validationService = validationService;
+            _chargeStationRepo = chargeStationRepo;
+            _aliasRepo = aliasRepo;
 
             RefreshCommand = new DelegateCommand(LoadData);
 
@@ -56,6 +84,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             AddEdgeCommand = new DelegateCommand(AddEdge);
             SaveEdgeCommand = new DelegateCommand(SaveEdge, () => SelectedEdge != null).ObservesProperty(() => SelectedEdge);
             DeleteEdgeCommand = new DelegateCommand(DeleteEdge, () => SelectedEdge != null).ObservesProperty(() => SelectedEdge);
+
+            ValidateCommand = new DelegateCommand(ValidateMapAsync);
+            ImportCommand = new DelegateCommand(ImportMapAsync);
+            ExportCommand = new DelegateCommand(ExportMapAsync);
 
             LoadData();
         }
@@ -148,6 +180,29 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             if (SelectedEdge == null) return;
             _mapRepository.DeleteEdgeAsync(SelectedEdge.EdgeId).GetAwaiter().GetResult();
             LoadData();
+        }
+
+        private async void ValidateMapAsync()
+        {
+            var errors = await _validationService.ValidateMapAsync();
+            if (errors.Any())
+            {
+                System.Windows.MessageBox.Show($"Map validation failed with {errors.Count} errors.\nFirst error: {errors.First()}", "Validation Result", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("Map validation passed.", "Validation Result", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            }
+        }
+
+        private void ImportMapAsync()
+        {
+            // Import logic
+        }
+
+        private void ExportMapAsync()
+        {
+            // Export logic
         }
     }
 }

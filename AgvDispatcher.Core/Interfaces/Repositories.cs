@@ -45,6 +45,15 @@ namespace AgvDispatcher.Core.Interfaces
         Task DeleteEdgeAsync(string edgeId);
     }
 
+    public interface IMapLocationAliasRepository
+    {
+        Task<IReadOnlyList<MapLocationAlias>> GetAllAsync();
+
+        Task SaveAsync(MapLocationAlias alias);
+
+        Task DeleteAsync(string aliasId);
+    }
+
     public interface ITaskTemplateRepository
     {
         Task<IReadOnlyList<TaskTemplateConfig>> GetAllAsync();

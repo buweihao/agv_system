@@ -23,6 +23,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
 
         public DbSet<MapEdge> MapEdges => Set<MapEdge>();
 
+        public DbSet<MapLocationAlias> MapLocationAliases => Set<MapLocationAlias>();
+
         public DbSet<TaskTemplateConfig> TaskTemplates => Set<TaskTemplateConfig>();
 
         public DbSet<ParameterConfig> SystemParameters => Set<ParameterConfig>();
@@ -38,10 +40,27 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             ConfigureVehicle(modelBuilder);
             ConfigureChargeStation(modelBuilder);
             ConfigureMap(modelBuilder);
+            ConfigureMapLocationAlias(modelBuilder);
             ConfigureTaskConfig(modelBuilder);
             ConfigureAlarm(modelBuilder);
             ConfigureOperationLog(modelBuilder);
             ConfigureTaskOrder(modelBuilder);
+        }
+
+        private static void ConfigureMapLocationAlias(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<MapLocationAlias>(entity =>
+            {
+                entity.ToTable("MapLocationAliases");
+                entity.HasKey(e => e.AliasId);
+                entity.Property(e => e.AliasId).HasMaxLength(64);
+                entity.Property(e => e.MapId).HasMaxLength(64);
+                entity.Property(e => e.NodeId).HasMaxLength(64);
+                entity.Property(e => e.AliasType).HasMaxLength(64);
+                entity.Property(e => e.AliasValue).HasMaxLength(128);
+                entity.Property(e => e.Brand).HasMaxLength(64);
+                entity.Property(e => e.Remark).HasMaxLength(256);
+            });
         }
 
         private static void ConfigureVehicle(ModelBuilder modelBuilder)

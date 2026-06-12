@@ -288,7 +288,20 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="节点名称" Binding="{Binding NodeName}" Width="*"/>
+                            <DataGridTemplateColumn Header="节点名称" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding NodeName}" VerticalAlignment="Center" Margin="5,0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <ComboBox ItemsSource="{Binding DataContext.AvailableNodeIds, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                  SelectedItem="{Binding NodeName, UpdateSourceTrigger=PropertyChanged}" 
+                                                  IsEditable="True"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="动作配置" Binding="{Binding ActionConfig}" Width="*"/>
                             <DataGridTextColumn Header="参数配置" Binding="{Binding ParamConfig}" Width="*"/>
                             <DataGridTextColumn Header="超时(s)" Binding="{Binding Timeout}" Width="60"/>

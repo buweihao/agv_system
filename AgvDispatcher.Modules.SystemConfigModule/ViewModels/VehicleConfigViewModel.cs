@@ -17,6 +17,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
     {
         private readonly IVehicleRepository _vehicleRepository;
         private readonly IEventAggregator _eventAggregator;
+        private readonly IMapRepository _mapRepository;
         private Vehicle? _selectedVehicle;
         private EditableVehicle _currentVehicle = new();
         private string _statusMessage = "请选择车辆或新增车辆档案";
@@ -40,6 +41,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public ObservableCollection<string> AvailableBrands { get; } = new() { "全部" };
         public ObservableCollection<string> StatusOptions { get; } = new() { "全部", "已启用", "已停用" };
         public ObservableCollection<string> CapabilityOptions { get; } = new() { "全部", "搬运", "顶升", "叉取", "牵引", "滚筒", "充电", "自动充电" };
+        public ObservableCollection<string> AvailableNodeIds { get; } = new();
 
         public string FilterBrand
         {
@@ -98,10 +100,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         public int EnabledCount => Vehicles.Count(vehicle => vehicle.IsEnabled);
 
-        public VehicleConfigViewModel(IVehicleRepository vehicleRepository, IEventAggregator eventAggregator)
+        public VehicleConfigViewModel(IVehicleRepository vehicleRepository, IEventAggregator eventAggregator, IMapRepository mapRepository)
         {
             _vehicleRepository = vehicleRepository;
             _eventAggregator = eventAggregator;
+            _mapRepository = mapRepository;
 
             VehiclesView = CollectionViewSource.GetDefaultView(Vehicles);
             VehiclesView.Filter = FilterVehicle;
@@ -112,7 +115,21 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             DeleteCommand = new DelegateCommand(DeleteVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
             CopyCommand = new DelegateCommand(CopyVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
 
+            LoadNodesAsync();
             LoadVehicles();
+        }
+
+        private async void LoadNodesAsync()
+        {
+            var nodes = await _mapRepository.GetNodesAsync();
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                AvailableNodeIds.Clear();
+                foreach (var node in nodes)
+                {
+                    AvailableNodeIds.Add(node.NodeId);
+                }
+            });
         }
 
         private void LoadVehicles()

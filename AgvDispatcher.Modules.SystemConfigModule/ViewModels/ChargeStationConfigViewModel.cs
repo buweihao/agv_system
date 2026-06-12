@@ -9,8 +9,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
     public class ChargeStationConfigViewModel : BindableBase
     {
         private readonly IChargeStationRepository _chargeStationRepository;
+        private readonly IMapRepository _mapRepository;
         
         public ObservableCollection<ChargeStation> Stations { get; } = new();
+        public ObservableCollection<string> AvailableNodeIds { get; } = new();
 
         private ChargeStation? _selectedStation;
         public ChargeStation? SelectedStation
@@ -27,9 +29,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         public int TotalStations => Stations.Count;
 
-        public ChargeStationConfigViewModel(IChargeStationRepository chargeStationRepository)
+        public ChargeStationConfigViewModel(IChargeStationRepository chargeStationRepository, IMapRepository mapRepository)
         {
             _chargeStationRepository = chargeStationRepository;
+            _mapRepository = mapRepository;
 
             RefreshCommand = new DelegateCommand(LoadData);
 
@@ -37,7 +40,21 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             SaveStationCommand = new DelegateCommand(SaveStation, () => SelectedStation != null).ObservesProperty(() => SelectedStation);
             DeleteStationCommand = new DelegateCommand(DeleteStation, () => SelectedStation != null).ObservesProperty(() => SelectedStation);
 
+            LoadNodesAsync();
             LoadData();
+        }
+
+        private async void LoadNodesAsync()
+        {
+            var nodes = await _mapRepository.GetNodesAsync();
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                AvailableNodeIds.Clear();
+                foreach (var node in nodes)
+                {
+                    AvailableNodeIds.Add(node.NodeId);
+                }
+            });
         }
 
         private void LoadData()

@@ -234,12 +234,18 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
                     if (vehicleNode != null && taskNode != null)
                     {
-                        double dx = vehicleNode.Position.X - taskNode.Position.X;
-                        double dy = vehicleNode.Position.Y - taskNode.Position.Y;
-                        double distance = Math.Sqrt(dx * dx + dy * dy);
-                        // Assuming max map distance is ~2000 units.
-                        double distScore = weightDistance - (distance / 2000.0 * weightDistance);
-                        distancePoints = Math.Max(0, distScore);
+                        double distance = CalculateShortestPathDistance(vehicleNode.NodeId, taskNode.NodeId, vehicle);
+                        
+                        if (distance == double.MaxValue)
+                        {
+                            distancePoints = 0; // Unreachable
+                        }
+                        else
+                        {
+                            // Assuming max map distance is ~2000 units.
+                            double distScore = weightDistance - (distance / 2000.0 * weightDistance);
+                            distancePoints = Math.Max(0, distScore);
+                        }
                     }
                     else
                     {
@@ -251,6 +257,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             {
                 distancePoints = weightDistance * 0.3;
             }
+
             score.Breakdown["Distance"] = distancePoints;
 
             // 3. Area Match
@@ -275,6 +282,89 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             score.TotalScore = score.Breakdown.Values.Sum();
             return score;
+        }
+
+        private double CalculateShortestPathDistance(string sourceNodeId, string targetNodeId, Vehicle vehicle)
+        {
+            if (string.Equals(sourceNodeId, targetNodeId, StringComparison.OrdinalIgnoreCase)) return 0;
+            if (_edgesCache == null || _nodesCache == null) return double.MaxValue;
+
+            var graph = new Dictionary<string, List<(string Target, double Length)>>();
+            foreach (var node in _nodesCache)
+            {
+                graph[node.NodeId] = new List<(string, double)>();
+            }
+
+            foreach (var edge in _edgesCache)
+            {
+                if (!edge.IsEnabled) continue;
+                if (edge.Direction == EdgeDirection.Closed) continue;
+
+                // Check brand constraints
+                if (!string.IsNullOrWhiteSpace(edge.AllowedBrands))
+                {
+                    var allowedBrands = edge.AllowedBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (!allowedBrands.Any(b => string.Equals(b.Trim(), vehicle.Brand, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
+                }
+
+                double length = edge.Length > 0 ? edge.Length : 1.0;
+                // Add penalty
+                length += edge.Cost; 
+                if (edge.IsLocked) length += 1000.0;
+
+                if (edge.Direction == EdgeDirection.Bidirectional || edge.Direction == EdgeDirection.ForwardOnly)
+                {
+                    if (graph.ContainsKey(edge.FromNodeId))
+                        graph[edge.FromNodeId].Add((edge.ToNodeId, length));
+                }
+                
+                if (edge.Direction == EdgeDirection.Bidirectional || edge.Direction == EdgeDirection.ReverseOnly)
+                {
+                    if (graph.ContainsKey(edge.ToNodeId))
+                        graph[edge.ToNodeId].Add((edge.FromNodeId, length));
+                }
+            }
+
+            var distances = new Dictionary<string, double>();
+            foreach (var node in _nodesCache) distances[node.NodeId] = double.MaxValue;
+            distances[sourceNodeId] = 0;
+
+            var priorityQueue = new SortedSet<(double Distance, string NodeId)>(Comparer<(double Distance, string NodeId)>.Create((a, b) => 
+                a.Distance == b.Distance ? string.CompareOrdinal(a.NodeId, b.NodeId) : a.Distance.CompareTo(b.Distance)));
+
+            priorityQueue.Add((0, sourceNodeId));
+
+            while (priorityQueue.Count > 0)
+            {
+                var current = priorityQueue.Min;
+                priorityQueue.Remove(current);
+
+                var currentNodeId = current.NodeId;
+                var currentDistance = current.Distance;
+
+                if (currentDistance > distances[currentNodeId]) continue;
+                if (currentNodeId == targetNodeId) return currentDistance;
+
+                if (graph.TryGetValue(currentNodeId, out var neighbors))
+                {
+                    foreach (var neighbor in neighbors)
+                    {
+                        double newDistance = currentDistance + neighbor.Length;
+
+                        if (newDistance < distances[neighbor.Target])
+                        {
+                            priorityQueue.Remove((distances[neighbor.Target], neighbor.Target));
+                            distances[neighbor.Target] = newDistance;
+                            priorityQueue.Add((newDistance, neighbor.Target));
+                        }
+                    }
+                }
+            }
+
+            return double.MaxValue;
         }
     }
 }

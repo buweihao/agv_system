@@ -10,6 +10,20 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             db.Database.EnsureCreated();
 
+            // Execute raw SQL to ensure MapLocationAliases exists for existing databases
+            db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""MapLocationAliases"" (
+                    ""AliasId"" TEXT NOT NULL CONSTRAINT ""PK_MapLocationAliases"" PRIMARY KEY,
+                    ""MapId"" TEXT NOT NULL,
+                    ""NodeId"" TEXT NOT NULL,
+                    ""AliasType"" TEXT NOT NULL,
+                    ""AliasValue"" TEXT NOT NULL,
+                    ""Brand"" TEXT NULL,
+                    ""IsEnabled"" INTEGER NOT NULL,
+                    ""Remark"" TEXT NULL
+                );
+            ");
+
             if (!db.Vehicles.Any())
             {
                 db.Vehicles.AddRange(CreateVehicles());

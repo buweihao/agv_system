@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using AgvDispatcher.Modules.TaskConfigModule.Models;
@@ -15,10 +15,27 @@ namespace AgvDispatcher.Modules.TaskConfigModule.ViewModels
             set => SetProperty(ref _stepList, value);
         }
 
-        public TaskConfigBottomPanelViewModel(ITaskConfigService taskConfigService)
+        public ObservableCollection<string> AvailableNodeIds { get; } = new();
+
+        public TaskConfigBottomPanelViewModel(ITaskConfigService taskConfigService, IMapRepository mapRepository)
         {
             StepList = new ObservableCollection<TaskStepModel>(
                 taskConfigService.GetTaskSteps().Select(ToTaskStepModel));
+
+            LoadNodesAsync(mapRepository);
+        }
+
+        private async void LoadNodesAsync(IMapRepository mapRepository)
+        {
+            var nodes = await mapRepository.GetNodesAsync();
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                AvailableNodeIds.Clear();
+                foreach (var node in nodes)
+                {
+                    AvailableNodeIds.Add(node.NodeId);
+                }
+            });
         }
 
         private static TaskStepModel ToTaskStepModel(TaskStepConfig config)

@@ -68,14 +68,21 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         private void AddStation()
         {
+            if (!AvailableNodeIds.Any())
+            {
+                System.Windows.MessageBox.Show("当前没有可用的 Charge 类型节点，请先在地图节点中配置", "无法新增", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
             var nextNumber = Stations.Count + 1;
+            var defaultNodeId = AvailableNodeIds.FirstOrDefault() ?? "";
             var newStation = new ChargeStation
             {
                 StationId = $"CS{nextNumber:000}",
                 StationCode = $"CS{nextNumber:000}",
                 Name = $"Charge Station {nextNumber}",
-                NodeId = $"N1{nextNumber:00}",
-                Position = new MapPosition { MapId = "MAIN", NodeId = $"N1{nextNumber:00}", X = 0, Y = 0 },
+                NodeId = defaultNodeId,
+                Position = new MapPosition { MapId = "MAIN", NodeId = defaultNodeId, X = 0, Y = 0 },
                 IsEnabled = true,
                 RatedPowerKw = 3.3,
                 OutputVoltage = 48,
@@ -92,6 +99,12 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             if (string.IsNullOrWhiteSpace(SelectedStation.StationId))
             {
                 System.Windows.MessageBox.Show("充电桩ID不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!AvailableNodeIds.Contains(SelectedStation.NodeId))
+            {
+                System.Windows.MessageBox.Show($"充电桩绑定的节点 '{SelectedStation.NodeId}' 无效。它必须是启用的 Charge 类型节点。", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
             _chargeStationRepository.SaveAsync(SelectedStation).GetAwaiter().GetResult();

@@ -262,6 +262,12 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
         private void CreateDemoTask()
         {
+            if (SelectedSourceNode == null || SelectedTargetNode == null)
+            {
+                System.Windows.MessageBox.Show("请先选择任务起点和终点", "提示", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
             var task = _taskService.CreateTask(new TaskCreateRequest
             {
                 TaskType = "搬运",

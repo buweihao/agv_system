@@ -214,6 +214,20 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 return;
             }
 
+            if (!string.IsNullOrWhiteSpace(CurrentVehicle.HomeNodeId) && !AvailableNodeIds.Contains(CurrentVehicle.HomeNodeId))
+            {
+                System.Windows.MessageBox.Show($"待机点 '{CurrentVehicle.HomeNodeId}' 不存在于可用节点中，请重新选择", "验证失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                StatusMessage = "保存失败：待机点无效";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(CurrentVehicle.ChargeNodeId) && !AvailableChargeNodeIds.Contains(CurrentVehicle.ChargeNodeId))
+            {
+                System.Windows.MessageBox.Show($"充电点 '{CurrentVehicle.ChargeNodeId}' 不存在于可用充电节点中，请重新选择", "验证失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                StatusMessage = "保存失败：充电点无效";
+                return;
+            }
+
             var vehicle = CurrentVehicle.ToVehicle();
             _vehicleRepository.SaveAsync(vehicle).GetAwaiter().GetResult();
             _eventAggregator.GetEvent<VehicleConfigurationChangedEvent>().Publish(new VehicleConfigurationChangedMessage

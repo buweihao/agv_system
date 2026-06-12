@@ -92,9 +92,19 @@
                     </DrawingBrush>
                 </Border.Background>
 
-                <Grid>
-                    <Viewbox Stretch="Uniform">
-                        <Canvas Width="860" Height="580" ClipToBounds="True">
+                <Grid Background="Transparent" ClipToBounds="True"
+                      MouseWheel="MapContainer_MouseWheel"
+                      MouseRightButtonDown="MapContainer_MouseRightButtonDown"
+                      MouseRightButtonUp="MapContainer_MouseRightButtonUp"
+                      MouseMove="MapContainer_MouseMove">
+                    <Viewbox Stretch="Uniform" RenderTransformOrigin="0,0">
+                        <Viewbox.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="MapScaleTransform" />
+                                <TranslateTransform x:Name="MapTranslateTransform" />
+                            </TransformGroup>
+                        </Viewbox.RenderTransform>
+                        <Canvas Width="860" Height="580" ClipToBounds="False">
                         <Border Canvas.Left="90" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
                         <Border Canvas.Left="290" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
                         <Border Canvas.Left="490" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>

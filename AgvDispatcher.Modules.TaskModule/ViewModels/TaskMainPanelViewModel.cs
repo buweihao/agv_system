@@ -20,6 +20,24 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         private readonly IEventAggregator _eventAggregator;
         private readonly ITaskService _taskService;
         private readonly IDispatchService _dispatchService;
+        private readonly IMapRepository _mapRepository;
+
+        public ObservableCollection<MapNode> AvailableSourceNodes { get; } = new();
+        public ObservableCollection<MapNode> AvailableTargetNodes { get; } = new();
+
+        private MapNode? _selectedSourceNode;
+        public MapNode? SelectedSourceNode
+        {
+            get => _selectedSourceNode;
+            set => SetProperty(ref _selectedSourceNode, value);
+        }
+
+        private MapNode? _selectedTargetNode;
+        public MapNode? SelectedTargetNode
+        {
+            get => _selectedTargetNode;
+            set => SetProperty(ref _selectedTargetNode, value);
+        }
 
         private ObservableCollection<TaskModel> _taskList = new();
         public ObservableCollection<TaskModel> TaskList
@@ -135,11 +153,13 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         public TaskMainPanelViewModel(
             IEventAggregator eventAggregator,
             ITaskService taskService,
-            IDispatchService dispatchService)
+            IDispatchService dispatchService,
+            IMapRepository mapRepository)
         {
             _eventAggregator = eventAggregator;
             _taskService = taskService;
             _dispatchService = dispatchService;
+            _mapRepository = mapRepository;
 
             foreach (VehicleCapability cap in Enum.GetValues(typeof(VehicleCapability)))
             {
@@ -174,6 +194,26 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             eventAggregator
                 .GetEvent<TaskOrderUpdatedEvent>()
                 .Subscribe(_ => RefreshTasks(), ThreadOption.UIThread);
+
+            LoadNodesAsync();
+        }
+
+        private async void LoadNodesAsync()
+        {
+            var nodes = await _mapRepository.GetNodesAsync();
+            var activeNodes = nodes.Where(n => n.IsEnabled).ToList();
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                AvailableSourceNodes.Clear();
+                AvailableTargetNodes.Clear();
+                foreach (var n in activeNodes)
+                {
+                    AvailableSourceNodes.Add(n);
+                    AvailableTargetNodes.Add(n);
+                }
+                SelectedSourceNode = AvailableSourceNodes.FirstOrDefault();
+                SelectedTargetNode = AvailableTargetNodes.FirstOrDefault();
+            });
         }
 
         private void RefreshTasks()
@@ -226,8 +266,8 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             {
                 TaskType = "搬运",
                 TemplateId = "MINIMAL-DISPATCH",
-                SourceNodeId = "A1",
-                TargetNodeId = "B2",
+                SourceNodeId = SelectedSourceNode?.NodeId ?? string.Empty,
+                TargetNodeId = SelectedTargetNode?.NodeId ?? string.Empty,
                 Priority = TaskPriority.Normal,
                 CargoCode = $"CARGO-{DateTime.Now:HHmmss}",
                 CargoName = "测试物料",

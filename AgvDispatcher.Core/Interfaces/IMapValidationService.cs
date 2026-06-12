@@ -18,5 +18,6 @@ namespace AgvDispatcher.Core.Interfaces
     public interface IMapValidationService
     {
         Task<IReadOnlyList<MapValidationResult>> ValidateMapAsync();
+        Task<IReadOnlyList<MapValidationResult>> ValidateMapDataAsync(IEnumerable<AgvDispatcher.Core.Models.MapNode> nodes, IEnumerable<AgvDispatcher.Core.Models.MapEdge> edges, IEnumerable<AgvDispatcher.Core.Models.ChargeStation> chargeStations, IEnumerable<AgvDispatcher.Core.Models.MapLocationAlias> aliases);
     }
 }

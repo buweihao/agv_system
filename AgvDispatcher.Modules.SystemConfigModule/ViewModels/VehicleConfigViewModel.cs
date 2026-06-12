@@ -42,6 +42,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public ObservableCollection<string> StatusOptions { get; } = new() { "全部", "已启用", "已停用" };
         public ObservableCollection<string> CapabilityOptions { get; } = new() { "全部", "搬运", "顶升", "叉取", "牵引", "滚筒", "充电", "自动充电" };
         public ObservableCollection<string> AvailableNodeIds { get; } = new();
+        public ObservableCollection<string> AvailableChargeNodeIds { get; } = new();
 
         public string FilterBrand
         {
@@ -125,9 +126,14 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 AvailableNodeIds.Clear();
-                foreach (var node in nodes)
+                AvailableChargeNodeIds.Clear();
+                foreach (var node in nodes.Where(n => n.IsEnabled))
                 {
                     AvailableNodeIds.Add(node.NodeId);
+                    if (node.NodeType == MapNodeType.Charge)
+                    {
+                        AvailableChargeNodeIds.Add(node.NodeId);
+                    }
                 }
             });
         }

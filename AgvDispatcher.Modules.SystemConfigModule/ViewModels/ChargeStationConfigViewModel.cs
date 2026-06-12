@@ -50,7 +50,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 AvailableNodeIds.Clear();
-                foreach (var node in nodes)
+                foreach (var node in nodes.Where(n => n.IsEnabled && n.NodeType == AgvDispatcher.Core.Enums.MapNodeType.Charge))
                 {
                     AvailableNodeIds.Add(node.NodeId);
                 }

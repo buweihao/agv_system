@@ -184,25 +184,125 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         private async void ValidateMapAsync()
         {
-            var errors = await _validationService.ValidateMapAsync();
-            if (errors.Any())
+            ValidationResults.Clear();
+
+            var results = await _validationService.ValidateMapAsync();
+            foreach (var result in results)
             {
-                System.Windows.MessageBox.Show($"Map validation failed with {errors.Count} errors.\nFirst error: {errors.First()}", "Validation Result", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                ValidationResults.Add(result);
             }
-            else
+
+            IsValidationResultsVisible = true;
+
+            var errorCount = results.Count(x => x.Level == MapValidationLevel.Error);
+            var warningCount = results.Count(x => x.Level == MapValidationLevel.Warning);
+
+            System.Windows.MessageBox.Show($"校验完成：Error={errorCount}, Warning={warningCount}, Total={results.Count}");
+        }
+
+        private async void ImportMapAsync()
+        {
+            var openFileDialog = new OpenFileDialog
             {
-                System.Windows.MessageBox.Show("Map validation passed.", "Validation Result", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                Filter = "JSON 文件 (*.json)|*.json|所有文件 (*.*)|*.*",
+                Title = "导入地图配置"
+            };
+
+            if (openFileDialog.ShowDialog() != true) return;
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(openFileDialog.FileName);
+                var data = JsonSerializer.Deserialize<MapExportData>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                
+                if (data == null || data.MapNodes == null || data.MapEdges == null)
+                {
+                    System.Windows.MessageBox.Show("导入失败：文件格式不正确或为空", "错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    return;
+                }
+
+                // 前置校验
+                var chargeStations = data.ChargeStations ?? new List<ChargeStation>();
+                var aliases = data.MapLocationAliases ?? new List<MapLocationAlias>();
+                
+                var results = await _validationService.ValidateMapDataAsync(data.MapNodes, data.MapEdges, chargeStations, aliases);
+                if (results.Any(r => r.Level == MapValidationLevel.Error))
+                {
+                    var firstError = results.First(r => r.Level == MapValidationLevel.Error).Message;
+                    System.Windows.MessageBox.Show($"导入失败：检测到冲突或无效数据。\n{firstError}", "校验错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    return;
+                }
+
+                // 校验通过，清理旧数据并保存新数据
+                var oldNodes = await _mapRepository.GetNodesAsync();
+                foreach (var n in oldNodes) await _mapRepository.DeleteNodeAsync(n.NodeId);
+                var oldEdges = await _mapRepository.GetEdgesAsync();
+                foreach (var e in oldEdges) await _mapRepository.DeleteEdgeAsync(e.EdgeId);
+                var oldCharges = await _chargeStationRepo.GetAllAsync();
+                foreach (var c in oldCharges) await _chargeStationRepo.DeleteAsync(c.StationId);
+                var oldAliases = await _aliasRepo.GetAllAsync();
+                foreach (var a in oldAliases) await _aliasRepo.DeleteAsync(a.AliasId);
+
+                // 保存新数据
+                foreach (var n in data.MapNodes) await _mapRepository.SaveNodeAsync(n);
+                foreach (var e in data.MapEdges) await _mapRepository.SaveEdgeAsync(e);
+                foreach (var c in chargeStations) await _chargeStationRepo.SaveAsync(c);
+                foreach (var a in aliases) await _aliasRepo.SaveAsync(a);
+
+                LoadData();
+                System.Windows.MessageBox.Show("导入地图配置成功", "成功", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"导入地图失败: {ex.Message}", "错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             }
         }
 
-        private void ImportMapAsync()
+        private async void ExportMapAsync()
         {
-            // Import logic
-        }
+            var saveFileDialog = new SaveFileDialog
+            {
+                Filter = "JSON 文件 (*.json)|*.json",
+                Title = "导出地图配置",
+                FileName = $"MapConfig_{DateTime.Now:yyyyMMdd_HHmmss}.json"
+            };
 
-        private void ExportMapAsync()
-        {
-            // Export logic
+            if (saveFileDialog.ShowDialog() != true) return;
+
+            try
+            {
+                var data = new MapExportData
+                {
+                    MapNodes = (await _mapRepository.GetNodesAsync()).ToList(),
+                    MapEdges = (await _mapRepository.GetEdgesAsync()).ToList(),
+                    ChargeStations = (await _chargeStationRepo.GetAllAsync()).ToList(),
+                    MapLocationAliases = (await _aliasRepo.GetAllAsync()).ToList(),
+                    MapId = "default",
+                    Version = "1.0",
+                    ExportTime = DateTime.Now
+                };
+
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                var json = JsonSerializer.Serialize(data, options);
+
+                await File.WriteAllTextAsync(saveFileDialog.FileName, json);
+                System.Windows.MessageBox.Show("导出地图配置成功", "成功", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"导出地图失败: {ex.Message}", "错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            }
         }
+    }
+
+    public class MapExportData
+    {
+        public List<MapNode> MapNodes { get; set; } = new();
+        public List<MapEdge> MapEdges { get; set; } = new();
+        public List<ChargeStation> ChargeStations { get; set; } = new();
+        public List<MapLocationAlias> MapLocationAliases { get; set; } = new();
+        public string MapId { get; set; } = "default";
+        public string Version { get; set; } = "1.0";
+        public DateTime ExportTime { get; set; }
     }
 }

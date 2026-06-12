@@ -92,6 +92,20 @@
             </StackPanel>
             
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock Text="起点: " Foreground="#8FB8D8" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <ComboBox ItemsSource="{Binding AvailableSourceNodes}" 
+                          SelectedItem="{Binding SelectedSourceNode}" 
+                          DisplayMemberPath="NodeId" 
+                          Width="80" 
+                          Margin="0,0,10,0"/>
+
+                <TextBlock Text="终点: " Foreground="#8FB8D8" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <ComboBox ItemsSource="{Binding AvailableTargetNodes}" 
+                          SelectedItem="{Binding SelectedTargetNode}" 
+                          DisplayMemberPath="NodeId" 
+                          Width="80" 
+                          Margin="0,0,15,0"/>
+
                 <Button Content="创建测试任务"
                         Command="{Binding CreateDemoTaskCommand}"
                         Background="#00BFFF"

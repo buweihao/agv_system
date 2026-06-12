@@ -312,7 +312,7 @@
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="默认充电点" Style="{StaticResource FieldLabelStyle}"/>
-                                <ComboBox IsEditable="True" ItemsSource="{Binding AvailableNodeIds}" Text="{Binding CurrentVehicle.ChargeNodeId, UpdateSourceTrigger=PropertyChanged}" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
+                                <ComboBox IsEditable="True" ItemsSource="{Binding AvailableChargeNodeIds}" Text="{Binding CurrentVehicle.ChargeNodeId, UpdateSourceTrigger=PropertyChanged}" Width="auto" Margin="0,0,0,12" Height="32" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                         </Grid>
 

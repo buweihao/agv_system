@@ -20,7 +20,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
             var alias = aliases.FirstOrDefault(a => 
                 a.NodeId == nodeId && 
                 a.IsEnabled && 
-                (string.IsNullOrEmpty(brand) || string.Equals(a.Brand, brand, StringComparison.OrdinalIgnoreCase)));
+                (string.IsNullOrWhiteSpace(a.Brand) || string.IsNullOrWhiteSpace(brand) || string.Equals(a.Brand, brand, StringComparison.OrdinalIgnoreCase)));
 
             if (alias != null)
             {
@@ -37,7 +37,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
             var alias = aliases.FirstOrDefault(a => 
                 a.AliasValue == okapiPoint && 
                 a.IsEnabled && 
-                (string.IsNullOrEmpty(brand) || string.Equals(a.Brand, brand, StringComparison.OrdinalIgnoreCase)));
+                (string.IsNullOrWhiteSpace(a.Brand) || string.IsNullOrWhiteSpace(brand) || string.Equals(a.Brand, brand, StringComparison.OrdinalIgnoreCase)));
 
             if (alias != null)
             {

@@ -27,13 +27,13 @@ namespace AgvDispatcher.Infrastructure.Okapi
             _alarmService = alarmService;
         }
 
-        public async Task HandleTaskStateAsync(ReturnTaskStateRequest request, CancellationToken token = default)
+        public async Task<VehicleStatusSnapshot?> HandleTaskStateAsync(ReturnTaskStateRequest request, CancellationToken token = default)
         {
             var vehicleId = await _identityMapper.GetVehicleIdAsync(request.AgvId, token);
             if (vehicleId == null)
             {
                 _logger.LogError($"AgvId:{request.AgvId}", "HandleTaskState", $"Could not find VehicleId for AgvId {request.AgvId}. Ignoring callback.");
-                return;
+                return null;
             }
 
             var taskState = ConvertOkapiTaskState(request.State);
@@ -73,8 +73,9 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 ReportedAt = DateTime.Now
             };
 
-            _statusPublisher.PublishStatus(snapshot);
             _logger.LogReceive(vehicleId, "TaskStateUpdate", $"Status: {robotState}, Task: {request.TaskId}, Fault: {request.FaultCode}");
+            
+            return snapshot;
         }
 
         private TaskState ConvertOkapiTaskState(int state)

@@ -20,38 +20,45 @@ namespace AgvDispatcher.Infrastructure.Okapi
 
         public Task<OkapiApiResult> GetAgvInfosAsync(CancellationToken token)
         {
-            return SendPostAsync<object>(new { }, _options.ApiGetAgvInfos, "GetAgvInfos", "System", null, token);
+            return SendAsync<object>(HttpMethod.Get, null, _options.ApiGetAgvInfos, "GetAgvInfos", "System", null, token);
         }
         
         public Task<OkapiApiResult> GetTaskInfosAsync(CancellationToken token)
         {
-            return SendPostAsync<object>(new { }, _options.ApiGetTaskInfos, "GetTaskInfos", "System", null, token);
+            return SendAsync<object>(HttpMethod.Get, null, _options.ApiGetTaskInfos, "GetTaskInfos", "System", null, token);
         }
 
         public Task<OkapiApiResult> TaskDownloadAsync(TaskDownloadRequest request, string vehicleId, CancellationToken token)
         {
-            return SendPostAsync(request, _options.ApiTaskDownload, "TaskDownload", vehicleId, request.TaskId, token);
+            return SendAsync(HttpMethod.Post, request, _options.ApiTaskDownload, "TaskDownload", vehicleId, request.TaskId, token);
         }
 
         public Task<OkapiApiResult> DeleteTaskAsync(DeleteTaskRequest request, string vehicleId, CancellationToken token)
         {
-            return SendPostAsync(request, _options.ApiDeleteTask, "DeleteTask", vehicleId, request.TaskId, token);
+            return SendAsync(HttpMethod.Post, request, _options.ApiDeleteTask, "DeleteTask", vehicleId, request.TaskId, token);
         }
 
         public Task<OkapiApiResult> RequestControlAsync(RequestControlRequest request, string vehicleId, CancellationToken token)
         {
-            return SendPostAsync(request, _options.ApiRequestControl, "RequestControl", vehicleId, null, token);
+            return SendAsync(HttpMethod.Post, request, _options.ApiRequestControl, "RequestControl", vehicleId, null, token);
         }
 
-        private async Task<OkapiApiResult> SendPostAsync<TRequest>(TRequest request, string endpoint, string commandType, string vehicleId, string? taskId = null, CancellationToken token = default)
+        private async Task<OkapiApiResult> SendAsync<TRequest>(HttpMethod method, TRequest? request, string endpoint, string commandType, string vehicleId, string? taskId = null, CancellationToken token = default)
         {
             var url = $"{_options.BaseUrl.TrimEnd('/')}/{endpoint.TrimStart('/')}";
             var result = new OkapiApiResult();
 
             try
             {
-                _logger.LogSend(vehicleId, commandType, url, request, taskId);
-                var response = await _httpClient.PostAsJsonAsync(url, request, token);
+                _logger.LogSend(vehicleId, commandType, url, request ?? new object(), taskId);
+                
+                var requestMessage = new HttpRequestMessage(method, url);
+                if (method != HttpMethod.Get && request != null)
+                {
+                    requestMessage.Content = JsonContent.Create(request);
+                }
+
+                var response = await _httpClient.SendAsync(requestMessage, token);
                 
                 result.HttpStatusCode = (int)response.StatusCode;
                 var rawResponse = await response.Content.ReadAsStringAsync(token);

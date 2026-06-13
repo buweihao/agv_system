@@ -157,15 +157,17 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 throw new ArgumentException("TargetNodeId is required for MoveToNode.");
             }
 
-            var sourcePoint = string.IsNullOrWhiteSpace(command.SourceNodeId) 
-                ? "UNKNOWN" 
-                : await _pointMapper.NodeIdToOkapiPointAsync(command.SourceNodeId, Brand, token) ?? "UNKNOWN";
-            
+            if (string.IsNullOrWhiteSpace(command.SourceNodeId))
+            {
+                throw new NotSupportedException("SourceNodeId is required for Okapi MoveToNode command.");
+            }
+
+            var sourcePoint = await _pointMapper.NodeIdToOkapiPointAsync(command.SourceNodeId, Brand, token);
             var targetPoint = await _pointMapper.NodeIdToOkapiPointAsync(command.TargetNodeId, Brand, token);
 
-            if (targetPoint == null)
+            if (sourcePoint == null || targetPoint == null)
             {
-                throw new Exception($"Failed to map TargetNodeId {command.TargetNodeId} to Okapi point.");
+                throw new Exception($"Failed to map SourceNodeId {command.SourceNodeId} or TargetNodeId {command.TargetNodeId} to Okapi point.");
             }
 
             var request = new TaskDownloadRequest
@@ -245,9 +247,11 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 var vId = await _identityMapper.GetVehicleIdAsync(e.AgvId);
                 if (vId == VehicleId)
                 {
-                    var snapshot = ConvertStatus(e);
-                    StatusReceived?.Invoke(this, snapshot);
-                    await _taskStateHandler.HandleTaskStateAsync(e);
+                    var snapshot = await _taskStateHandler.HandleTaskStateAsync(e);
+                    if (snapshot != null)
+                    {
+                        StatusReceived?.Invoke(this, snapshot);
+                    }
                 }
             }
             catch (Exception ex)

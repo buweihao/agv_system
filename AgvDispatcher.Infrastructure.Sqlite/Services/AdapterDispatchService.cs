@@ -128,7 +128,13 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             _taskService.AssignVehicle(taskId, selectedVehicleId);
             _taskService.UpdateTaskState(taskId, TaskState.Running);
-            _taskExecutionSimulator.Start(task, selectedVehicleId);
+
+            var assignedVehicle = _vehicleService.GetVehicle(selectedVehicleId);
+            if (assignedVehicle != null && assignedVehicle.AdapterType.StartsWith("Mock", StringComparison.OrdinalIgnoreCase))
+            {
+                _taskExecutionSimulator.Start(task, selectedVehicleId);
+            }
+
             return AuditAndReturn(DispatchResult.Success($"Task {taskId} dispatched to {selectedVehicleId}.", taskId, selectedVehicleId, result.CommandId), "AssignTask");
         }
 

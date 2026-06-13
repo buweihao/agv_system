@@ -53,6 +53,21 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 throw new ArgumentException("VehicleId cannot be empty.", nameof(snapshot));
             }
 
+            if (snapshot.Position is null)
+            {
+                snapshot.Position = new MapPosition();
+            }
+
+            if (snapshot.Telemetry is null)
+            {
+                snapshot.Telemetry = new Dictionary<string, string>();
+            }
+
+            if (snapshot.ReportedAt == default)
+            {
+                snapshot.ReportedAt = DateTime.Now;
+            }
+
             VehicleStateChangeType changeType;
             lock (_syncRoot)
             {
@@ -150,7 +165,13 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
                     BatteryLevel = 100,
                     CurrentTaskId = null,
-                    ReportedAt = now
+                    ReportedAt = now,
+                    Position = new MapPosition { AreaCode = vehicle.AreaCode },
+                    LoadState = VehicleLoadState.Unknown,
+                    IsOnline = false,
+                    IsCharging = false,
+                    HasAlarm = false,
+                    Telemetry = new Dictionary<string, string>()
                 };
 
                 lock (_syncRoot)
@@ -190,7 +211,13 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 State = RobotState.Offline,
                 Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
                 BatteryLevel = 100,
-                ReportedAt = DateTime.Now
+                ReportedAt = DateTime.Now,
+                Position = new MapPosition { AreaCode = vehicle.AreaCode },
+                LoadState = VehicleLoadState.Unknown,
+                IsOnline = false,
+                IsCharging = false,
+                HasAlarm = false,
+                Telemetry = new Dictionary<string, string>()
             });
         }
     }

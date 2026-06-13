@@ -62,7 +62,15 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 Location = status.LocationText,
                 State = status.State,
                 CurrentTaskId = status.CurrentTaskId,
-                ReportedAt = status.ReportedAt == default ? DateTime.Now : status.ReportedAt
+                ReportedAt = status.ReportedAt == default ? DateTime.Now : status.ReportedAt,
+                LoadState = status.LoadState,
+                Position = status.Position ?? new MapPosition(),
+                IsOnline = status.IsOnline,
+                IsCharging = status.IsCharging,
+                HasAlarm = status.HasAlarm,
+                ActiveAlarmCode = status.ActiveAlarmCode,
+                ActiveAlarmMessage = status.ActiveAlarmMessage,
+                Telemetry = status.Telemetry == null ? new Dictionary<string, string>() : new Dictionary<string, string>(status.Telemetry)
             });
         }
 
@@ -83,9 +91,14 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 CurrentTaskId = snapshot.CurrentTaskId,
                 ReportedAt = snapshot.ReportedAt,
                 LastHeartbeatAt = snapshot.ReportedAt,
-                IsOnline = snapshot.State != RobotState.Offline,
-                IsCharging = snapshot.Location.StartsWith("Charge", StringComparison.OrdinalIgnoreCase),
-                HasAlarm = snapshot.State == RobotState.Fault
+                LoadState = snapshot.LoadState,
+                Position = snapshot.Position ?? new MapPosition(),
+                IsOnline = snapshot.IsOnline || snapshot.State != RobotState.Offline,
+                IsCharging = snapshot.IsCharging || snapshot.Location.StartsWith("Charge", StringComparison.OrdinalIgnoreCase),
+                HasAlarm = snapshot.HasAlarm || snapshot.State == RobotState.Fault,
+                ActiveAlarmCode = snapshot.ActiveAlarmCode,
+                ActiveAlarmMessage = snapshot.ActiveAlarmMessage,
+                Telemetry = snapshot.Telemetry == null ? new Dictionary<string, string>() : new Dictionary<string, string>(snapshot.Telemetry)
             };
         }
     }

@@ -49,6 +49,21 @@ namespace AgvDispatcher.Shell.Services
                 throw new ArgumentException("VehicleId cannot be empty.", nameof(snapshot));
             }
 
+            if (snapshot.Position is null)
+            {
+                snapshot.Position = new MapPosition();
+            }
+
+            if (snapshot.Telemetry is null)
+            {
+                snapshot.Telemetry = new Dictionary<string, string>();
+            }
+
+            if (snapshot.ReportedAt == default)
+            {
+                snapshot.ReportedAt = DateTime.Now;
+            }
+
             VehicleStateChangeType changeType;
             lock (_syncRoot)
             {

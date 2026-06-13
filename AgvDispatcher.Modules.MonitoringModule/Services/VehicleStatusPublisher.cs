@@ -1,6 +1,7 @@
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using AgvDispatcher.Core.Rules;
+using AgvDispatcher.Core.Enums;
 
 namespace AgvDispatcher.Modules.MonitoringModule.Services
 {
@@ -24,7 +25,15 @@ namespace AgvDispatcher.Modules.MonitoringModule.Services
                 Location = snapshot.Location.Trim(),
                 State = snapshot.State,
                 CurrentTaskId = string.IsNullOrWhiteSpace(snapshot.CurrentTaskId) ? null : snapshot.CurrentTaskId.Trim(),
-                ReportedAt = reportedAt
+                ReportedAt = reportedAt,
+                LoadState = snapshot.LoadState,
+                Position = snapshot.Position ?? new MapPosition(),
+                IsOnline = snapshot.IsOnline || snapshot.State != RobotState.Offline,
+                IsCharging = snapshot.IsCharging,
+                HasAlarm = snapshot.HasAlarm || snapshot.State == RobotState.Fault || !string.IsNullOrWhiteSpace(snapshot.ActiveAlarmCode),
+                ActiveAlarmCode = snapshot.ActiveAlarmCode,
+                ActiveAlarmMessage = snapshot.ActiveAlarmMessage,
+                Telemetry = snapshot.Telemetry == null ? new Dictionary<string, string>() : new Dictionary<string, string>(snapshot.Telemetry)
             };
 
             _vehicleStateStore.UpsertStatus(normalizedSnapshot);

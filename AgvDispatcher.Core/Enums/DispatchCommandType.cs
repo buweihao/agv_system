@@ -14,6 +14,7 @@ namespace AgvDispatcher.Core.Enums
         EmergencyStop,
         ResetFault,
         LockTrafficArea,
-        ReleaseTrafficArea
+        ReleaseTrafficArea,
+        RequestControl
     }
 }

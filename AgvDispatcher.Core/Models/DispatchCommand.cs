@@ -44,6 +44,10 @@ namespace AgvDispatcher.Core.Models
 
         public string? ResultMessage { get; set; }
 
+        public string? AreaId { get; set; }
+
+        public int? RequestControlType { get; set; }
+
         public Dictionary<string, string> Parameters { get; set; } = new();
     }
 }

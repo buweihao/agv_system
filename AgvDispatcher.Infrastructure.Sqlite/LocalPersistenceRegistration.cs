@@ -6,6 +6,8 @@ using AgvDispatcher.Infrastructure.Sqlite.Services;
 using AgvDispatcher.Core.Services;
 using Microsoft.EntityFrameworkCore;
 using Prism.Ioc;
+using System.Net.Http;
+using AgvDispatcher.Infrastructure.Okapi;
 
 namespace AgvDispatcher.Infrastructure.Sqlite
 {
@@ -38,7 +40,21 @@ namespace AgvDispatcher.Infrastructure.Sqlite
 
             containerRegistry.RegisterSingleton<IVehicleStateStore, PersistentVehicleStateStore>();
             containerRegistry.RegisterSingleton<IVehicleStatusPublisher, VehicleStatusPublisher>();
-            containerRegistry.RegisterSingleton<IVehicleAdapterFactory, ProfileBasedMockVehicleAdapterFactory>();
+
+            // Okapi Registration
+            containerRegistry.RegisterInstance(new HttpClient());
+            containerRegistry.RegisterInstance(new OkapiOptions());
+            containerRegistry.RegisterSingleton<OkapiProtocolLogger>();
+            containerRegistry.RegisterSingleton<OkapiClient>();
+            containerRegistry.RegisterSingleton<OkapiCallbackServer>();
+            containerRegistry.RegisterSingleton<OkapiPointMapper>();
+            containerRegistry.RegisterSingleton<OkapiVehicleIdentityMapper>();
+            containerRegistry.RegisterSingleton<OkapiTaskStateHandler>();
+            containerRegistry.RegisterSingleton<OkapiAreaControlHandler>();
+
+            containerRegistry.RegisterSingleton<ProfileBasedMockVehicleAdapterFactory>();
+            containerRegistry.RegisterSingleton<OkapiVehicleAdapterFactory>();
+            containerRegistry.RegisterSingleton<IVehicleAdapterFactory, CompositeVehicleAdapterFactory>();
             containerRegistry.RegisterSingleton<IVehicleAdapterManager, VehicleAdapterManager>();
             containerRegistry.RegisterSingleton<ITaskExecutionSimulator, MockTaskExecutionSimulator>();
             containerRegistry.RegisterSingleton<IDispatchScoringService, DispatchScoringService>();

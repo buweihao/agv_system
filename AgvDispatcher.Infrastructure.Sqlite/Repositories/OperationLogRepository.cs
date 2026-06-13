@@ -7,12 +7,14 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     public class OperationLogRepository : IOperationLogRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public OperationLogRepository(AgvDispatcherDbContext db)
+        public OperationLogRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task AddAsync(OperationLog log)
         {
@@ -28,15 +30,17 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
                 log.OccurredAt = DateTime.Now;
             }
 
-            _db.OperationLogs.Add(log);
-            await _db.SaveChangesAsync();
+            using var db = CreateContext();
+            db.OperationLogs.Add(log);
+            await db.SaveChangesAsync();
         }
 
         public async Task<IReadOnlyList<OperationLog>> QueryAsync(OperationLogQuery query)
         {
             ArgumentNullException.ThrowIfNull(query);
 
-            var logs = _db.OperationLogs.AsNoTracking().AsQueryable();
+            using var db = CreateContext();
+            var logs = db.OperationLogs.AsNoTracking().AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(query.Category))
             {

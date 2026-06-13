@@ -110,7 +110,13 @@ namespace AgvDispatcher.Infrastructure.Okapi
                     break;
                 case DispatchCommandType.RequestControl:
                 case DispatchCommandType.LockTrafficArea:
+                    await SendRequestControlAsync(command, agvId.Value, cancellationToken);
+                    break;
                 case DispatchCommandType.ReleaseTrafficArea:
+                    if (!command.RequestControlType.HasValue)
+                    {
+                        throw new NotSupportedException("RequestControlType is required for ReleaseTrafficArea.");
+                    }
                     await SendRequestControlAsync(command, agvId.Value, cancellationToken);
                     break;
                 default:

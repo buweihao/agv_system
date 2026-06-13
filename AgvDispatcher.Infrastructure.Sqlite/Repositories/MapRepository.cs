@@ -7,23 +7,27 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     public class MapRepository : IMapRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public MapRepository(AgvDispatcherDbContext db)
+        public MapRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<MapNode>> GetNodesAsync()
         {
-            return await _db.MapNodes.AsNoTracking()
+            using var db = CreateContext();
+            return await db.MapNodes.AsNoTracking()
                 .OrderBy(node => node.NodeCode)
                 .ToArrayAsync();
         }
 
         public async Task<IReadOnlyList<MapEdge>> GetEdgesAsync()
         {
-            return await _db.MapEdges.AsNoTracking()
+            using var db = CreateContext();
+            return await db.MapEdges.AsNoTracking()
                 .OrderBy(edge => edge.EdgeId)
                 .ToArrayAsync();
         }
@@ -32,54 +36,58 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         {
             ArgumentNullException.ThrowIfNull(node);
 
-            var existing = await _db.MapNodes.FindAsync(node.NodeId);
+            using var db = CreateContext();
+            var existing = await db.MapNodes.FindAsync(node.NodeId);
             if (existing is null)
             {
-                _db.MapNodes.Add(node);
+                db.MapNodes.Add(node);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(node);
-                _db.Entry(existing).Reference(item => item.Position).TargetEntry?.CurrentValues.SetValues(node.Position);
+                db.Entry(existing).CurrentValues.SetValues(node);
+                db.Entry(existing).Reference(item => item.Position).TargetEntry?.CurrentValues.SetValues(node.Position);
             }
 
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
 
         public async Task SaveEdgeAsync(MapEdge edge)
         {
             ArgumentNullException.ThrowIfNull(edge);
 
-            var existing = await _db.MapEdges.FindAsync(edge.EdgeId);
+            using var db = CreateContext();
+            var existing = await db.MapEdges.FindAsync(edge.EdgeId);
             if (existing is null)
             {
-                _db.MapEdges.Add(edge);
+                db.MapEdges.Add(edge);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(edge);
+                db.Entry(existing).CurrentValues.SetValues(edge);
             }
 
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
 
         public async Task DeleteNodeAsync(string nodeId)
         {
-            var node = await _db.MapNodes.FindAsync(nodeId);
+            using var db = CreateContext();
+            var node = await db.MapNodes.FindAsync(nodeId);
             if (node is not null)
             {
-                _db.MapNodes.Remove(node);
-                await _db.SaveChangesAsync();
+                db.MapNodes.Remove(node);
+                await db.SaveChangesAsync();
             }
         }
 
         public async Task DeleteEdgeAsync(string edgeId)
         {
-            var edge = await _db.MapEdges.FindAsync(edgeId);
+            using var db = CreateContext();
+            var edge = await db.MapEdges.FindAsync(edgeId);
             if (edge is not null)
             {
-                _db.MapEdges.Remove(edge);
-                await _db.SaveChangesAsync();
+                db.MapEdges.Remove(edge);
+                await db.SaveChangesAsync();
             }
         }
     }

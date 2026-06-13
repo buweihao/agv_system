@@ -7,23 +7,27 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     public class ChargeStationRepository : IChargeStationRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public ChargeStationRepository(AgvDispatcherDbContext db)
+        public ChargeStationRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<ChargeStation>> GetAllAsync()
         {
-            return await _db.ChargeStations.AsNoTracking()
+            using var db = CreateContext();
+            return await db.ChargeStations.AsNoTracking()
                 .OrderBy(station => station.StationCode)
                 .ToArrayAsync();
         }
 
         public async Task<ChargeStation?> GetByIdAsync(string stationId)
         {
-            return await _db.ChargeStations.AsNoTracking()
+            using var db = CreateContext();
+            return await db.ChargeStations.AsNoTracking()
                 .FirstOrDefaultAsync(station => station.StationId == stationId);
         }
 
@@ -31,33 +35,36 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         {
             ArgumentNullException.ThrowIfNull(station);
 
-            var existing = await _db.ChargeStations.FindAsync(station.StationId);
+            using var db = CreateContext();
+            var existing = await db.ChargeStations.FindAsync(station.StationId);
             if (existing is null)
             {
-                _db.ChargeStations.Add(station);
+                db.ChargeStations.Add(station);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(station);
-                _db.Entry(existing).Reference(item => item.Position).TargetEntry?.CurrentValues.SetValues(station.Position);
+                db.Entry(existing).CurrentValues.SetValues(station);
+                db.Entry(existing).Reference(item => item.Position).TargetEntry?.CurrentValues.SetValues(station.Position);
             }
 
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
 
         public async Task DeleteAsync(string stationId)
         {
-            var existing = await _db.ChargeStations.FindAsync(stationId);
+            using var db = CreateContext();
+            var existing = await db.ChargeStations.FindAsync(stationId);
             if (existing is not null)
             {
-                _db.ChargeStations.Remove(existing);
-                await _db.SaveChangesAsync();
+                db.ChargeStations.Remove(existing);
+                await db.SaveChangesAsync();
             }
         }
 
         public async Task<IReadOnlyList<ChargeSessionRecord>> GetSessionsAsync(string? vehicleId = null, string? stationId = null)
         {
-            var query = _db.ChargeSessionRecords.AsNoTracking();
+            using var db = CreateContext();
+            var query = db.ChargeSessionRecords.AsNoTracking();
             if (!string.IsNullOrWhiteSpace(vehicleId))
             {
                 query = query.Where(s => s.VehicleId == vehicleId);
@@ -72,18 +79,20 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         public async Task AddSessionAsync(ChargeSessionRecord session)
         {
             ArgumentNullException.ThrowIfNull(session);
-            _db.ChargeSessionRecords.Add(session);
-            await _db.SaveChangesAsync();
+            using var db = CreateContext();
+            db.ChargeSessionRecords.Add(session);
+            await db.SaveChangesAsync();
         }
 
         public async Task UpdateSessionAsync(ChargeSessionRecord session)
         {
             ArgumentNullException.ThrowIfNull(session);
-            var existing = await _db.ChargeSessionRecords.FindAsync(session.SessionId);
+            using var db = CreateContext();
+            var existing = await db.ChargeSessionRecords.FindAsync(session.SessionId);
             if (existing is not null)
             {
-                _db.Entry(existing).CurrentValues.SetValues(session);
-                await _db.SaveChangesAsync();
+                db.Entry(existing).CurrentValues.SetValues(session);
+                await db.SaveChangesAsync();
             }
         }
     }

@@ -36,6 +36,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public DispatchResult AssignTask(string taskId, string? preferredVehicleId = null)
         {
+            return Task.Run(() => AssignTaskAsync(taskId, preferredVehicleId, CancellationToken.None)).GetAwaiter().GetResult();
+        }
+
+        public async Task<DispatchResult> AssignTaskAsync(string taskId, string? preferredVehicleId = null, CancellationToken cancellationToken = default)
+        {
             var task = _taskService.GetTask(taskId);
             if (task is null)
             {
@@ -110,7 +115,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             successLog.Metadata["ScoreData"] = System.Text.Json.JsonSerializer.Serialize(scoreResult);
             _auditTrail.Record(successLog);
 
-            var result = SendCommand(new DispatchCommand
+            var result = await SendCommandAsync(new DispatchCommand
             {
                 CommandType = DispatchCommandType.AssignTask,
                 TaskId = taskId,
@@ -119,7 +124,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 TargetNodeId = task.TargetNodeId,
                 Priority = (int)task.Priority,
                 IssuedBy = "DispatchService"
-            });
+            }, cancellationToken).ConfigureAwait(false);
 
             if (!result.Succeeded)
             {
@@ -140,10 +145,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public DispatchResult SendCommand(DispatchCommand command)
         {
-            var result = _vehicleAdapterManager.SendCommandAsync(command, CancellationToken.None)
-                .GetAwaiter()
-                .GetResult();
+            return Task.Run(() => SendCommandAsync(command, CancellationToken.None)).GetAwaiter().GetResult();
+        }
 
+        public async Task<DispatchResult> SendCommandAsync(DispatchCommand command, CancellationToken cancellationToken = default)
+        {
+            var result = await _vehicleAdapterManager.SendCommandAsync(command, cancellationToken).ConfigureAwait(false);
             return AuditAndReturn(result, command.CommandType.ToString());
         }
 

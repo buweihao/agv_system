@@ -7,16 +7,19 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     public class TaskTemplateRepository : ITaskTemplateRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public TaskTemplateRepository(AgvDispatcherDbContext db)
+        public TaskTemplateRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<TaskTemplateConfig>> GetAllAsync()
         {
-            return await _db.TaskTemplates.AsNoTracking()
+            using var db = CreateContext();
+            return await db.TaskTemplates.AsNoTracking()
                 .OrderBy(template => template.TemplateName)
                 .ToArrayAsync();
         }
@@ -25,17 +28,18 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         {
             ArgumentNullException.ThrowIfNull(template);
 
-            var existing = await _db.TaskTemplates.FindAsync(template.TemplateName);
+            using var db = CreateContext();
+            var existing = await db.TaskTemplates.FindAsync(template.TemplateName);
             if (existing is null)
             {
-                _db.TaskTemplates.Add(template);
+                db.TaskTemplates.Add(template);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(template);
+                db.Entry(existing).CurrentValues.SetValues(template);
             }
 
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
     }
 }

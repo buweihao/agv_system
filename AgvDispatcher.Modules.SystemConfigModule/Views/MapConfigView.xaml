@@ -44,6 +44,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -62,6 +63,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="{Binding TotalNodes, StringFormat=节点总数 {0}}" Foreground="#8EA8C3" VerticalAlignment="Center" Margin="0,0,16,0"/>
                     <TextBlock Text="{Binding TotalEdges, StringFormat=路径总数 {0}}" Foreground="#8EA8C3" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <TextBlock Text="{Binding TotalAliases, StringFormat=别名总数 {0}}" Foreground="#8EA8C3" VerticalAlignment="Center" Margin="0,0,16,0"/>
                     <Button Content="校验地图" Command="{Binding ValidateCommand}" Style="{StaticResource ActionButtonStyle}" Background="#FF8C00" Foreground="White" BorderThickness="0" />
                     <Button Content="导入JSON" Command="{Binding ImportCommand}" Style="{StaticResource ActionButtonStyle}"/>
                     <Button Content="导出JSON" Command="{Binding ExportCommand}" Style="{StaticResource ActionButtonStyle}"/>
@@ -151,7 +153,57 @@
             </DockPanel>
         </Border>
 
-        <Border Grid.Row="3" Style="{StaticResource PanelBorderStyle}" Margin="0,0,0,10" Visibility="{Binding IsValidationResultsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Border Grid.Row="3" Style="{StaticResource PanelBorderStyle}" Margin="0,0,0,10">
+            <DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="位置别名配置" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="新增别名" Command="{Binding AddAliasCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="删除选中" Command="{Binding DeleteAliasCommand}" Background="#FF4500" Foreground="White" BorderThickness="0" Style="{StaticResource ActionButtonStyle}"/>
+                        <Button Content="保存选中" Command="{Binding SaveAliasCommand}" Style="{StaticResource ActionButtonStyle}" Background="#00BFFF" Foreground="#04101C" BorderThickness="0" FontWeight="Bold"/>
+                    </StackPanel>
+                </Grid>
+                <DataGrid ItemsSource="{Binding Aliases}"
+                          SelectedItem="{Binding SelectedAlias, Mode=TwoWay}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="False"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="None"
+                          RowHeight="36"
+                          Background="Transparent"
+                          BorderThickness="0"
+                          RowBackground="Transparent"
+                          AlternatingRowBackground="#101E30"
+                          Foreground="#DCEFFF"
+                          ColumnHeaderStyle="{StaticResource DataGridHeaderStyle}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="别名ID" Binding="{Binding AliasId}" Width="1.5*" IsReadOnly="True" />
+                        <DataGridComboBoxColumn Header="节点ID" SelectedValueBinding="{Binding NodeId}" SelectedValuePath="NodeId" DisplayMemberPath="NodeId" Width="*" >
+                            <DataGridComboBoxColumn.ElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding DataContext.Nodes, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                </Style>
+                            </DataGridComboBoxColumn.ElementStyle>
+                            <DataGridComboBoxColumn.EditingElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding DataContext.Nodes, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                </Style>
+                            </DataGridComboBoxColumn.EditingElementStyle>
+                        </DataGridComboBoxColumn>
+                        <DataGridTextColumn Header="别名值" Binding="{Binding AliasValue}" Width="*"/>
+                        <DataGridTextColumn Header="约束品牌" Binding="{Binding Brand}" Width="*"/>
+                        <DataGridCheckBoxColumn Header="是否启用" Binding="{Binding IsEnabled}" Width="0.5*"/>
+                        <DataGridTextColumn Header="备注" Binding="{Binding Remark}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <Border Grid.Row="4" Style="{StaticResource PanelBorderStyle}" Margin="0,0,0,10" Visibility="{Binding IsValidationResultsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
             <DockPanel>
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
                     <TextBlock Text="地图校验结果" Foreground="#FF8C00" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>

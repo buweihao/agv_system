@@ -11,6 +11,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
         private readonly IVehicleStatusPublisher _statusPublisher;
         private readonly OkapiVehicleIdentityMapper _identityMapper;
         private readonly OkapiProtocolLogger _logger;
+        private readonly IVehicleStateStore _vehicleStateStore;
         private readonly IAlarmService? _alarmService;
 
         public OkapiTaskStateHandler(
@@ -18,12 +19,14 @@ namespace AgvDispatcher.Infrastructure.Okapi
             IVehicleStatusPublisher statusPublisher,
             OkapiVehicleIdentityMapper identityMapper,
             OkapiProtocolLogger logger,
+            IVehicleStateStore vehicleStateStore,
             IAlarmService? alarmService = null)
         {
             _taskService = taskService;
             _statusPublisher = statusPublisher;
             _identityMapper = identityMapper;
             _logger = logger;
+            _vehicleStateStore = vehicleStateStore;
             _alarmService = alarmService;
         }
 
@@ -64,12 +67,16 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 });
             }
 
+            var current = _vehicleStateStore.GetVehicle(vehicleId);
+
             var snapshot = new VehicleStatusSnapshot
             {
                 VehicleId = vehicleId,
-                Brand = "Okapi",
+                Brand = current?.Brand ?? "Okapi",
                 State = robotState,
                 CurrentTaskId = string.IsNullOrWhiteSpace(request.TaskId) ? null : request.TaskId,
+                BatteryLevel = current?.BatteryLevel ?? 100,
+                Location = current?.Location ?? "Unassigned",
                 ReportedAt = DateTime.Now
             };
 

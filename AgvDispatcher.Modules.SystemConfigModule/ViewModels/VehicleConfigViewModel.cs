@@ -30,7 +30,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         public IReadOnlyList<VehicleType> VehicleTypes { get; } = Enum.GetValues<VehicleType>();
 
-        public IReadOnlyList<string> AdapterTypes { get; } = new[] { "MockBrandA", "MockBrandB", "MockBrandC", "MockUnstable", "MockFault", "MockOffline", "HttpAdapter", "TcpAdapter" };
+        public IReadOnlyList<string> AdapterTypes { get; } = new[] { "MockBrandA", "MockBrandB", "MockBrandC", "MockUnstable", "MockFault", "MockOffline", "HttpAdapter", "TcpAdapter","Okapi" };
         public IReadOnlyList<string> ProtocolTypes { get; } = new[] { "None", "HTTP", "TCP", "UDP", "Modbus", "MQTT" };
         public IReadOnlyList<string> NavigationTypes { get; } = new[] { "Laser", "QR_Code", "Magnetic", "SLAM", "Unknown" };
         public IReadOnlyList<string> LoadModes { get; } = new[] { "Lifting", "Forklift", "Roller", "Towing", "None" };

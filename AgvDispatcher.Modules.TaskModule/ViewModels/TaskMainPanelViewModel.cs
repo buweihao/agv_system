@@ -295,14 +295,14 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 && !task.IsDispatchPaused;
         }
 
-        private void AutoDispatch(TaskModel? task)
+        private async void AutoDispatch(TaskModel? task)
         {
             if (task is null)
             {
                 return;
             }
 
-            var result = _dispatchService.AssignTask(task.Id);
+            var result = await _dispatchService.AssignTaskAsync(task.Id);
             DispatchMessage = result.Succeeded
                 ? $"派发成功：{result.TaskId} -> {result.VehicleId}"
                 : $"派发失败：{result.Code}，{result.Message}";

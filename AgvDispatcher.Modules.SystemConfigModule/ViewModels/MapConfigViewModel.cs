@@ -24,6 +24,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         
         public ObservableCollection<MapNode> Nodes { get; } = new();
         public ObservableCollection<MapEdge> Edges { get; } = new();
+        public ObservableCollection<MapLocationAlias> Aliases { get; } = new();
         public ObservableCollection<MapValidationResult> ValidationResults { get; } = new();
 
         private bool _isValidationResultsVisible;
@@ -47,6 +48,13 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             set => SetProperty(ref _selectedEdge, value);
         }
 
+        private MapLocationAlias? _selectedAlias;
+        public MapLocationAlias? SelectedAlias
+        {
+            get => _selectedAlias;
+            set => SetProperty(ref _selectedAlias, value);
+        }
+
         public DelegateCommand RefreshCommand { get; }
         
         public DelegateCommand AddNodeCommand { get; }
@@ -57,12 +65,17 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public DelegateCommand SaveEdgeCommand { get; }
         public DelegateCommand DeleteEdgeCommand { get; }
 
+        public DelegateCommand AddAliasCommand { get; }
+        public DelegateCommand SaveAliasCommand { get; }
+        public DelegateCommand DeleteAliasCommand { get; }
+
         public DelegateCommand ValidateCommand { get; }
         public DelegateCommand ImportCommand { get; }
         public DelegateCommand ExportCommand { get; }
 
         public int TotalNodes => Nodes.Count;
         public int TotalEdges => Edges.Count;
+        public int TotalAliases => Aliases.Count;
 
         public MapConfigViewModel(
             IMapRepository mapRepository, 
@@ -85,6 +98,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             SaveEdgeCommand = new DelegateCommand(SaveEdge, () => SelectedEdge != null).ObservesProperty(() => SelectedEdge);
             DeleteEdgeCommand = new DelegateCommand(DeleteEdge, () => SelectedEdge != null).ObservesProperty(() => SelectedEdge);
 
+            AddAliasCommand = new DelegateCommand(AddAlias);
+            SaveAliasCommand = new DelegateCommand(SaveAlias, () => SelectedAlias != null).ObservesProperty(() => SelectedAlias);
+            DeleteAliasCommand = new DelegateCommand(DeleteAlias, () => SelectedAlias != null).ObservesProperty(() => SelectedAlias);
+
             ValidateCommand = new DelegateCommand(ValidateMapAsync);
             ImportCommand = new DelegateCommand(ImportMapAsync);
             ExportCommand = new DelegateCommand(ExportMapAsync);
@@ -102,8 +119,13 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             var edges = _mapRepository.GetEdgesAsync().GetAwaiter().GetResult();
             foreach (var e in edges) Edges.Add(e);
 
+            Aliases.Clear();
+            var aliases = _aliasRepo.GetAllAsync().GetAwaiter().GetResult();
+            foreach (var a in aliases) Aliases.Add(a);
+
             RaisePropertyChanged(nameof(TotalNodes));
             RaisePropertyChanged(nameof(TotalEdges));
+            RaisePropertyChanged(nameof(TotalAliases));
         }
 
         private void AddNode()
@@ -179,6 +201,55 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         {
             if (SelectedEdge == null) return;
             _mapRepository.DeleteEdgeAsync(SelectedEdge.EdgeId).GetAwaiter().GetResult();
+            LoadData();
+        }
+
+        private void AddAlias()
+        {
+            var nextNumber = Aliases.Count + 1;
+            var newAlias = new MapLocationAlias
+            {
+                AliasId = System.Guid.NewGuid().ToString("N"),
+                MapId = "MAIN",
+                NodeId = Nodes.FirstOrDefault()?.NodeId ?? "",
+                AliasType = "Custom",
+                AliasValue = $"A{nextNumber:000}",
+                Brand = "", // Global alias by default
+                IsEnabled = true
+            };
+            Aliases.Add(newAlias);
+            SelectedAlias = newAlias;
+            RaisePropertyChanged(nameof(TotalAliases));
+        }
+
+        private void SaveAlias()
+        {
+            if (SelectedAlias == null) return;
+            if (string.IsNullOrWhiteSpace(SelectedAlias.NodeId) || string.IsNullOrWhiteSpace(SelectedAlias.AliasValue))
+            {
+                System.Windows.MessageBox.Show("节点ID和别名值不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            var isDuplicate = Aliases.Any(a => 
+                a.AliasId != SelectedAlias.AliasId &&
+                a.AliasValue == SelectedAlias.AliasValue &&
+                string.Equals(a.Brand ?? "", SelectedAlias.Brand ?? "", System.StringComparison.OrdinalIgnoreCase));
+            
+            if (isDuplicate)
+            {
+                System.Windows.MessageBox.Show("同一品牌下的别名值不能重复", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            _aliasRepo.SaveAsync(SelectedAlias).GetAwaiter().GetResult();
+            LoadData();
+        }
+
+        private void DeleteAlias()
+        {
+            if (SelectedAlias == null) return;
+            _aliasRepo.DeleteAsync(SelectedAlias.AliasId).GetAwaiter().GetResult();
             LoadData();
         }
 

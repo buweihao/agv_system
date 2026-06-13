@@ -8,23 +8,27 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     public class AlarmRepository : IAlarmRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public AlarmRepository(AgvDispatcherDbContext db)
+        public AlarmRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<AlarmEvent>> GetAllAsync()
         {
-            return await _db.Alarms.AsNoTracking()
+            using var db = CreateContext();
+            return await db.Alarms.AsNoTracking()
                 .OrderByDescending(alarm => alarm.OccurredAt)
                 .ToArrayAsync();
         }
 
         public async Task<IReadOnlyList<AlarmEvent>> GetActiveAsync()
         {
-            return await _db.Alarms.AsNoTracking()
+            using var db = CreateContext();
+            return await db.Alarms.AsNoTracking()
                 .Where(alarm => alarm.State == AlarmState.Active)
                 .OrderByDescending(alarm => alarm.OccurredAt)
                 .ToArrayAsync();
@@ -34,7 +38,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         {
             ArgumentNullException.ThrowIfNull(query);
 
-            var alarms = _db.Alarms.AsNoTracking().AsQueryable();
+            using var db = CreateContext();
+            var alarms = db.Alarms.AsNoTracking().AsQueryable();
 
             if (query.Severity is not null)
             {
@@ -90,7 +95,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 
         public async Task<AlarmEvent?> GetByIdAsync(string alarmId)
         {
-            return await _db.Alarms.AsNoTracking()
+            using var db = CreateContext();
+            return await db.Alarms.AsNoTracking()
                 .FirstOrDefaultAsync(alarm => alarm.AlarmId == alarmId);
         }
 
@@ -98,17 +104,18 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         {
             ArgumentNullException.ThrowIfNull(alarm);
 
-            var existing = await _db.Alarms.FindAsync(alarm.AlarmId);
+            using var db = CreateContext();
+            var existing = await db.Alarms.FindAsync(alarm.AlarmId);
             if (existing is null)
             {
-                _db.Alarms.Add(alarm);
+                db.Alarms.Add(alarm);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(alarm);
+                db.Entry(existing).CurrentValues.SetValues(alarm);
             }
 
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
     }
 }

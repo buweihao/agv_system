@@ -7,16 +7,19 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     public class SystemParameterRepository : ISystemParameterRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public SystemParameterRepository(AgvDispatcherDbContext db)
+        public SystemParameterRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<ParameterConfig>> GetAllAsync()
         {
-            return await _db.SystemParameters.AsNoTracking()
+            using var db = CreateContext();
+            return await db.SystemParameters.AsNoTracking()
                 .OrderBy(parameter => parameter.ParamKey)
                 .ToArrayAsync();
         }
@@ -25,17 +28,18 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         {
             ArgumentNullException.ThrowIfNull(parameter);
 
-            var existing = await _db.SystemParameters.FindAsync(parameter.ParamKey);
+            using var db = CreateContext();
+            var existing = await db.SystemParameters.FindAsync(parameter.ParamKey);
             if (existing is null)
             {
-                _db.SystemParameters.Add(parameter);
+                db.SystemParameters.Add(parameter);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(parameter);
+                db.Entry(existing).CurrentValues.SetValues(parameter);
             }
 
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
     }
 }

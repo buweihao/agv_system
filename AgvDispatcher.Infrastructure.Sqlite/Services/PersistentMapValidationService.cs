@@ -6,22 +6,25 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 {
     public class PersistentMapValidationService : IMapValidationService
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public PersistentMapValidationService(AgvDispatcherDbContext db)
+        public PersistentMapValidationService(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<MapValidationResult>> ValidateMapAsync()
         {
             var results = new List<MapValidationResult>();
 
-            var nodes = await _db.MapNodes.AsNoTracking().ToListAsync();
-            var edges = await _db.MapEdges.AsNoTracking().ToListAsync();
-            var vehicles = await _db.Vehicles.AsNoTracking().ToListAsync();
-            var stations = await _db.ChargeStations.AsNoTracking().ToListAsync();
-            var tasks = await _db.TaskOrders.AsNoTracking().ToListAsync();
+            using var db = CreateContext();
+            var nodes = await db.MapNodes.AsNoTracking().ToListAsync();
+            var edges = await db.MapEdges.AsNoTracking().ToListAsync();
+            var vehicles = await db.Vehicles.AsNoTracking().ToListAsync();
+            var stations = await db.ChargeStations.AsNoTracking().ToListAsync();
+            var tasks = await db.TaskOrders.AsNoTracking().ToListAsync();
 
             var nodeDict = nodes.ToDictionary(n => n.NodeId);
 
@@ -100,7 +103,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             }
 
             // 7. 校验 Alias
-            var aliases = await _db.MapLocationAliases.AsNoTracking().ToListAsync();
+            var aliases = await db.MapLocationAliases.AsNoTracking().ToListAsync();
             ValidateAliases(aliases, nodeDict, results);
 
             return results;
@@ -109,8 +112,9 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         public async Task<IReadOnlyList<MapValidationResult>> ValidateMapDataAsync(IEnumerable<AgvDispatcher.Core.Models.MapNode> nodes, IEnumerable<AgvDispatcher.Core.Models.MapEdge> edges, IEnumerable<AgvDispatcher.Core.Models.ChargeStation> chargeStations, IEnumerable<AgvDispatcher.Core.Models.MapLocationAlias> aliases)
         {
             var results = new List<MapValidationResult>();
-            var vehicles = await _db.Vehicles.AsNoTracking().ToListAsync();
-            var tasks = await _db.TaskOrders.AsNoTracking().ToListAsync();
+            using var db = CreateContext();
+            var vehicles = await db.Vehicles.AsNoTracking().ToListAsync();
+            var tasks = await db.TaskOrders.AsNoTracking().ToListAsync();
 
             var nodeDict = nodes.ToDictionary(n => n.NodeId);
 

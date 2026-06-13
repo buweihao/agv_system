@@ -2,7 +2,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
 {
     public class OkapiOptions
     {
-        public string BaseUrl { get; set; } = "http://127.0.0.1:8080/api/agv/";
+        public string BaseUrl { get; set; } = "https://13bc2660-732d-4d30-9b21-03d09ed66e8a.mock.pstmn.io/api/agv";
         public string ListenUrl { get; set; } = "http://127.0.0.1:8080/api/";
         
         public string ApiGetAgvInfos { get; set; } = "GetAgvInfos";

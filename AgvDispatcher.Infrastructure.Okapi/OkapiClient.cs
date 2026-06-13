@@ -58,10 +58,10 @@ namespace AgvDispatcher.Infrastructure.Okapi
                     requestMessage.Content = JsonContent.Create(request);
                 }
 
-                var response = await _httpClient.SendAsync(requestMessage, token);
+                var response = await _httpClient.SendAsync(requestMessage, token).ConfigureAwait(false);
                 
                 result.HttpStatusCode = (int)response.StatusCode;
-                var rawResponse = await response.Content.ReadAsStringAsync(token);
+                var rawResponse = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
                 result.RawResponse = rawResponse;
 
                 if (!response.IsSuccessStatusCode)

@@ -7,39 +7,44 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     internal class MapLocationAliasRepository : IMapLocationAliasRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public MapLocationAliasRepository(AgvDispatcherDbContext db)
+        public MapLocationAliasRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<MapLocationAlias>> GetAllAsync()
         {
-            return await _db.MapLocationAliases.AsNoTracking().ToListAsync();
+            using var db = CreateContext();
+            return await db.MapLocationAliases.AsNoTracking().ToListAsync();
         }
 
         public async Task SaveAsync(MapLocationAlias alias)
         {
-            var existing = await _db.MapLocationAliases.FindAsync(alias.AliasId);
+            using var db = CreateContext();
+            var existing = await db.MapLocationAliases.FindAsync(alias.AliasId);
             if (existing == null)
             {
-                _db.MapLocationAliases.Add(alias);
+                db.MapLocationAliases.Add(alias);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(alias);
+                db.Entry(existing).CurrentValues.SetValues(alias);
             }
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
 
         public async Task DeleteAsync(string aliasId)
         {
-            var alias = await _db.MapLocationAliases.FindAsync(aliasId);
+            using var db = CreateContext();
+            var alias = await db.MapLocationAliases.FindAsync(aliasId);
             if (alias != null)
             {
-                _db.MapLocationAliases.Remove(alias);
-                await _db.SaveChangesAsync();
+                db.MapLocationAliases.Remove(alias);
+                await db.SaveChangesAsync();
             }
         }
     }

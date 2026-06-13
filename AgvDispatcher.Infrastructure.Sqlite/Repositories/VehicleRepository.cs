@@ -7,23 +7,27 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
     public class VehicleRepository : IVehicleRepository
     {
-        private readonly AgvDispatcherDbContext _db;
+        private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 
-        public VehicleRepository(AgvDispatcherDbContext db)
+        public VehicleRepository(DbContextOptions<AgvDispatcherDbContext> options)
         {
-            _db = db;
+            _options = options;
         }
+
+        private AgvDispatcherDbContext CreateContext() => new AgvDispatcherDbContext(_options);
 
         public async Task<IReadOnlyList<Vehicle>> GetAllAsync()
         {
-            return await _db.Vehicles.AsNoTracking()
+            using var db = CreateContext();
+            return await db.Vehicles.AsNoTracking()
                 .OrderBy(vehicle => vehicle.VehicleCode)
                 .ToArrayAsync();
         }
 
         public async Task<Vehicle?> GetByIdAsync(string vehicleId)
         {
-            return await _db.Vehicles.AsNoTracking()
+            using var db = CreateContext();
+            return await db.Vehicles.AsNoTracking()
                 .FirstOrDefaultAsync(vehicle => vehicle.VehicleId == vehicleId);
         }
 
@@ -31,26 +35,28 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         {
             ArgumentNullException.ThrowIfNull(vehicle);
 
-            var existing = await _db.Vehicles.FindAsync(vehicle.VehicleId);
+            using var db = CreateContext();
+            var existing = await db.Vehicles.FindAsync(vehicle.VehicleId);
             if (existing is null)
             {
-                _db.Vehicles.Add(vehicle);
+                db.Vehicles.Add(vehicle);
             }
             else
             {
-                _db.Entry(existing).CurrentValues.SetValues(vehicle);
+                db.Entry(existing).CurrentValues.SetValues(vehicle);
             }
 
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
 
         public async Task DeleteAsync(string vehicleId)
         {
-            var vehicle = await _db.Vehicles.FirstOrDefaultAsync(v => v.VehicleId == vehicleId);
+            using var db = CreateContext();
+            var vehicle = await db.Vehicles.FirstOrDefaultAsync(v => v.VehicleId == vehicleId);
             if (vehicle != null)
             {
-                _db.Vehicles.Remove(vehicle);
-                await _db.SaveChangesAsync();
+                db.Vehicles.Remove(vehicle);
+                await db.SaveChangesAsync();
             }
         }
     }

@@ -8,26 +8,23 @@ namespace AgvDispatcher.Infrastructure.Okapi
     public class OkapiTaskStateHandler
     {
         private readonly ITaskService _taskService;
-        private readonly IVehicleStatusPublisher _statusPublisher;
         private readonly OkapiVehicleIdentityMapper _identityMapper;
         private readonly OkapiProtocolLogger _logger;
         private readonly IVehicleStateStore _vehicleStateStore;
-        private readonly IAlarmService? _alarmService;
+        private readonly OkapiDtoMapper _mapper;
 
         public OkapiTaskStateHandler(
             ITaskService taskService,
-            IVehicleStatusPublisher statusPublisher,
             OkapiVehicleIdentityMapper identityMapper,
             OkapiProtocolLogger logger,
             IVehicleStateStore vehicleStateStore,
-            IAlarmService? alarmService = null)
+            OkapiDtoMapper mapper)
         {
             _taskService = taskService;
-            _statusPublisher = statusPublisher;
             _identityMapper = identityMapper;
             _logger = logger;
             _vehicleStateStore = vehicleStateStore;
-            _alarmService = alarmService;
+            _mapper = mapper;
         }
 
         public async Task<VehicleStatusSnapshot?> HandleTaskStateAsync(ReturnTaskStateRequest request, CancellationToken token = default)
@@ -39,14 +36,28 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 return null;
             }
 
-            var taskState = ConvertOkapiTaskState(request.State);
-            var robotState = DetermineRobotState(request.State, request.FaultCode);
+            var taskState = _mapper.ConvertOkapiTaskState(request.State, request.FaultCode);
+            var progress = _mapper.ConvertOkapiTaskProgress(request.State);
+            var robotState = _mapper.ConvertRobotStateFromTaskCallback(request.State, request.FaultCode);
 
             try
             {
                 if (!string.IsNullOrWhiteSpace(request.TaskId))
                 {
-                    _taskService.UpdateTaskState(request.TaskId, taskState, $"Updated by Okapi callback (state={request.State}, fault={request.FaultCode})");
+                    var task = _taskService.GetTask(request.TaskId);
+                    if (task != null)
+                    {
+                        if (string.IsNullOrEmpty(task.AssignedVehicleId))
+                        {
+                            _taskService.AssignVehicle(request.TaskId, vehicleId);
+                        }
+                        _taskService.UpdateTaskState(request.TaskId, taskState, $"Updated by Okapi callback (state={request.State}, fault={request.FaultCode})");
+                        _taskService.UpdateTaskProgress(request.TaskId, progress);
+                    }
+                    else
+                    {
+                        _logger.LogError(vehicleId, "UpdateTaskState", $"Task {request.TaskId} not found. Ignoring callback update.", request.TaskId);
+                    }
                 }
             }
             catch (Exception ex)
@@ -54,20 +65,33 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 _logger.LogError(vehicleId, "UpdateTaskState", $"Failed to update task state for {request.TaskId}: {ex.Message}");
             }
 
-            if (request.FaultCode != 0 && _alarmService != null)
+            var current = _vehicleStateStore.GetVehicle(vehicleId);
+
+            string? activeAlarmCode = null;
+            string? activeAlarmMessage = null;
+
+            if (request.FaultCode == 1)
             {
-                _alarmService.RaiseAlarm(new AlarmEvent
-                {
-                    AlarmId = Guid.NewGuid().ToString("N"),
-                    VehicleId = vehicleId,
-                    AlarmCode = request.FaultCode.ToString(),
-                    Description = $"Okapi reported fault code {request.FaultCode}",
-                    Severity = AlarmSeverity.Warning,
-                    OccurredAt = DateTime.Now
-                });
+                activeAlarmCode = "OKAPI_FAULT_1";
+                activeAlarmMessage = "Okapi faultCode=1: AGV exception";
+            }
+            else if (request.FaultCode == 2)
+            {
+                activeAlarmCode = "OKAPI_TASK_DELETED";
+                activeAlarmMessage = "Okapi faultCode=2: Task cancelled";
+            }
+            else if (request.FaultCode != 0)
+            {
+                activeAlarmCode = $"OKAPI_FAULT_{request.FaultCode}";
+                activeAlarmMessage = $"Okapi faultCode={request.FaultCode}: Unknown fault";
             }
 
-            var current = _vehicleStateStore.GetVehicle(vehicleId);
+            var telemetry = current?.Telemetry == null ? new Dictionary<string, string>() : new Dictionary<string, string>(current.Telemetry);
+            telemetry["Vendor"] = "Okapi";
+            telemetry["AgvId"] = request.AgvId.ToString();
+            telemetry["TaskCallbackState"] = request.State.ToString();
+            telemetry["FaultCode"] = request.FaultCode.ToString();
+            telemetry["TaskUpdateTime"] = request.UpdateTime ?? "";
 
             var snapshot = new VehicleStatusSnapshot
             {
@@ -77,32 +101,19 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 CurrentTaskId = string.IsNullOrWhiteSpace(request.TaskId) ? null : request.TaskId,
                 BatteryLevel = current?.BatteryLevel ?? 100,
                 Location = current?.Location ?? "Unassigned",
-                ReportedAt = DateTime.Now
+                LoadState = current?.LoadState ?? VehicleLoadState.Unknown,
+                Position = current?.Position ?? new MapPosition(),
+                IsOnline = robotState != RobotState.Offline,
+                HasAlarm = request.FaultCode != 0,
+                ActiveAlarmCode = activeAlarmCode,
+                ActiveAlarmMessage = activeAlarmMessage,
+                ReportedAt = _mapper.ParseOkapiTime(request.UpdateTime),
+                Telemetry = telemetry
             };
 
             _logger.LogReceive(vehicleId, "TaskStateUpdate", $"Status: {robotState}, Task: {request.TaskId}, Fault: {request.FaultCode}");
             
             return snapshot;
-        }
-
-        private TaskState ConvertOkapiTaskState(int state)
-        {
-            return state switch
-            {
-                0 => TaskState.Pending,
-                1 => TaskState.Running,
-                2 => TaskState.Completed,
-                3 => TaskState.Failed,
-                4 => TaskState.Cancelled,
-                _ => TaskState.Pending
-            };
-        }
-
-        private RobotState DetermineRobotState(int state, int faultCode)
-        {
-            if (faultCode != 0) return RobotState.Fault;
-            if (state == 1) return RobotState.Running;
-            return RobotState.Idle;
         }
     }
 }

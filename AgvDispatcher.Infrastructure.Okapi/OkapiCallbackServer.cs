@@ -149,25 +149,34 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 }
 
                 var path = request.Url?.AbsolutePath ?? string.Empty;
-                object responseObject;
+                object? responseObject = null;
 
-                if (path.Contains("RequestControl", StringComparison.OrdinalIgnoreCase))
+                if (path.EndsWith("/ReturnTaskState", StringComparison.OrdinalIgnoreCase))
+                {
+                    var req = JsonSerializer.Deserialize<ReturnTaskStateRequest>(rawBody);
+                    if (req == null)
+                    {
+                        response.StatusCode = 400; // Bad Request
+                        return;
+                    }
+                    TaskStateReceived?.Invoke(this, req);
+                    responseObject = new ReturnTaskStateResponse { Code = 0, Message = "success" };
+                }
+                else if (path.EndsWith("/RequestControl", StringComparison.OrdinalIgnoreCase))
                 {
                     var req = JsonSerializer.Deserialize<RequestControlRequest>(rawBody);
-                    if (req != null)
+                    if (req == null)
                     {
-                        AreaControlReceived?.Invoke(this, req);
+                        response.StatusCode = 400; // Bad Request
+                        return;
                     }
+                    AreaControlReceived?.Invoke(this, req);
                     responseObject = new RequestControlResponse { Code = 0, Message = "success" };
                 }
                 else
                 {
-                    var req = JsonSerializer.Deserialize<ReturnTaskStateRequest>(rawBody);
-                    if (req != null)
-                    {
-                        TaskStateReceived?.Invoke(this, req);
-                    }
-                    responseObject = new ReturnTaskStateResponse { Code = 0, Message = "success" };
+                    response.StatusCode = 404; // Not Found
+                    return;
                 }
 
                 var responseJson = JsonSerializer.Serialize(responseObject);
@@ -180,12 +189,12 @@ namespace AgvDispatcher.Infrastructure.Okapi
             }
             catch (JsonException ex)
             {
-                _logger.LogParseError("Unknown", "CallbackParse", ex.Message, rawBody);
+                _logger.LogParseError("Unknown", "CallbackParse", ex.Message, rawBody, null);
                 response.StatusCode = 400; // Bad Request
             }
             catch (Exception ex)
             {
-                _logger.LogError("Unknown", "CallbackProcess", ex.Message);
+                _logger.LogError("Unknown", "CallbackProcess", ex.Message, null);
                 response.StatusCode = 500; // Internal Server Error
             }
             finally

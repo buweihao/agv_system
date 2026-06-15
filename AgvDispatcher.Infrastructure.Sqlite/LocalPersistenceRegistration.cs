@@ -49,6 +49,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<OkapiCallbackServer>();
             containerRegistry.RegisterSingleton<OkapiPointMapper>();
             containerRegistry.RegisterSingleton<OkapiVehicleIdentityMapper>();
+            containerRegistry.RegisterSingleton<OkapiDtoMapper>();
+            containerRegistry.RegisterSingleton<OkapiStatusSyncService>();
             containerRegistry.RegisterSingleton<OkapiTaskStateHandler>();
             containerRegistry.RegisterSingleton<OkapiAreaControlHandler>();
 

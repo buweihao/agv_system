@@ -13,6 +13,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
         private readonly OkapiAreaControlHandler _areaControlHandler;
         private readonly OkapiProtocolLogger _logger;
         private readonly OkapiOptions _options;
+        private readonly OkapiStatusSyncService _statusSyncService;
 
         public OkapiVehicleAdapterFactory(
             OkapiClient client,
@@ -22,7 +23,8 @@ namespace AgvDispatcher.Infrastructure.Okapi
             OkapiTaskStateHandler taskStateHandler,
             OkapiAreaControlHandler areaControlHandler,
             OkapiProtocolLogger logger,
-            OkapiOptions options)
+            OkapiOptions options,
+            OkapiStatusSyncService statusSyncService)
         {
             _client = client;
             _server = server;
@@ -32,6 +34,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
             _areaControlHandler = areaControlHandler;
             _logger = logger;
             _options = options;
+            _statusSyncService = statusSyncService;
         }
 
         public bool CanCreate(Vehicle vehicle)
@@ -50,7 +53,8 @@ namespace AgvDispatcher.Infrastructure.Okapi
                 _taskStateHandler,
                 _areaControlHandler,
                 _logger,
-                _options);
+                _options,
+                _statusSyncService);
         }
     }
 }

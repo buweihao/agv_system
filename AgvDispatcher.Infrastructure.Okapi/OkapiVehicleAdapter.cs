@@ -16,6 +16,8 @@ namespace AgvDispatcher.Infrastructure.Okapi
         private readonly OkapiAreaControlHandler _areaControlHandler;
         private readonly OkapiProtocolLogger _logger;
         private readonly OkapiOptions _options;
+        private readonly OkapiStatusSyncService _statusSyncService;
+        private int _pollingIteration = 0;
 
         private CancellationTokenSource? _pollingCts;
         private Task? _pollingTask;
@@ -29,7 +31,8 @@ namespace AgvDispatcher.Infrastructure.Okapi
             OkapiTaskStateHandler taskStateHandler,
             OkapiAreaControlHandler areaControlHandler,
             OkapiProtocolLogger logger,
-            OkapiOptions options)
+            OkapiOptions options,
+            OkapiStatusSyncService statusSyncService)
         {
             _vehicle = vehicle;
             _client = client;
@@ -40,6 +43,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
             _areaControlHandler = areaControlHandler;
             _logger = logger;
             _options = options;
+            _statusSyncService = statusSyncService;
         }
 
         public string VehicleId => _vehicle.VehicleId;
@@ -289,10 +293,19 @@ namespace AgvDispatcher.Infrastructure.Okapi
             {
                 try
                 {
-                    await _client.GetAgvInfosAsync(token);
+                    await _statusSyncService.SyncAgvInfosAsync(token);
+                    
+                    _pollingIteration++;
+                    if (_pollingIteration % 5 == 0)
+                    {
+                        await _statusSyncService.SyncTaskInfosAsync(token);
+                    }
                 }
                 catch (OperationCanceledException) { break; }
-                catch (Exception) { /* Logged in client */ }
+                catch (Exception ex)
+                {
+                    _logger.LogError(VehicleId, "PollingLoop", ex.Message, null);
+                }
             }
         }
     }

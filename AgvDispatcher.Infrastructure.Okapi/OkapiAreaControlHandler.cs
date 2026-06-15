@@ -26,11 +26,11 @@ namespace AgvDispatcher.Infrastructure.Okapi
             var vehicleId = await _identityMapper.GetVehicleIdAsync(request.AgvId, token);
             if (vehicleId == null)
             {
-                _logger.LogError($"AgvId:{request.AgvId}", "HandleAreaControl", $"Could not find VehicleId for AgvId {request.AgvId}. Ignoring callback.");
+                _logger.LogError($"AgvId:{request.AgvId}", "HandleAreaControl", $"Could not find VehicleId for AgvId {request.AgvId}. Ignoring callback.", null);
                 return;
             }
 
-            _logger.LogReceive(vehicleId, "AreaControlCallback", $"Received Area Control: areaId={request.AreaId}, type={request.RequestType}");
+            _logger.LogReceive(vehicleId, "AreaControlCallback", $"Received Area Control: areaId={request.AreaId}, type={request.RequestType}, time={request.RequestTime}", null);
             
             // First version: we just log it and don't do full traffic control yet.
         }

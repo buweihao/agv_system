@@ -30,9 +30,15 @@ namespace AgvDispatcher.Infrastructure.Mock
                 string.Equals(node.NodeId, nodeId, StringComparison.OrdinalIgnoreCase));
         }
 
-        public IReadOnlyList<MapNode> FindPath(string startNodeId, string endNodeId)
+        public MapEdge? GetEdge(string edgeId)
         {
-            return FindPlannedPath(startNodeId, endNodeId).Nodes;
+            return _edges.FirstOrDefault(edge =>
+                string.Equals(edge.EdgeId, edgeId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public bool NodeExists(string nodeId)
+        {
+            return GetNode(nodeId) != null;
         }
 
         public PlannedPath FindPlannedPath(string startNodeId, string endNodeId)
@@ -40,9 +46,32 @@ namespace AgvDispatcher.Infrastructure.Mock
             return _pathPlanningService.PlanPath(_nodes, _edges, startNodeId, endNodeId);
         }
 
+        public PlannedPath FindPlannedPath(PathPlanningRequest request)
+        {
+            // Simple mock implementation
+            return FindPlannedPath(request.StartNodeId, request.EndNodeId);
+        }
+
         public bool IsPathAvailable(string startNodeId, string endNodeId)
         {
             return FindPlannedPath(startNodeId, endNodeId).IsAvailable;
+        }
+
+        public double GetPathDistance(string startNodeId, string endNodeId)
+        {
+            var path = FindPlannedPath(startNodeId, endNodeId);
+            return path.IsAvailable ? path.TotalLength : double.PositiveInfinity;
+        }
+
+        public IReadOnlyList<MapNode> FindReachableNodes(string startNodeId)
+        {
+            // Simple mock implementation: return all nodes except startNodeId
+            return _nodes.Where(n => n.NodeId != startNodeId).ToList();
+        }
+
+        public IReadOnlyList<MapNode> FindNodesByType(AgvDispatcher.Core.Enums.MapNodeType nodeType)
+        {
+            return _nodes.Where(n => n.NodeType == nodeType).ToList();
         }
     }
 }

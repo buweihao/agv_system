@@ -363,9 +363,9 @@
                                 </Button>
                                 
                                 <!-- 中断时的三个操作按钮 -->
-                                <StackPanel Orientation="Horizontal">
-                                    <StackPanel.Style>
-                                        <Style TargetType="StackPanel">
+                                <WrapPanel Orientation="Horizontal" MaxWidth="220">
+                                    <WrapPanel.Style>
+                                        <Style TargetType="WrapPanel">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding State}" Value="{x:Static core:TaskState.Interrupted}">
@@ -373,21 +373,21 @@
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
-                                    </StackPanel.Style>
+                                    </WrapPanel.Style>
                                     
-                                    <Button Content="重派发" Command="{Binding DataContext.RetryInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#00BFFF" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,0" Cursor="Hand">
+                                    <Button Content="重派发" Command="{Binding DataContext.RetryInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#00BFFF" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,5" Cursor="Hand">
                                         <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
                                     </Button>
-                                    <Button Content="标失败" Command="{Binding DataContext.FailInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#FF4500" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,0" Cursor="Hand">
+                                    <Button Content="标失败" Command="{Binding DataContext.FailInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#FF4500" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,5" Cursor="Hand">
                                         <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
                                     </Button>
-                                    <Button Content="强完成" Command="{Binding DataContext.CompleteInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#2E8B57" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,0" Cursor="Hand">
+                                    <Button Content="强完成" Command="{Binding DataContext.CompleteInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#2E8B57" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,5" Cursor="Hand">
                                         <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
                                     </Button>
-                                    <Button Content="取消" Command="{Binding DataContext.CancelInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="Gray" Foreground="White" BorderThickness="0" Padding="5,2" Cursor="Hand">
+                                    <Button Content="取消" Command="{Binding DataContext.CancelInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="Gray" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,5" Cursor="Hand">
                                         <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
                                     </Button>
-                                </StackPanel>
+                                </WrapPanel>
                             </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>

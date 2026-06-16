@@ -334,8 +334,8 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         private void CancelInterrupted(TaskModel? task)
         {
             if (task is null) return;
-            _taskService.CancelTask(task.Id, "操作员手动恢复：取消任务");
-            DispatchMessage = $"已取消任务 {task.Id}";
+            var result = _dispatchService.CancelTask(task.Id, "操作员手动取消");
+            DispatchMessage = result.Succeeded ? $"已成功向小车发送取消指令并取消任务 {task.Id}" : $"取消失败：{result.Message}";
             RefreshTasks();
         }
 

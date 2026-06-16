@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Linq;
+using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using Prism.Commands;
@@ -27,12 +28,13 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
     /// 校验通过后清空旧数据再整体落库（节点/边/充电桩/别名）。
     /// </para>
     /// </summary>
-    public class MapConfigViewModel : BindableBase
+    public partial class MapConfigViewModel : BindableBase
     {
         private readonly IMapRepository _mapRepository;
         private readonly IMapValidationService _validationService;
         private readonly IChargeStationRepository _chargeStationRepo;
         private readonly IMapLocationAliasRepository _aliasRepo;
+        private readonly ISystemParameterRepository _parameterRepo;
 
         /// <summary>地图节点列表。</summary>
         public ObservableCollection<MapNode> Nodes { get; } = new();
@@ -45,6 +47,12 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         /// <summary>地图校验结果列表。</summary>
         public ObservableCollection<MapValidationResult> ValidationResults { get; } = new();
+
+        /// <summary>节点类型可选值（供界面下拉绑定 <see cref="MapNodeType"/>）。</summary>
+        public Array NodeTypes { get; } = System.Enum.GetValues(typeof(MapNodeType));
+
+        /// <summary>边方向可选值（供界面下拉绑定 <see cref="EdgeDirection"/>）。</summary>
+        public Array EdgeDirections { get; } = System.Enum.GetValues(typeof(EdgeDirection));
 
         private bool _isValidationResultsVisible;
         /// <summary>校验结果面板是否可见（执行校验后置为 true）。</summary>
@@ -121,16 +129,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// <param name="validationService">地图校验服务。</param>
         /// <param name="chargeStationRepo">充电桩仓储（导入/导出时一并处理）。</param>
         /// <param name="aliasRepo">位置别名仓储。</param>
+        /// <param name="parameterRepo">系统参数仓储（持久化地图比例尺/原点）。</param>
         public MapConfigViewModel(
             IMapRepository mapRepository,
             IMapValidationService validationService,
             IChargeStationRepository chargeStationRepo,
-            IMapLocationAliasRepository aliasRepo)
+            IMapLocationAliasRepository aliasRepo,
+            ISystemParameterRepository parameterRepo)
         {
             _mapRepository = mapRepository;
             _validationService = validationService;
             _chargeStationRepo = chargeStationRepo;
             _aliasRepo = aliasRepo;
+            _parameterRepo = parameterRepo;
 
             RefreshCommand = new DelegateCommand(LoadData);
 
@@ -150,6 +161,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             ImportCommand = new DelegateCommand(ImportMapAsync);
             ExportCommand = new DelegateCommand(ExportMapAsync);
 
+            InitializeEditorCommands();
+
             LoadData();
         }
 
@@ -168,9 +181,15 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             var aliases = _aliasRepo.GetAllAsync().GetAwaiter().GetResult();
             foreach (var a in aliases) Aliases.Add(a);
 
+            Stations.Clear();
+            var stations = _chargeStationRepo.GetAllAsync().GetAwaiter().GetResult();
+            foreach (var s in stations) Stations.Add(s);
+
             RaisePropertyChanged(nameof(TotalNodes));
             RaisePropertyChanged(nameof(TotalEdges));
             RaisePropertyChanged(nameof(TotalAliases));
+
+            RebuildEditorProjections();
         }
 
         /// <summary>新增一个带默认参数的节点（编号 N001 递增），并选中它。</summary>
@@ -191,7 +210,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             RaisePropertyChanged(nameof(TotalNodes));
         }
 
-        /// <summary>保存当前节点：校验节点 ID 非空后写入仓储并刷新。</summary>
+        /// <summary>保存当前节点：校验节点 ID 非空且不与其他节点重复后写入仓储并刷新。</summary>
         private void SaveNode()
         {
             if (SelectedNode == null) return;
@@ -200,6 +219,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 System.Windows.MessageBox.Show("节点ID不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
+
+            // 校验 NodeId 不与其他节点重复（同一引用对象除外，避免编辑已有节点时误报）
+            var isDuplicate = Nodes.Any(n =>
+                !ReferenceEquals(n, SelectedNode) &&
+                string.Equals(n.NodeId, SelectedNode.NodeId, System.StringComparison.OrdinalIgnoreCase));
+            if (isDuplicate)
+            {
+                System.Windows.MessageBox.Show($"节点ID '{SelectedNode.NodeId}' 已存在，不能重复", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!PassesPreSaveValidation()) return;
+
             _mapRepository.SaveNodeAsync(SelectedNode).GetAwaiter().GetResult();
             LoadData();
         }
@@ -234,7 +266,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             RaisePropertyChanged(nameof(TotalEdges));
         }
 
-        /// <summary>保存当前边：校验边 ID、起点、终点均非空后写入仓储并刷新。</summary>
+        /// <summary>
+        /// 保存当前边：校验边 ID/起点/终点非空，起止节点须为已存在节点且不能相同（禁止自环），通过后写入仓储并刷新。
+        /// </summary>
         private void SaveEdge()
         {
             if (SelectedEdge == null) return;
@@ -243,6 +277,28 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 System.Windows.MessageBox.Show("路径ID、起点和终点不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
+
+            // 禁止自环
+            if (string.Equals(SelectedEdge.FromNodeId, SelectedEdge.ToNodeId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                System.Windows.MessageBox.Show("起点和终点不能是同一个节点", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            // 起止节点必须是已存在的地图节点，避免产生悬空引用
+            if (Nodes.All(n => n.NodeId != SelectedEdge.FromNodeId))
+            {
+                System.Windows.MessageBox.Show($"起点节点 '{SelectedEdge.FromNodeId}' 不存在，请从已有节点中选择", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            if (Nodes.All(n => n.NodeId != SelectedEdge.ToNodeId))
+            {
+                System.Windows.MessageBox.Show($"终点节点 '{SelectedEdge.ToNodeId}' 不存在，请从已有节点中选择", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!PassesPreSaveValidation()) return;
+
             _mapRepository.SaveEdgeAsync(SelectedEdge).GetAwaiter().GetResult();
             LoadData();
         }
@@ -299,6 +355,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 return;
             }
 
+            if (!PassesPreSaveValidation()) return;
+
             _aliasRepo.SaveAsync(SelectedAlias).GetAwaiter().GetResult();
             LoadData();
         }
@@ -309,6 +367,32 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             if (SelectedAlias == null) return;
             _aliasRepo.DeleteAsync(SelectedAlias.AliasId).GetAwaiter().GetResult();
             LoadData();
+        }
+
+        /// <summary>
+        /// 保存前整图级前置校验：基于当前界面内存中的节点/边/别名（充电桩留空）调用
+        /// <see cref="IMapValidationService.ValidateMapDataAsync"/>，若存在 <see cref="MapValidationLevel.Error"/>
+        /// 级问题（如错误点位、悬空路径、重复别名）则弹窗提示首条并返回 <c>false</c> 以中止落库；
+        /// 否则返回 <c>true</c> 放行。作为各 Save 命令逐条快速校验之后的第二道关，防止脏数据进库。
+        /// </summary>
+        private bool PassesPreSaveValidation()
+        {
+            var results = _validationService.ValidateMapDataAsync(
+                Nodes.ToList(),
+                Edges.ToList(),
+                new List<ChargeStation>(),
+                Aliases.ToList()).GetAwaiter().GetResult();
+
+            var firstError = results.FirstOrDefault(r => r.Level == MapValidationLevel.Error);
+            if (firstError != null)
+            {
+                System.Windows.MessageBox.Show(
+                    $"保存失败：地图数据存在错误，已中止保存。\n[{firstError.ObjectType} {firstError.ObjectId}] {firstError.Message}",
+                    "保存前校验未通过", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

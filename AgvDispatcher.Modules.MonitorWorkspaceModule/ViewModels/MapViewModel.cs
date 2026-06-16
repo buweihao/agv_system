@@ -4,6 +4,7 @@ using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
+using Prism.Commands;
 using Prism.Events;
 using Prism.Mvvm;
 
@@ -34,11 +35,22 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         private string? _selectedVehicleId;
         private string _pathSummary = "请选择AGV查看规划路径";
 
+        // 路径规划预览：手动选择的起点/终点与结果摘要
+        private MapNodeViewItem? _previewStartNode;
+        private MapNodeViewItem? _previewEndNode;
+        private string _previewSummary = "选择起点与终点后点击\"预览路径\"";
+
         /// <summary>地图全部边（普通渲染图层）。</summary>
         public ObservableCollection<MapEdgeViewItem> Edges { get; } = new();
 
         /// <summary>当前选中车辆的规划路径所经过的边（高亮图层）。</summary>
         public ObservableCollection<MapEdgeViewItem> PlannedEdges { get; } = new();
+
+        /// <summary>手动预览路径所经过的边（预览高亮图层，独立于车辆路径）。</summary>
+        public ObservableCollection<MapEdgeViewItem> PreviewEdges { get; } = new();
+
+        /// <summary>各边的方向箭头（叠加在普通边图层之上，表达通行方向）。</summary>
+        public ObservableCollection<MapEdgeArrowViewItem> EdgeArrows { get; } = new();
 
         /// <summary>地图全部节点。</summary>
         public ObservableCollection<MapNodeViewItem> Nodes { get; } = new();
@@ -72,6 +84,45 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// <summary>地图元素点击命令，参数为被点击的节点/边/车辆视图项。</summary>
         public DelegateCommand<object> MapItemClickCommand { get; }
 
+        /// <summary>路径预览的起点节点（供界面下拉绑定）。</summary>
+        public MapNodeViewItem? PreviewStartNode
+        {
+            get => _previewStartNode;
+            set
+            {
+                if (SetProperty(ref _previewStartNode, value))
+                {
+                    PreviewPathCommand.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        /// <summary>路径预览的终点节点（供界面下拉绑定）。</summary>
+        public MapNodeViewItem? PreviewEndNode
+        {
+            get => _previewEndNode;
+            set
+            {
+                if (SetProperty(ref _previewEndNode, value))
+                {
+                    PreviewPathCommand.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        /// <summary>路径预览结果摘要（起止点、点数、总里程或不可达提示）。</summary>
+        public string PreviewSummary
+        {
+            get => _previewSummary;
+            set => SetProperty(ref _previewSummary, value);
+        }
+
+        /// <summary>根据所选起点/终点计算并高亮显示预览路径。</summary>
+        public DelegateCommand PreviewPathCommand { get; }
+
+        /// <summary>清除当前预览路径与选择。</summary>
+        public DelegateCommand ClearPreviewCommand { get; }
+
         /// <summary>
         /// 构造函数，注入依赖、加载别名并首次绘制地图，同时订阅选中车辆与状态变化事件。
         /// </summary>
@@ -93,6 +144,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             _aliasRepo = aliasRepo;
 
             MapItemClickCommand = new DelegateCommand<object>(OnMapItemClicked);
+            PreviewPathCommand = new DelegateCommand(OnPreviewPath, CanPreviewPath);
+            ClearPreviewCommand = new DelegateCommand(OnClearPreview);
 
             // 先异步加载别名，完成后在 UI 线程首次绘制地图
             LoadAliasesAsync().ContinueWith(_ => LoadMap(null), TaskScheduler.FromCurrentSynchronizationContext());
@@ -164,12 +217,18 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             // 普通边图层（仅渲染两端节点都存在的边）
             Edges.Clear();
+            EdgeArrows.Clear();
             foreach (var edge in edges)
             {
                 if (nodeMap.TryGetValue(edge.FromNodeId, out var fromNode)
                     && nodeMap.TryGetValue(edge.ToNodeId, out var toNode))
                 {
-                    Edges.Add(CreateEdgeItem(edge, fromNode, toNode, plannedEdgeIds.Contains(edge.EdgeId)));
+                    var edgeItem = CreateEdgeItem(edge, fromNode, toNode, plannedEdgeIds.Contains(edge.EdgeId));
+                    Edges.Add(edgeItem);
+                    foreach (var arrow in CreateEdgeArrows(edge, fromNode, toNode, edgeItem.Stroke))
+                    {
+                        EdgeArrows.Add(arrow);
+                    }
                 }
             }
 
@@ -207,6 +266,113 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             }
 
             PathSummary = BuildPathSummary(selectedVehicle, plannedPath, nodes);
+
+            // 重建节点集合后，重新解析预览起止点引用并刷新预览路径图层
+            RefreshPreviewAfterReload(nodeMap);
+        }
+
+        /// <summary>
+        /// 地图重载后修复预览起止点对新节点视图项的引用，并据此重绘预览路径图层。
+        /// 若原起止点在新地图中不存在则清空预览。
+        /// </summary>
+        private void RefreshPreviewAfterReload(IReadOnlyDictionary<string, MapNode> nodeMap)
+        {
+            var startId = _previewStartNode?.NodeId;
+            var endId = _previewEndNode?.NodeId;
+
+            // 重新指向 Nodes 集合中的新实例（避免下拉框选中项与列表项不一致）
+            _previewStartNode = string.IsNullOrEmpty(startId)
+                ? null
+                : Nodes.FirstOrDefault(n => string.Equals(n.NodeId, startId, StringComparison.OrdinalIgnoreCase));
+            _previewEndNode = string.IsNullOrEmpty(endId)
+                ? null
+                : Nodes.FirstOrDefault(n => string.Equals(n.NodeId, endId, StringComparison.OrdinalIgnoreCase));
+            RaisePropertyChanged(nameof(PreviewStartNode));
+            RaisePropertyChanged(nameof(PreviewEndNode));
+            PreviewPathCommand.RaiseCanExecuteChanged();
+
+            // 若已有有效预览路径，则用新坐标重绘；起止点失效则清除预览图层
+            if (PreviewEdges.Count > 0)
+            {
+                if (_previewStartNode is not null && _previewEndNode is not null)
+                {
+                    RenderPreviewPath(nodeMap);
+                }
+                else
+                {
+                    PreviewEdges.Clear();
+                    PreviewSummary = "选择起点与终点后点击\"预览路径\"";
+                }
+            }
+        }
+
+        /// <summary>是否允许执行预览：已选择起点和终点，且两者不同。</summary>
+        private bool CanPreviewPath()
+            => _previewStartNode is not null
+               && _previewEndNode is not null
+               && !string.Equals(_previewStartNode.NodeId, _previewEndNode.NodeId, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// 计算所选起点到终点的规划路径，渲染预览高亮图层并更新预览摘要。
+        /// </summary>
+        private void OnPreviewPath()
+        {
+            if (_previewStartNode is null || _previewEndNode is null)
+            {
+                return;
+            }
+
+            var nodeMap = _mapService.GetNodes().ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
+            RenderPreviewPath(nodeMap);
+        }
+
+        /// <summary>
+        /// 用当前起止点向地图服务请求规划路径，填充 <see cref="PreviewEdges"/> 高亮图层并设置 <see cref="PreviewSummary"/>。
+        /// </summary>
+        private void RenderPreviewPath(IReadOnlyDictionary<string, MapNode> nodeMap)
+        {
+            PreviewEdges.Clear();
+
+            if (_previewStartNode is null || _previewEndNode is null)
+            {
+                PreviewSummary = "选择起点与终点后点击\"预览路径\"";
+                return;
+            }
+
+            var startId = _previewStartNode.NodeId;
+            var endId = _previewEndNode.NodeId;
+            var path = _mapService.FindPlannedPath(startId, endId);
+
+            if (path is null || !path.IsAvailable || path.Edges.Count == 0)
+            {
+                PreviewSummary = $"{startId} → {endId}："
+                    + (string.IsNullOrWhiteSpace(path?.Message) ? "暂无可用路径" : path!.Message);
+                return;
+            }
+
+            foreach (var edge in path.Edges)
+            {
+                if (nodeMap.TryGetValue(edge.FromNodeId, out var fromNode)
+                    && nodeMap.TryGetValue(edge.ToNodeId, out var toNode))
+                {
+                    var item = CreateEdgeItem(edge, fromNode, toNode, true);
+                    item.Stroke = "#00E5FF";   // 青色，区别于车辆金色路径
+                    item.StrokeThickness = 4;
+                    item.Opacity = 0.95;
+                    PreviewEdges.Add(item);
+                }
+            }
+
+            PreviewSummary = $"{path.StartNodeId} → {path.EndNodeId}，共 {path.Nodes.Count} 个点，{path.TotalLength:F0} m";
+        }
+
+        /// <summary>清除预览路径图层、重置起止点选择与摘要。</summary>
+        private void OnClearPreview()
+        {
+            PreviewEdges.Clear();
+            PreviewStartNode = null;
+            PreviewEndNode = null;
+            PreviewSummary = "选择起点与终点后点击\"预览路径\"";
         }
 
         /// <summary>
@@ -293,7 +459,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 由领域边模型构建画布边视图项：计算两端坐标、按启用/锁定状态着色，规划路径上的边加粗。
+        /// 由领域边模型构建画布边视图项：计算两端坐标，按状态区分着色
+        /// （正常=绿、锁定=橙、禁用/封闭=红），规划路径上的边加粗。
         /// </summary>
         private static MapEdgeViewItem CreateEdgeItem(
             MapEdge edge,
@@ -301,28 +468,157 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             MapNode toNode,
             bool isPlanned)
         {
+            // 状态着色：禁用或封闭→红（物理阻断），锁定→橙（临时管控），正常→绿
+            var isBlocked = !edge.IsEnabled || edge.Direction == EdgeDirection.Closed;
+            string stroke;
+            double opacity;
+            if (isBlocked)
+            {
+                stroke = "#FF4500";
+                opacity = 0.9;
+            }
+            else if (edge.IsLocked)
+            {
+                stroke = "#FFA500";
+                opacity = 0.85;
+            }
+            else
+            {
+                stroke = "#00FF7F";
+                opacity = 0.55;
+            }
+
             return new MapEdgeViewItem
             {
                 EdgeId = edge.EdgeId,
                 FromNodeId = edge.FromNodeId,
                 ToNodeId = edge.ToNodeId,
-                IsBidirectional = edge.Direction == AgvDispatcher.Core.Enums.EdgeDirection.Bidirectional,
+                IsBidirectional = edge.Direction == EdgeDirection.Bidirectional,
+                Direction = edge.Direction,
+                IsEnabled = edge.IsEnabled,
+                IsLocked = edge.IsLocked,
                 MaxSpeed = edge.MaxSpeed,
                 X1 = fromNode.Position.X,
                 Y1 = fromNode.Position.Y,
                 X2 = toNode.Position.X,
                 Y2 = toNode.Position.Y,
-                Stroke = edge.IsEnabled && !edge.IsLocked ? "#00FF7F" : "#FF4500",
+                Stroke = stroke,
                 StrokeThickness = isPlanned ? 3 : 2,
-                Opacity = edge.IsEnabled && !edge.IsLocked ? 0.55 : 0.9
+                Opacity = opacity
             };
         }
 
         /// <summary>
-        /// 由领域节点模型构建画布节点视图项：计算绘制坐标与标签偏移，按节点类型填色，规划路径上的节点描边高亮。
+        /// 为一条边生成方向箭头（"＞"形折线）：
+        /// 双向→在中点两侧各一个反向箭头；仅正向→一个指向终点的箭头；
+        /// 仅反向→一个指向起点的箭头；封闭→不画箭头。箭头颜色跟随边的状态色。
+        /// </summary>
+        private static IEnumerable<MapEdgeArrowViewItem> CreateEdgeArrows(
+            MapEdge edge,
+            MapNode fromNode,
+            MapNode toNode,
+            string stroke)
+        {
+            if (edge.Direction == EdgeDirection.Closed)
+            {
+                yield break;
+            }
+
+            double ax = fromNode.Position.X, ay = fromNode.Position.Y;
+            double bx = toNode.Position.X, by = toNode.Position.Y;
+            double dx = bx - ax, dy = by - ay;
+            var len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 1e-6)
+            {
+                yield break; // 自环或重合点，无方向可言
+            }
+
+            // 单位方向与单位法向
+            double ux = dx / len, uy = dy / len;
+            double nx = -uy, ny = ux;
+            double mx = (ax + bx) / 2, my = (ay + by) / 2; // 边中点
+
+            const double wing = 7;   // 箭翼沿边方向回退长度
+            const double half = 5;   // 箭翼横向半宽
+            const double gap = 6;    // 双向箭头错开间距
+
+            if (edge.Direction == EdgeDirection.Bidirectional)
+            {
+                // 指向终点的箭头（略偏向终点一侧）
+                yield return BuildArrow(mx + ux * gap, my + uy * gap, ux, uy, nx, ny, wing, half, stroke);
+                // 指向起点的箭头（反方向，略偏向起点一侧）
+                yield return BuildArrow(mx - ux * gap, my - uy * gap, -ux, -uy, nx, ny, wing, half, stroke);
+            }
+            else if (edge.Direction == EdgeDirection.ReverseOnly)
+            {
+                yield return BuildArrow(mx, my, -ux, -uy, nx, ny, wing, half, stroke);
+            }
+            else // ForwardOnly
+            {
+                yield return BuildArrow(mx, my, ux, uy, nx, ny, wing, half, stroke);
+            }
+        }
+
+        /// <summary>
+        /// 在给定箭尖位置 (tipX,tipY) 和指向 (ux,uy) 处构建一个 "＞" 形箭头：
+        /// 两翼端点 = 箭尖沿反方向回退 wing 后，分别沿法向 (nx,ny) 偏移 ±half。
+        /// </summary>
+        private static MapEdgeArrowViewItem BuildArrow(
+            double tipX, double tipY,
+            double ux, double uy,
+            double nx, double ny,
+            double wing, double half,
+            string stroke)
+        {
+            double baseX = tipX - ux * wing, baseY = tipY - uy * wing;
+            return new MapEdgeArrowViewItem
+            {
+                X1 = baseX + nx * half,
+                Y1 = baseY + ny * half,
+                Xc = tipX,
+                Yc = tipY,
+                X2 = baseX - nx * half,
+                Y2 = baseY - ny * half,
+                Stroke = stroke
+            };
+        }
+
+        /// <summary>
+        /// 由领域节点模型构建画布节点视图项：计算绘制坐标与标签偏移，按节点类型填色，
+        /// 禁用节点统一灰显，规划路径上的节点描边高亮。
         /// </summary>
         private static MapNodeViewItem CreateNodeItem(MapNode node, bool isOnPlannedPath)
         {
+            // 禁用节点灰显，明显区别于启用节点；启用节点按类型着色
+            var fill = !node.IsEnabled
+                ? "#556070"
+                : node.NodeType switch
+                {
+                    MapNodeType.Pickup => "#1E90FF",
+                    MapNodeType.Dropoff => "#00BFFF",
+                    MapNodeType.Charge => "#9370DB",
+                    MapNodeType.Intersection => "#00FF7F",
+                    _ => "#9FB7CC"
+                };
+
+            string stroke;
+            double strokeThickness;
+            if (isOnPlannedPath)
+            {
+                stroke = "#FFD700";
+                strokeThickness = 3;
+            }
+            else if (!node.IsEnabled)
+            {
+                stroke = "#3A4452";
+                strokeThickness = 1;
+            }
+            else
+            {
+                stroke = "#D8F3FF";
+                strokeThickness = 1;
+            }
+
             return new MapNodeViewItem
             {
                 NodeId = node.NodeId,
@@ -337,16 +633,10 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 CanvasTop = node.Position.Y - 9,
                 LabelLeft = node.Position.X + 12,
                 LabelTop = node.Position.Y - 12,
-                Fill = node.NodeType switch
-                {
-                    MapNodeType.Pickup => "#1E90FF",
-                    MapNodeType.Dropoff => "#00BFFF",
-                    MapNodeType.Charge => "#9370DB",
-                    MapNodeType.Intersection => "#00FF7F",
-                    _ => "#9FB7CC"
-                },
-                Stroke = isOnPlannedPath ? "#FFD700" : "#D8F3FF",
-                StrokeThickness = isOnPlannedPath ? 3 : 1
+                Fill = fill,
+                Stroke = stroke,
+                StrokeThickness = strokeThickness,
+                Opacity = node.IsEnabled ? 1.0 : 0.5
             };
         }
 
@@ -459,6 +749,15 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// <summary>是否双向通行。</summary>
         public bool IsBidirectional { get; set; }
 
+        /// <summary>边方向。</summary>
+        public EdgeDirection Direction { get; set; }
+
+        /// <summary>是否启用（禁用＝物理阻断）。</summary>
+        public bool IsEnabled { get; set; } = true;
+
+        /// <summary>是否被锁定（临时占用/管控）。</summary>
+        public bool IsLocked { get; set; }
+
         /// <summary>限速（m/s）。</summary>
         public double MaxSpeed { get; set; }
 
@@ -482,6 +781,42 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
         /// <summary>线条透明度。</summary>
         public double Opacity { get; set; } = 0.6;
+    }
+
+    /// <summary>
+    /// 边方向箭头的画布渲染项：用一段三点折线（"＞"形）表示通行方向，置于边中点附近。
+    /// </summary>
+    public class MapEdgeArrowViewItem
+    {
+        /// <summary>箭头一翼端点 X。</summary>
+        public double X1 { get; set; }
+
+        /// <summary>箭头一翼端点 Y。</summary>
+        public double Y1 { get; set; }
+
+        /// <summary>箭尖 X（指向通行方向）。</summary>
+        public double Xc { get; set; }
+
+        /// <summary>箭尖 Y（指向通行方向）。</summary>
+        public double Yc { get; set; }
+
+        /// <summary>箭头另一翼端点 X。</summary>
+        public double X2 { get; set; }
+
+        /// <summary>箭头另一翼端点 Y。</summary>
+        public double Y2 { get; set; }
+
+        /// <summary>箭头颜色（跟随所属边的状态色）。</summary>
+        public string Stroke { get; set; } = "#00FF7F";
+
+        /// <summary>箭头线宽。</summary>
+        public double StrokeThickness { get; set; } = 2;
+
+        /// <summary>箭头透明度。</summary>
+        public double Opacity { get; set; } = 0.85;
+
+        /// <summary>供 Polyline.Points 绑定的三点字符串。</summary>
+        public string PointsText => $"{X1},{Y1} {Xc},{Yc} {X2},{Y2}";
     }
 
     /// <summary>地图节点的画布渲染视图项：携带绘制坐标、标签偏移与样式。</summary>
@@ -531,6 +866,9 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
         /// <summary>描边粗细。</summary>
         public double StrokeThickness { get; set; } = 1;
+
+        /// <summary>整体透明度（禁用节点半透明）。</summary>
+        public double Opacity { get; set; } = 1.0;
     }
 
     /// <summary>车辆在地图上的位置标记视图项：携带坐标、状态与样式。</summary>

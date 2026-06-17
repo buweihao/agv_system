@@ -72,11 +72,13 @@ namespace AgvDispatcher.Infrastructure.Mock
         {
             return new[]
             {
-                new MapNode { NodeId = "A1", NodeCode = "A1", Name = "A1取货点", NodeType = MapNodeType.Pickup, AreaCode = "A", Position = new MapPosition { X = 60, Y = 60 } },
-                new MapNode { NodeId = "A2", NodeCode = "A2", Name = "A2取货点", NodeType = MapNodeType.Pickup, AreaCode = "A", Position = new MapPosition { X = 260, Y = 60 } },
-                new MapNode { NodeId = "B2", NodeCode = "B2", Name = "B2放货点", NodeType = MapNodeType.Dropoff, AreaCode = "B", Position = new MapPosition { X = 460, Y = 280 } },
-                new MapNode { NodeId = "B3", NodeCode = "B3", Name = "B3放货点", NodeType = MapNodeType.Dropoff, AreaCode = "B", Position = new MapPosition { X = 680, Y = 280 } },
-                new MapNode { NodeId = "Charge-1", NodeCode = "Charge-1", Name = "1号充电位", NodeType = MapNodeType.Charge, AreaCode = "C", Position = new MapPosition { X = 760, Y = 500 } }
+                new MapNode { NodeId = "P1", MapId = "MAIN", NodeCode = "P1", Name = "P1取货点", NodeType = MapNodeType.Pickup, AreaCode = "A", Position = new MapPosition { X = 80, Y = 80 } },
+                new MapNode { NodeId = "P2", MapId = "MAIN", NodeCode = "P2", Name = "P2取货点", NodeType = MapNodeType.Pickup, AreaCode = "A", Position = new MapPosition { X = 80, Y = 300 } },
+                new MapNode { NodeId = "X1", MapId = "MAIN", NodeCode = "X1", Name = "中央路口", NodeType = MapNodeType.Intersection, AreaCode = "A", Position = new MapPosition { X = 400, Y = 200 } },
+                new MapNode { NodeId = "W1", MapId = "MAIN", NodeCode = "W1", Name = "等待点", NodeType = MapNodeType.Waiting, AreaCode = "A", Position = new MapPosition { X = 400, Y = 420 } },
+                new MapNode { NodeId = "D1", MapId = "MAIN", NodeCode = "D1", Name = "D1放货点", NodeType = MapNodeType.Dropoff, AreaCode = "B", Position = new MapPosition { X = 720, Y = 80 } },
+                new MapNode { NodeId = "D2", MapId = "MAIN", NodeCode = "D2", Name = "D2放货点", NodeType = MapNodeType.Dropoff, AreaCode = "B", Position = new MapPosition { X = 720, Y = 300 } },
+                new MapNode { NodeId = "Charge-1", MapId = "MAIN", NodeCode = "Charge-1", Name = "1号充电位", NodeType = MapNodeType.Charge, AreaCode = "C", Position = new MapPosition { X = 720, Y = 480 } }
             };
         }
 
@@ -84,10 +86,30 @@ namespace AgvDispatcher.Infrastructure.Mock
         {
             return new[]
             {
-                new MapEdge { EdgeId = "E-A1-A2", FromNodeId = "A1", ToNodeId = "A2", Length = 200, MaxSpeed = 1.5 },
-                new MapEdge { EdgeId = "E-A2-B2", FromNodeId = "A2", ToNodeId = "B2", Length = 280, MaxSpeed = 1.5 },
-                new MapEdge { EdgeId = "E-B2-B3", FromNodeId = "B2", ToNodeId = "B3", Length = 220, MaxSpeed = 1.2 },
-                new MapEdge { EdgeId = "E-B3-CH1", FromNodeId = "B3", ToNodeId = "Charge-1", Length = 260, MaxSpeed = 1.0 }
+                // 取货点 → 路口：双向
+                new MapEdge { EdgeId = "E-P1-X1", MapId = "MAIN", FromNodeId = "P1", ToNodeId = "X1", Direction = EdgeDirection.Bidirectional, Length = 360, MaxSpeed = 1.5 },
+                new MapEdge { EdgeId = "E-P2-X1", MapId = "MAIN", FromNodeId = "P2", ToNodeId = "X1", Direction = EdgeDirection.Bidirectional, Length = 340, MaxSpeed = 1.5 },
+                // 路口 → 放货点 D1：单向（仅去程）
+                new MapEdge { EdgeId = "E-X1-D1", MapId = "MAIN", FromNodeId = "X1", ToNodeId = "D1", Direction = EdgeDirection.ForwardOnly, Length = 360, MaxSpeed = 1.5 },
+                // 路口 → 放货点 D2：双向
+                new MapEdge { EdgeId = "E-X1-D2", MapId = "MAIN", FromNodeId = "X1", ToNodeId = "D2", Direction = EdgeDirection.Bidirectional, Length = 340, MaxSpeed = 1.2 },
+                // 路口 → 等待点：双向
+                new MapEdge { EdgeId = "E-X1-W1", MapId = "MAIN", FromNodeId = "X1", ToNodeId = "W1", Direction = EdgeDirection.Bidirectional, Length = 220, MaxSpeed = 1.0 },
+                // 放货点 D2 → 充电位：双向
+                new MapEdge { EdgeId = "E-D2-CH1", MapId = "MAIN", FromNodeId = "D2", ToNodeId = "Charge-1", Direction = EdgeDirection.Bidirectional, Length = 180, MaxSpeed = 1.0 },
+                // 等待点 → 充电位：临时锁定（演示锁定状态，规划时绕开）
+                new MapEdge { EdgeId = "E-W1-CH1", MapId = "MAIN", FromNodeId = "W1", ToNodeId = "Charge-1", Direction = EdgeDirection.Bidirectional, Length = 320, MaxSpeed = 1.0 },
+                // 取货点 P2 → 等待点：禁用（演示禁用状态）
+                new MapEdge { EdgeId = "E-P2-W1", MapId = "MAIN", FromNodeId = "P2", ToNodeId = "W1", Direction = EdgeDirection.Bidirectional, Length = 420, MaxSpeed = 1.0, IsEnabled = false }
+            };
+        }
+
+        public static IReadOnlyList<MapLocationAlias> CreateMapAliases()
+        {
+            return new[]
+            {
+                new MapLocationAlias { AliasId = "AL-001", MapId = "MAIN", NodeId = "P1", AliasType = "Vendor", AliasValue = "STATION-01", Brand = null, IsEnabled = true, Remark = "全局取货位别名" },
+                new MapLocationAlias { AliasId = "AL-002", MapId = "MAIN", NodeId = "D1", AliasType = "Vendor", AliasValue = "DOCK-A", Brand = "RGV-A", IsEnabled = true, Remark = "RGV-A 厂商放货位映射" }
             };
         }
 

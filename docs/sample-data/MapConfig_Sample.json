@@ -1,0 +1,31 @@
+{
+  "MapNodes": [
+    { "NodeId": "P1", "MapId": "MAIN", "NodeCode": "P1", "Name": "P1取货点", "NodeType": 2, "Position": { "MapId": "MAIN", "NodeId": "P1", "X": 80, "Y": 80, "Heading": 0 }, "Heading": 0, "AreaCode": "A", "IsEnabled": true, "ParkingCapacity": 1, "AllowedBrands": "", "RequiredCapabilities": 0 },
+    { "NodeId": "P2", "MapId": "MAIN", "NodeCode": "P2", "Name": "P2取货点", "NodeType": 2, "Position": { "MapId": "MAIN", "NodeId": "P2", "X": 80, "Y": 300, "Heading": 0 }, "Heading": 0, "AreaCode": "A", "IsEnabled": true, "ParkingCapacity": 1, "AllowedBrands": "", "RequiredCapabilities": 0 },
+    { "NodeId": "X1", "MapId": "MAIN", "NodeCode": "X1", "Name": "中央路口", "NodeType": 6, "Position": { "MapId": "MAIN", "NodeId": "X1", "X": 400, "Y": 200, "Heading": 0 }, "Heading": 0, "AreaCode": "A", "IsEnabled": true, "ParkingCapacity": 1, "AllowedBrands": "", "RequiredCapabilities": 0 },
+    { "NodeId": "W1", "MapId": "MAIN", "NodeCode": "W1", "Name": "等待点", "NodeType": 5, "Position": { "MapId": "MAIN", "NodeId": "W1", "X": 400, "Y": 420, "Heading": 0 }, "Heading": 0, "AreaCode": "A", "IsEnabled": true, "ParkingCapacity": 2, "AllowedBrands": "", "RequiredCapabilities": 0 },
+    { "NodeId": "D1", "MapId": "MAIN", "NodeCode": "D1", "Name": "D1放货点", "NodeType": 3, "Position": { "MapId": "MAIN", "NodeId": "D1", "X": 720, "Y": 80, "Heading": 0 }, "Heading": 0, "AreaCode": "B", "IsEnabled": true, "ParkingCapacity": 1, "AllowedBrands": "RGV-A", "RequiredCapabilities": 0 },
+    { "NodeId": "D2", "MapId": "MAIN", "NodeCode": "D2", "Name": "D2放货点", "NodeType": 3, "Position": { "MapId": "MAIN", "NodeId": "D2", "X": 720, "Y": 300, "Heading": 0 }, "Heading": 0, "AreaCode": "B", "IsEnabled": true, "ParkingCapacity": 1, "AllowedBrands": "", "RequiredCapabilities": 0 },
+    { "NodeId": "Charge-1", "MapId": "MAIN", "NodeCode": "Charge-1", "Name": "1号充电位", "NodeType": 4, "Position": { "MapId": "MAIN", "NodeId": "Charge-1", "X": 720, "Y": 480, "Heading": 0 }, "Heading": 0, "AreaCode": "C", "IsEnabled": true, "ParkingCapacity": 1, "AllowedBrands": "", "RequiredCapabilities": 0 }
+  ],
+  "MapEdges": [
+    { "EdgeId": "E-P1-X1", "MapId": "MAIN", "FromNodeId": "P1", "ToNodeId": "X1", "Direction": 0, "Length": 360, "MaxSpeed": 1.5, "Cost": 1, "IsEnabled": true, "IsLocked": false, "AreaCode": "A", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "P1→路口 双向" },
+    { "EdgeId": "E-P2-X1", "MapId": "MAIN", "FromNodeId": "P2", "ToNodeId": "X1", "Direction": 0, "Length": 340, "MaxSpeed": 1.5, "Cost": 1, "IsEnabled": true, "IsLocked": false, "AreaCode": "A", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "P2→路口 双向" },
+    { "EdgeId": "E-X1-D1", "MapId": "MAIN", "FromNodeId": "X1", "ToNodeId": "D1", "Direction": 1, "Length": 360, "MaxSpeed": 1.5, "Cost": 1, "IsEnabled": true, "IsLocked": false, "AreaCode": "B", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "路口→D1 单向" },
+    { "EdgeId": "E-X1-D2", "MapId": "MAIN", "FromNodeId": "X1", "ToNodeId": "D2", "Direction": 0, "Length": 340, "MaxSpeed": 1.2, "Cost": 1, "IsEnabled": true, "IsLocked": false, "AreaCode": "B", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "路口→D2 双向" },
+    { "EdgeId": "E-X1-W1", "MapId": "MAIN", "FromNodeId": "X1", "ToNodeId": "W1", "Direction": 0, "Length": 220, "MaxSpeed": 1.0, "Cost": 1, "IsEnabled": true, "IsLocked": false, "AreaCode": "A", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "路口→等待点 双向" },
+    { "EdgeId": "E-D2-CH1", "MapId": "MAIN", "FromNodeId": "D2", "ToNodeId": "Charge-1", "Direction": 0, "Length": 180, "MaxSpeed": 1.0, "Cost": 1, "IsEnabled": true, "IsLocked": false, "AreaCode": "C", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "D2→充电位 双向" },
+    { "EdgeId": "E-W1-CH1", "MapId": "MAIN", "FromNodeId": "W1", "ToNodeId": "Charge-1", "Direction": 0, "Length": 320, "MaxSpeed": 1.0, "Cost": 1, "IsEnabled": true, "IsLocked": true, "AreaCode": "C", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "等待点→充电位 临时锁定" },
+    { "EdgeId": "E-P2-W1", "MapId": "MAIN", "FromNodeId": "P2", "ToNodeId": "W1", "Direction": 0, "Length": 420, "MaxSpeed": 1.0, "Cost": 1, "IsEnabled": false, "IsLocked": false, "AreaCode": "A", "AllowedBrands": "", "MaxVehicleFlow": 1, "Remark": "P2→等待点 已禁用" }
+  ],
+  "ChargeStations": [
+    { "StationId": "CS-01", "StationCode": "CS-01", "Name": "1号充电桩", "AreaCode": "C", "NodeId": "Charge-1", "Position": { "X": 720, "Y": 480, "Heading": 0 }, "State": 0, "IsEnabled": true, "RatedPowerKw": 30, "AllowedBrands": "", "MaxQueueCount": 1, "SupportAutoCharge": true }
+  ],
+  "MapLocationAliases": [
+    { "AliasId": "AL-001", "MapId": "MAIN", "NodeId": "P1", "AliasType": "Vendor", "AliasValue": "STATION-01", "Brand": null, "IsEnabled": true, "Remark": "全局取货位别名" },
+    { "AliasId": "AL-002", "MapId": "MAIN", "NodeId": "D1", "AliasType": "Vendor", "AliasValue": "DOCK-A", "Brand": "RGV-A", "IsEnabled": true, "Remark": "RGV-A 厂商放货位映射" }
+  ],
+  "MapId": "MAIN",
+  "Version": "1.0",
+  "ExportTime": "2026-06-16T00:00:00"
+}

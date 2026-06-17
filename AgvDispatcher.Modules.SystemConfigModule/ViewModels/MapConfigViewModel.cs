@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Linq;
+using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using Prism.Commands;
@@ -15,19 +16,46 @@ using Microsoft.Win32;
 
 namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 {
-    public class MapConfigViewModel : BindableBase
+    /// <summary>
+    /// 系统设置 - 地图配置页的 ViewModel。
+    /// <para>
+    /// 提供地图三类核心对象的增删改查：节点 <see cref="MapNode"/>、边 <see cref="MapEdge"/>、
+    /// 位置别名 <see cref="MapLocationAlias"/>，分别操作对应仓储；并集成地图校验
+    /// （<see cref="IMapValidationService"/>）与 JSON 格式的整图导入/导出。
+    /// </para>
+    /// <para>
+    /// 删除节点前会检查是否被边引用以保证拓扑一致；导入时先做前置校验，存在 Error 级问题则中止，
+    /// 校验通过后清空旧数据再整体落库（节点/边/充电桩/别名）。
+    /// </para>
+    /// </summary>
+    public partial class MapConfigViewModel : BindableBase
     {
         private readonly IMapRepository _mapRepository;
         private readonly IMapValidationService _validationService;
         private readonly IChargeStationRepository _chargeStationRepo;
         private readonly IMapLocationAliasRepository _aliasRepo;
-        
+        private readonly ISystemParameterRepository _parameterRepo;
+
+        /// <summary>地图节点列表。</summary>
         public ObservableCollection<MapNode> Nodes { get; } = new();
+
+        /// <summary>地图边列表。</summary>
         public ObservableCollection<MapEdge> Edges { get; } = new();
+
+        /// <summary>位置别名列表。</summary>
         public ObservableCollection<MapLocationAlias> Aliases { get; } = new();
+
+        /// <summary>地图校验结果列表。</summary>
         public ObservableCollection<MapValidationResult> ValidationResults { get; } = new();
 
+        /// <summary>节点类型可选值（供界面下拉绑定 <see cref="MapNodeType"/>）。</summary>
+        public Array NodeTypes { get; } = System.Enum.GetValues(typeof(MapNodeType));
+
+        /// <summary>边方向可选值（供界面下拉绑定 <see cref="EdgeDirection"/>）。</summary>
+        public Array EdgeDirections { get; } = System.Enum.GetValues(typeof(EdgeDirection));
+
         private bool _isValidationResultsVisible;
+        /// <summary>校验结果面板是否可见（执行校验后置为 true）。</summary>
         public bool IsValidationResultsVisible
         {
             get => _isValidationResultsVisible;
@@ -35,6 +63,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         }
 
         private MapNode? _selectedNode;
+        /// <summary>当前选中的节点。</summary>
         public MapNode? SelectedNode
         {
             get => _selectedNode;
@@ -42,6 +71,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         }
 
         private MapEdge? _selectedEdge;
+        /// <summary>当前选中的边。</summary>
         public MapEdge? SelectedEdge
         {
             get => _selectedEdge;
@@ -49,44 +79,69 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         }
 
         private MapLocationAlias? _selectedAlias;
+        /// <summary>当前选中的别名。</summary>
         public MapLocationAlias? SelectedAlias
         {
             get => _selectedAlias;
             set => SetProperty(ref _selectedAlias, value);
         }
 
+        /// <summary>刷新（重新加载全部地图数据）命令。</summary>
         public DelegateCommand RefreshCommand { get; }
-        
+
+        /// <summary>新增节点命令。</summary>
         public DelegateCommand AddNodeCommand { get; }
+        /// <summary>保存节点命令（需有选中节点）。</summary>
         public DelegateCommand SaveNodeCommand { get; }
+        /// <summary>删除节点命令（需有选中节点）。</summary>
         public DelegateCommand DeleteNodeCommand { get; }
 
+        /// <summary>新增边命令。</summary>
         public DelegateCommand AddEdgeCommand { get; }
+        /// <summary>保存边命令（需有选中边）。</summary>
         public DelegateCommand SaveEdgeCommand { get; }
+        /// <summary>删除边命令（需有选中边）。</summary>
         public DelegateCommand DeleteEdgeCommand { get; }
 
+        /// <summary>新增别名命令。</summary>
         public DelegateCommand AddAliasCommand { get; }
+        /// <summary>保存别名命令（需有选中别名）。</summary>
         public DelegateCommand SaveAliasCommand { get; }
+        /// <summary>删除别名命令（需有选中别名）。</summary>
         public DelegateCommand DeleteAliasCommand { get; }
 
+        /// <summary>执行整图校验命令。</summary>
         public DelegateCommand ValidateCommand { get; }
+        /// <summary>从 JSON 文件导入地图配置命令。</summary>
         public DelegateCommand ImportCommand { get; }
+        /// <summary>导出地图配置到 JSON 文件命令。</summary>
         public DelegateCommand ExportCommand { get; }
 
+        /// <summary>节点总数。</summary>
         public int TotalNodes => Nodes.Count;
+        /// <summary>边总数。</summary>
         public int TotalEdges => Edges.Count;
+        /// <summary>别名总数。</summary>
         public int TotalAliases => Aliases.Count;
 
+        /// <summary>构造函数：注入仓储与校验服务，绑定全部命令并首次加载数据。</summary>
+        /// <param name="mapRepository">地图仓储（节点/边）。</param>
+        /// <param name="validationService">地图校验服务。</param>
+        /// <param name="chargeStationRepo">充电桩仓储（导入/导出时一并处理）。</param>
+        /// <param name="aliasRepo">位置别名仓储。</param>
+        /// <param name="parameterRepo">系统参数仓储（持久化地图比例尺/原点）。</param>
         public MapConfigViewModel(
-            IMapRepository mapRepository, 
+            IMapRepository mapRepository,
             IMapValidationService validationService,
             IChargeStationRepository chargeStationRepo,
-            IMapLocationAliasRepository aliasRepo)
+            IMapLocationAliasRepository aliasRepo,
+            ISystemParameterRepository parameterRepo)
         {
             _mapRepository = mapRepository;
             _validationService = validationService;
             _chargeStationRepo = chargeStationRepo;
             _aliasRepo = aliasRepo;
+            _parameterRepo = parameterRepo;
 
             RefreshCommand = new DelegateCommand(LoadData);
 
@@ -106,9 +161,12 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             ImportCommand = new DelegateCommand(ImportMapAsync);
             ExportCommand = new DelegateCommand(ExportMapAsync);
 
+            InitializeEditorCommands();
+
             LoadData();
         }
 
+        /// <summary>从仓储重新加载节点、边、别名三类数据并刷新计数。</summary>
         private void LoadData()
         {
             Nodes.Clear();
@@ -123,11 +181,18 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             var aliases = _aliasRepo.GetAllAsync().GetAwaiter().GetResult();
             foreach (var a in aliases) Aliases.Add(a);
 
+            Stations.Clear();
+            var stations = _chargeStationRepo.GetAllAsync().GetAwaiter().GetResult();
+            foreach (var s in stations) Stations.Add(s);
+
             RaisePropertyChanged(nameof(TotalNodes));
             RaisePropertyChanged(nameof(TotalEdges));
             RaisePropertyChanged(nameof(TotalAliases));
+
+            RebuildEditorProjections();
         }
 
+        /// <summary>新增一个带默认参数的节点（编号 N001 递增），并选中它。</summary>
         private void AddNode()
         {
             var nextNumber = Nodes.Count + 1;
@@ -145,6 +210,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             RaisePropertyChanged(nameof(TotalNodes));
         }
 
+        /// <summary>保存当前节点：校验节点 ID 非空且不与其他节点重复后写入仓储并刷新。</summary>
         private void SaveNode()
         {
             if (SelectedNode == null) return;
@@ -153,10 +219,24 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 System.Windows.MessageBox.Show("节点ID不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
+
+            // 校验 NodeId 不与其他节点重复（同一引用对象除外，避免编辑已有节点时误报）
+            var isDuplicate = Nodes.Any(n =>
+                !ReferenceEquals(n, SelectedNode) &&
+                string.Equals(n.NodeId, SelectedNode.NodeId, System.StringComparison.OrdinalIgnoreCase));
+            if (isDuplicate)
+            {
+                System.Windows.MessageBox.Show($"节点ID '{SelectedNode.NodeId}' 已存在，不能重复", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!PassesPreSaveValidation()) return;
+
             _mapRepository.SaveNodeAsync(SelectedNode).GetAwaiter().GetResult();
             LoadData();
         }
 
+        /// <summary>删除当前节点：若该节点仍被任意边引用则阻止删除并提示，否则删除并刷新。</summary>
         private void DeleteNode()
         {
             if (SelectedNode == null) return;
@@ -170,6 +250,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             LoadData();
         }
 
+        /// <summary>新增一条带默认参数的边（编号 E001 递增，限速 1.0），并选中它。</summary>
         private void AddEdge()
         {
             var nextNumber = Edges.Count + 1;
@@ -185,6 +266,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             RaisePropertyChanged(nameof(TotalEdges));
         }
 
+        /// <summary>
+        /// 保存当前边：校验边 ID/起点/终点非空，起止节点须为已存在节点且不能相同（禁止自环），通过后写入仓储并刷新。
+        /// </summary>
         private void SaveEdge()
         {
             if (SelectedEdge == null) return;
@@ -193,10 +277,33 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 System.Windows.MessageBox.Show("路径ID、起点和终点不能为空", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
+
+            // 禁止自环
+            if (string.Equals(SelectedEdge.FromNodeId, SelectedEdge.ToNodeId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                System.Windows.MessageBox.Show("起点和终点不能是同一个节点", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            // 起止节点必须是已存在的地图节点，避免产生悬空引用
+            if (Nodes.All(n => n.NodeId != SelectedEdge.FromNodeId))
+            {
+                System.Windows.MessageBox.Show($"起点节点 '{SelectedEdge.FromNodeId}' 不存在，请从已有节点中选择", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            if (Nodes.All(n => n.NodeId != SelectedEdge.ToNodeId))
+            {
+                System.Windows.MessageBox.Show($"终点节点 '{SelectedEdge.ToNodeId}' 不存在，请从已有节点中选择", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            if (!PassesPreSaveValidation()) return;
+
             _mapRepository.SaveEdgeAsync(SelectedEdge).GetAwaiter().GetResult();
             LoadData();
         }
 
+        /// <summary>删除当前选中的边并刷新列表。</summary>
         private void DeleteEdge()
         {
             if (SelectedEdge == null) return;
@@ -204,6 +311,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             LoadData();
         }
 
+        /// <summary>
+        /// 新增一条别名：默认绑定到首个节点、品牌为空（全局别名）、生成 GUID 作为 AliasId，并选中它。
+        /// </summary>
         private void AddAlias()
         {
             var nextNumber = Aliases.Count + 1;
@@ -222,6 +332,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             RaisePropertyChanged(nameof(TotalAliases));
         }
 
+        /// <summary>
+        /// 保存当前别名：校验节点 ID 与别名值非空，并检查同一品牌下别名值不重复，通过后写入仓储并刷新。
+        /// </summary>
         private void SaveAlias()
         {
             if (SelectedAlias == null) return;
@@ -242,10 +355,13 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 return;
             }
 
+            if (!PassesPreSaveValidation()) return;
+
             _aliasRepo.SaveAsync(SelectedAlias).GetAwaiter().GetResult();
             LoadData();
         }
 
+        /// <summary>删除当前选中的别名并刷新列表。</summary>
         private void DeleteAlias()
         {
             if (SelectedAlias == null) return;
@@ -253,6 +369,36 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             LoadData();
         }
 
+        /// <summary>
+        /// 保存前整图级前置校验：基于当前界面内存中的节点/边/别名（充电桩留空）调用
+        /// <see cref="IMapValidationService.ValidateMapDataAsync"/>，若存在 <see cref="MapValidationLevel.Error"/>
+        /// 级问题（如错误点位、悬空路径、重复别名）则弹窗提示首条并返回 <c>false</c> 以中止落库；
+        /// 否则返回 <c>true</c> 放行。作为各 Save 命令逐条快速校验之后的第二道关，防止脏数据进库。
+        /// </summary>
+        private bool PassesPreSaveValidation()
+        {
+            var results = _validationService.ValidateMapDataAsync(
+                Nodes.ToList(),
+                Edges.ToList(),
+                new List<ChargeStation>(),
+                Aliases.ToList()).GetAwaiter().GetResult();
+
+            var firstError = results.FirstOrDefault(r => r.Level == MapValidationLevel.Error);
+            if (firstError != null)
+            {
+                System.Windows.MessageBox.Show(
+                    $"保存失败：地图数据存在错误，已中止保存。\n[{firstError.ObjectType} {firstError.ObjectId}] {firstError.Message}",
+                    "保存前校验未通过", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 执行整图校验：调用校验服务，将结果填入 <see cref="ValidationResults"/> 并显示面板，
+        /// 最后弹窗汇总 Error/Warning/总数。
+        /// </summary>
         private async void ValidateMapAsync()
         {
             ValidationResults.Clear();
@@ -271,6 +417,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             System.Windows.MessageBox.Show($"校验完成：Error={errorCount}, Warning={warningCount}, Total={results.Count}");
         }
 
+        /// <summary>
+        /// 从 JSON 文件导入整图配置。流程：选择文件 → 反序列化 → 前置校验（有 Error 则中止）→
+        /// 清空旧数据（节点/边/充电桩/别名）→ 整体落库 → 刷新。任何异常均弹窗提示。
+        /// </summary>
         private async void ImportMapAsync()
         {
             var openFileDialog = new OpenFileDialog
@@ -329,6 +479,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             }
         }
 
+        /// <summary>
+        /// 导出整图配置到 JSON 文件：汇总节点/边/充电桩/别名及元信息，缩进序列化后写入用户选择的文件。
+        /// </summary>
         private async void ExportMapAsync()
         {
             var saveFileDialog = new SaveFileDialog
@@ -366,14 +519,31 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         }
     }
 
+    /// <summary>
+    /// 地图导入/导出的数据容器（对应 JSON 文件结构）。
+    /// 汇总整张地图的节点、边、充电桩、别名，以及地图标识、版本与导出时间等元信息。
+    /// </summary>
     public class MapExportData
     {
+        /// <summary>全部地图节点。</summary>
         public List<MapNode> MapNodes { get; set; } = new();
+
+        /// <summary>全部地图边。</summary>
         public List<MapEdge> MapEdges { get; set; } = new();
+
+        /// <summary>全部充电桩。</summary>
         public List<ChargeStation> ChargeStations { get; set; } = new();
+
+        /// <summary>全部位置别名。</summary>
         public List<MapLocationAlias> MapLocationAliases { get; set; } = new();
+
+        /// <summary>地图标识。</summary>
         public string MapId { get; set; } = "default";
+
+        /// <summary>数据格式版本。</summary>
         public string Version { get; set; } = "1.0";
+
+        /// <summary>导出时间。</summary>
         public DateTime ExportTime { get; set; }
     }
 }

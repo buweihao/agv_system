@@ -12,27 +12,43 @@ namespace AgvDispatcher.Core.Services
             string startNodeId,
             string endNodeId)
         {
+            // 无约束规划：转调约束重载，传入一个不限制品牌/能力的请求，保持原有行为不变。
+            return PlanPath(nodes, edges, new PathPlanningRequest
+            {
+                StartNodeId = startNodeId,
+                EndNodeId = endNodeId
+            });
+        }
+
+        public PlannedPath PlanPath(
+            IReadOnlyList<MapNode> nodes,
+            IReadOnlyList<MapEdge> edges,
+            PathPlanningRequest request)
+        {
+            var startNodeId = request.StartNodeId;
+            var endNodeId = request.EndNodeId;
+
             if (string.IsNullOrWhiteSpace(startNodeId) || string.IsNullOrWhiteSpace(endNodeId))
             {
                 return PlannedPath.Unavailable(startNodeId, endNodeId, "Start or end node is empty.");
             }
 
             var nodeMap = nodes
-                .Where(node => node.IsEnabled)
+                .Where(node => IsNodePassable(node, request))
                 .GroupBy(node => node.NodeId, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
             if (!nodeMap.ContainsKey(startNodeId))
             {
-                return PlannedPath.Unavailable(startNodeId, endNodeId, $"Start node '{startNodeId}' does not exist or is disabled.");
+                return PlannedPath.Unavailable(startNodeId, endNodeId, $"Start node '{startNodeId}' does not exist or is not passable.");
             }
 
             if (!nodeMap.ContainsKey(endNodeId))
             {
-                return PlannedPath.Unavailable(startNodeId, endNodeId, $"End node '{endNodeId}' does not exist or is disabled.");
+                return PlannedPath.Unavailable(startNodeId, endNodeId, $"End node '{endNodeId}' does not exist or is not passable.");
             }
 
-            var adjacency = BuildAdjacency(edges, nodeMap);
+            var adjacency = BuildAdjacency(edges, nodeMap, request);
             var distance = nodeMap.Keys.ToDictionary(nodeId => nodeId, _ => double.PositiveInfinity, StringComparer.OrdinalIgnoreCase);
             var previousNode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var previousEdge = new Dictionary<string, MapEdge>(StringComparer.OrdinalIgnoreCase);
@@ -89,13 +105,84 @@ namespace AgvDispatcher.Core.Services
             };
         }
 
+        /// <summary>节点是否可通行：受请求中的禁用策略、品牌与能力约束共同决定。</summary>
+        private static bool IsNodePassable(MapNode node, PathPlanningRequest request)
+        {
+            if (request.RespectDisabled && !node.IsEnabled)
+            {
+                return false;
+            }
+
+            if (!IsBrandAllowed(node.AllowedBrands, request.Brand))
+            {
+                return false;
+            }
+
+            // 节点要求的能力必须被车辆能力完全包含。
+            if (node.RequiredCapabilities != VehicleCapability.None &&
+                (request.Capabilities & node.RequiredCapabilities) != node.RequiredCapabilities)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>边是否可通行：受请求中的锁定/封闭/禁用策略与品牌约束共同决定。</summary>
+        private static bool IsEdgePassable(MapEdge edge, PathPlanningRequest request)
+        {
+            if (request.RespectDisabled && !edge.IsEnabled)
+            {
+                return false;
+            }
+
+            if (request.RespectLocked && edge.IsLocked)
+            {
+                return false;
+            }
+
+            if (request.RespectClosed && edge.Direction == EdgeDirection.Closed)
+            {
+                return false;
+            }
+
+            if (!IsBrandAllowed(edge.AllowedBrands, request.Brand))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 判断品牌是否被允许：<paramref name="allowedBrands"/> 为空表示不限制（始终允许）；
+        /// 否则按 <c>,</c>/<c>;</c> 分割，与 <paramref name="brand"/> 不区分大小写比较。
+        /// 当限制非空而未提供品牌时，按不允许处理。
+        /// </summary>
+        private static bool IsBrandAllowed(string allowedBrands, string? brand)
+        {
+            if (string.IsNullOrWhiteSpace(allowedBrands))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(brand))
+            {
+                return false;
+            }
+
+            var allowed = allowedBrands.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            return allowed.Any(b => string.Equals(b.Trim(), brand, StringComparison.OrdinalIgnoreCase));
+        }
+
         private static Dictionary<string, List<(string NextNodeId, MapEdge Edge, double Cost)>> BuildAdjacency(
             IReadOnlyList<MapEdge> edges,
-            IReadOnlyDictionary<string, MapNode> nodes)
+            IReadOnlyDictionary<string, MapNode> nodes,
+            PathPlanningRequest request)
         {
             var adjacency = new Dictionary<string, List<(string, MapEdge, double)>>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var edge in edges.Where(edge => edge.IsEnabled && !edge.IsLocked && edge.Direction != EdgeDirection.Closed))
+            foreach (var edge in edges.Where(edge => IsEdgePassable(edge, request)))
             {
                 if (!nodes.ContainsKey(edge.FromNodeId) || !nodes.ContainsKey(edge.ToNodeId))
                 {

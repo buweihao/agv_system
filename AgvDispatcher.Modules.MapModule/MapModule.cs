@@ -1,5 +1,6 @@
 using AgvDispatcher.Core.Constants;
 using AgvDispatcher.Core.Contracts.Map;
+using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
 using AgvDispatcher.Modules.MapModule.Services;
 using AgvDispatcher.Modules.MapModule.Views;
 using Prism.Ioc;
@@ -25,6 +26,7 @@ namespace AgvDispatcher.Modules.MapModule
         public void RegisterTypes(IContainerRegistry containerRegistry)
         {
             containerRegistry.RegisterSingleton<IMapService, MockMapService>();
+            containerRegistry.RegisterSingleton<IMapManagementService, MockMapManagementService>();
         }
     }
 }

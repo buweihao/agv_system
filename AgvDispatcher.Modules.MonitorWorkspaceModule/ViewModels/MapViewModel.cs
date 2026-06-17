@@ -14,7 +14,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     /// 运行监控页面"地图视图"的 ViewModel。
     /// <para>
     /// 负责把地图拓扑（节点 <see cref="MapNode"/>、边 <see cref="MapEdge"/>）和车辆实时位置渲染到画布上，
-    /// 并在选中某台 AGV 时高亮其规划路径（调用 <see cref="IMapService.FindPlannedPath"/>）。
+    /// 并在选中某台 AGV 时基于独立路径规划服务高亮展示路径。
     /// 通过订阅 <see cref="SelectedVehicleChangedEvent"/> 与 <see cref="VehicleStateChangedEvent"/> 实现联动与刷新。
     /// 地图元素被点击时在详情区展示节点/路径/车辆的详细信息。
     /// </para>
@@ -344,7 +344,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             var startId = _previewStartNode.NodeId;
             var endId = _previewEndNode.NodeId;
-            var path = FindPlannedPath(startId, endId);
+            var path = BuildDisplayPath(startId, endId);
 
             if (path is null || !path.IsAvailable || path.Edges.Count == 0)
             {
@@ -403,7 +403,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 return null;
             }
 
-            return FindPlannedPath(startNode.NodeId, targetNode.NodeId);
+            return BuildDisplayPath(startNode.NodeId, targetNode.NodeId);
         }
 
         private IReadOnlyList<MapNode> GetNodes()
@@ -416,7 +416,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             return _mapRepository.GetEdgesAsync().GetAwaiter().GetResult();
         }
 
-        private PlannedPath FindPlannedPath(string startNodeId, string endNodeId)
+        private PlannedPath BuildDisplayPath(string startNodeId, string endNodeId)
         {
             return _pathPlanningService.PlanPath(GetNodes(), GetEdges(), startNodeId, endNodeId);
         }

@@ -1,7 +1,13 @@
+using System;
 using AgvDispatcher.Core.Enums;
 
 namespace AgvDispatcher.Core.Models
 {
+    /// <summary>
+    /// 旧版地图边模型。
+    /// 跨模块接口请使用 <see cref="AgvDispatcher.Core.Contracts.Map.MapEdgeDto"/>。
+    /// </summary>
+    [Obsolete("跨模块接口请使用 AgvDispatcher.Core.Contracts.Map.MapEdgeDto。本模型仅保留给旧代码逐步迁移使用。", false)]
     public class MapEdge
     {
         public string EdgeId { get; set; } = string.Empty;

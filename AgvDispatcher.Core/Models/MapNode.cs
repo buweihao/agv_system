@@ -1,8 +1,14 @@
+using System;
 using System.Collections.Generic;
 using AgvDispatcher.Core.Enums;
 
 namespace AgvDispatcher.Core.Models
 {
+    /// <summary>
+    /// 旧版地图节点模型。
+    /// 跨模块接口请使用 <see cref="AgvDispatcher.Core.Contracts.Map.MapNodeDto"/>。
+    /// </summary>
+    [Obsolete("跨模块接口请使用 AgvDispatcher.Core.Contracts.Map.MapNodeDto。本模型仅保留给旧代码逐步迁移使用。", false)]
     public class MapNode
     {
         public string NodeId { get; set; } = string.Empty;

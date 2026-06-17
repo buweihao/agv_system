@@ -12,6 +12,8 @@ namespace AgvDispatcher.Core.Contracts.Common
 
         public bool Retryable { get; init; }
 
+        public AgvError? Error { get; init; }
+
         public DateTimeOffset FinishedAt { get; init; } = DateTimeOffset.Now;
 
         public static AgvResult Ok(string message = "")
@@ -35,6 +37,28 @@ namespace AgvDispatcher.Core.Contracts.Common
                 Code = code,
                 Message = message,
                 Retryable = retryable
+            };
+        }
+
+        public static AgvResult Fail(string code, string message)
+        {
+            return new AgvResult
+            {
+                Success = false,
+                Code = FailureCode.UnknownError,
+                Message = message,
+                Error = new AgvError(code, message)
+            };
+        }
+
+        public static AgvResult Fail(AgvError error)
+        {
+            return new AgvResult
+            {
+                Success = false,
+                Code = FailureCode.UnknownError,
+                Message = error.Message,
+                Error = error
             };
         }
     }
@@ -65,6 +89,28 @@ namespace AgvDispatcher.Core.Contracts.Common
                 Code = code,
                 Message = message,
                 Retryable = retryable
+            };
+        }
+
+        public new static AgvResult<T> Fail(string code, string message)
+        {
+            return new AgvResult<T>
+            {
+                Success = false,
+                Code = FailureCode.UnknownError,
+                Message = message,
+                Error = new AgvError(code, message)
+            };
+        }
+
+        public new static AgvResult<T> Fail(AgvError error)
+        {
+            return new AgvResult<T>
+            {
+                Success = false,
+                Code = FailureCode.UnknownError,
+                Message = error.Message,
+                Error = error
             };
         }
     }

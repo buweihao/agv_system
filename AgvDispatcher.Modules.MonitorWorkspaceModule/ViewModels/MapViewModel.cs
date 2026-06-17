@@ -7,7 +7,6 @@ using AgvDispatcher.Core.Models;
 using Prism.Commands;
 using Prism.Events;
 using Prism.Mvvm;
-using ContractIMapService = AgvDispatcher.Core.Contracts.Map.IMapService;
 
 namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 {
@@ -26,7 +25,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     /// </summary>
     public class MapViewModel : BindableBase
     {
-        private readonly ContractIMapService _mapService;
+        private readonly IMapRepository _mapRepository;
         private readonly IPathPlanningService _pathPlanningService;
         private readonly IVehicleStateStore _vehicleStateStore;
         private readonly ITaskService _taskService;
@@ -135,13 +134,13 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// <param name="aliasRepo">地图别名仓储，用于位置别名到节点的映射。</param>
         public MapViewModel(
             IEventAggregator eventAggregator,
-            ContractIMapService mapService,
+            IMapRepository mapRepository,
             IPathPlanningService pathPlanningService,
             IVehicleStateStore vehicleStateStore,
             ITaskService taskService,
             IMapLocationAliasRepository aliasRepo)
         {
-            _mapService = mapService;
+            _mapRepository = mapRepository;
             _pathPlanningService = pathPlanningService;
             _vehicleStateStore = vehicleStateStore;
             _taskService = taskService;
@@ -409,79 +408,17 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
         private IReadOnlyList<MapNode> GetNodes()
         {
-            var result = _mapService.GetNodes(new AgvDispatcher.Core.Contracts.Map.GetMapSnapshotRequest());
-            return result.Success && result.Data is not null
-                ? result.Data.Select(ToMapNode).ToList()
-                : Array.Empty<MapNode>();
+            return _mapRepository.GetNodesAsync().GetAwaiter().GetResult();
         }
 
         private IReadOnlyList<MapEdge> GetEdges()
         {
-            var result = _mapService.GetEdges(new AgvDispatcher.Core.Contracts.Map.GetMapSnapshotRequest());
-            return result.Success && result.Data is not null
-                ? result.Data.Select(ToMapEdge).ToList()
-                : Array.Empty<MapEdge>();
+            return _mapRepository.GetEdgesAsync().GetAwaiter().GetResult();
         }
 
         private PlannedPath FindPlannedPath(string startNodeId, string endNodeId)
         {
             return _pathPlanningService.PlanPath(GetNodes(), GetEdges(), startNodeId, endNodeId);
-        }
-
-        private static MapNode ToMapNode(AgvDispatcher.Core.Contracts.Map.MapNodeDto dto)
-        {
-            return new MapNode
-            {
-                NodeId = dto.NodeId,
-                NodeCode = string.IsNullOrWhiteSpace(dto.NodeCode) ? dto.NodeId : dto.NodeCode,
-                Name = string.IsNullOrWhiteSpace(dto.NodeName) ? dto.NodeId : dto.NodeName,
-                NodeType = ToLegacyNodeType(dto.NodeType),
-                Position = new MapPosition { X = dto.X, Y = dto.Y },
-                Heading = dto.Angle ?? 0,
-                AreaCode = dto.AreaId ?? string.Empty,
-                IsEnabled = dto.Enabled
-            };
-        }
-
-        private static MapEdge ToMapEdge(AgvDispatcher.Core.Contracts.Map.MapEdgeDto dto)
-        {
-            return new MapEdge
-            {
-                EdgeId = dto.EdgeId,
-                FromNodeId = dto.FromNodeId,
-                ToNodeId = dto.ToNodeId,
-                Direction = ToLegacyEdgeDirection(dto.Direction),
-                Length = dto.Distance,
-                Cost = Math.Max(1, (int)Math.Round(dto.Cost)),
-                MaxSpeed = dto.SpeedLimit ?? 0,
-                AreaCode = dto.AreaId ?? string.Empty,
-                IsEnabled = dto.Enabled
-            };
-        }
-
-        private static MapNodeType ToLegacyNodeType(AgvDispatcher.Core.Contracts.Map.MapNodeType nodeType)
-        {
-            return nodeType switch
-            {
-                AgvDispatcher.Core.Contracts.Map.MapNodeType.WorkStation => MapNodeType.Station,
-                AgvDispatcher.Core.Contracts.Map.MapNodeType.ChargeStation => MapNodeType.Charge,
-                AgvDispatcher.Core.Contracts.Map.MapNodeType.WaitingPoint => MapNodeType.Waiting,
-                AgvDispatcher.Core.Contracts.Map.MapNodeType.PickPoint => MapNodeType.Pickup,
-                AgvDispatcher.Core.Contracts.Map.MapNodeType.PutPoint => MapNodeType.Dropoff,
-                AgvDispatcher.Core.Contracts.Map.MapNodeType.Elevator => MapNodeType.Elevator,
-                AgvDispatcher.Core.Contracts.Map.MapNodeType.Door => MapNodeType.Door,
-                _ => MapNodeType.Normal
-            };
-        }
-
-        private static EdgeDirection ToLegacyEdgeDirection(AgvDispatcher.Core.Contracts.Map.MapEdgeDirection direction)
-        {
-            return direction switch
-            {
-                AgvDispatcher.Core.Contracts.Map.MapEdgeDirection.OneWay => EdgeDirection.ForwardOnly,
-                AgvDispatcher.Core.Contracts.Map.MapEdgeDirection.Bidirectional => EdgeDirection.Bidirectional,
-                _ => EdgeDirection.Closed
-            };
         }
 
         /// <summary>

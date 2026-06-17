@@ -313,7 +313,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 double length = edge.Length > 0 ? edge.Length : 1.0;
                 // Add penalty
                 length += edge.Cost; 
-                if (edge.IsLocked) length += 1000.0;
+                // if (edge.IsLocked) length += 1000.0;
 
                 if (edge.Direction == EdgeDirection.Bidirectional || edge.Direction == EdgeDirection.ForwardOnly)
                 {

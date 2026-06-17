@@ -11,7 +11,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
         private readonly ITaskService _taskService;
-        private readonly IMapService _mapService;
+        // private readonly IMapService _mapService;
         private readonly IVehicleAdapterManager _vehicleAdapterManager;
         private readonly IAuditTrailService _auditTrail;
         private readonly IChargeStationRepository _chargeStationRepository;
@@ -20,14 +20,14 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public MockTaskExecutionSimulator(
             ITaskService taskService,
-            IMapService mapService,
+            // IMapService mapService,
             IVehicleAdapterManager vehicleAdapterManager,
             IAuditTrailService auditTrail,
             IChargeStationRepository chargeStationRepository,
             IVehicleStateStore vehicleStateStore)
         {
             _taskService = taskService;
-            _mapService = mapService;
+            // _mapService = mapService;
             _vehicleAdapterManager = vehicleAdapterManager;
             _auditTrail = auditTrail;
             _chargeStationRepository = chargeStationRepository;
@@ -186,10 +186,9 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         private List<string> ResolveRoute(TaskOrder task)
         {
-            var plannedPath = _mapService.FindPlannedPath(task.SourceNodeId, task.TargetNodeId);
-            var route = plannedPath is { IsAvailable: true }
-                ? plannedPath.Nodes.Select(node => node.NodeId).Where(nodeId => !string.IsNullOrWhiteSpace(nodeId)).ToList()
-                : new List<string>();
+            // TODO: Use correct MapService methods when available
+            // var plannedPath = _mapService.FindPlannedPath(task.SourceNodeId, task.TargetNodeId);
+            var route = new List<string>();
 
             if (route.Count == 0 || !string.Equals(route[0], task.SourceNodeId, StringComparison.OrdinalIgnoreCase))
             {

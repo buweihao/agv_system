@@ -3,7 +3,7 @@ using AgvDispatcher.Core.Models;
 
 namespace AgvDispatcher.Infrastructure.Sqlite.Services
 {
-    public class PersistentMapService : IMapService
+    public class PersistentMapService
     {
         private readonly IMapRepository _maps;
         private readonly IPathPlanningService _pathPlanningService;

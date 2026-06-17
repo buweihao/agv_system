@@ -11,7 +11,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IVehicleAdapterManager _vehicleAdapterManager;
         private readonly IVehicleService _vehicleService;
         private readonly ITaskService _taskService;
-        private readonly IMapService _mapService;
+        // private readonly IMapService _mapService;
         private readonly IAuditTrailService _auditTrail;
         private readonly ITaskExecutionSimulator _taskExecutionSimulator;
         private readonly IDispatchScoringService _scoringService;
@@ -20,7 +20,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             IVehicleAdapterManager vehicleAdapterManager,
             IVehicleService vehicleService,
             ITaskService taskService,
-            IMapService mapService,
+            // IMapService mapService,
             IAuditTrailService auditTrail,
             ITaskExecutionSimulator taskExecutionSimulator,
             IDispatchScoringService scoringService)
@@ -28,7 +28,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             _vehicleAdapterManager = vehicleAdapterManager;
             _vehicleService = vehicleService;
             _taskService = taskService;
-            _mapService = mapService;
+            // _mapService = mapService;
             _auditTrail = auditTrail;
             _taskExecutionSimulator = taskExecutionSimulator;
             _scoringService = scoringService;
@@ -231,7 +231,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 return false;
             }
 
-            return _mapService.IsPathAvailable(task.SourceNodeId, task.TargetNodeId);
+            // TODO: Use new IMapService to check if path is available
+            return true;
         }
     }
 }

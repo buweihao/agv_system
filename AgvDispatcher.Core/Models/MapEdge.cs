@@ -24,10 +24,6 @@ namespace AgvDispatcher.Core.Models
 
         public bool IsEnabled { get; set; } = true;
 
-        public bool IsLocked { get; set; }
-
-        public string? LockedByCommandId { get; set; }
-
         public string AreaCode { get; set; } = string.Empty;
 
         public string AllowedBrands { get; set; } = string.Empty;

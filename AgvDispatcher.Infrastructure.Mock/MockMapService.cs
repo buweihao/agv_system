@@ -3,7 +3,7 @@ using AgvDispatcher.Core.Models;
 
 namespace AgvDispatcher.Infrastructure.Mock
 {
-    public class MockMapService : IMapService
+    public class MockMapService
     {
         private readonly IReadOnlyList<MapNode> _nodes = MockData.CreateMapNodes();
         private readonly IReadOnlyList<MapEdge> _edges = MockData.CreateMapEdges();

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using AgvDispatcher.Core.Enums;
 
 namespace AgvDispatcher.Core.Models
@@ -21,10 +22,6 @@ namespace AgvDispatcher.Core.Models
         public string AreaCode { get; set; } = string.Empty;
 
         public bool IsEnabled { get; set; } = true;
-
-        public bool IsOccupied { get; set; }
-
-        public string? OccupiedByVehicleId { get; set; }
 
         public int ParkingCapacity { get; set; } = 1;
 

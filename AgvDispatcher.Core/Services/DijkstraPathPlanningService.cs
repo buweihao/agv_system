@@ -95,7 +95,7 @@ namespace AgvDispatcher.Core.Services
         {
             var adjacency = new Dictionary<string, List<(string, MapEdge, double)>>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var edge in edges.Where(edge => edge.IsEnabled && !edge.IsLocked && edge.Direction != EdgeDirection.Closed))
+            foreach (var edge in edges.Where(edge => edge.IsEnabled && edge.Direction != EdgeDirection.Closed))
             {
                 if (!nodes.ContainsKey(edge.FromNodeId) || !nodes.ContainsKey(edge.ToNodeId))
                 {

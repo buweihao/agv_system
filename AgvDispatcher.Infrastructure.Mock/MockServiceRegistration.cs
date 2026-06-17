@@ -14,7 +14,7 @@ namespace AgvDispatcher.Infrastructure.Mock
             containerRegistry.RegisterSingleton<ITaskService, MockTaskService>();
             containerRegistry.RegisterSingleton<IChargeService, MockChargeService>();
             containerRegistry.RegisterSingleton<IAlarmService, MockAlarmService>();
-            containerRegistry.RegisterSingleton<IMapService, MockMapService>();
+            // containerRegistry.RegisterSingleton<IMapService, MockMapService>();
             containerRegistry.RegisterSingleton<ISignalService, MockSignalService>();
             containerRegistry.RegisterSingleton<IDataQueryService, MockDataQueryService>();
             containerRegistry.RegisterSingleton<ITaskConfigService, MockTaskConfigService>();

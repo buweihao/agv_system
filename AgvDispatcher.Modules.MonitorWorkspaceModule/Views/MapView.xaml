@@ -106,12 +106,44 @@
                             </TransformGroup>
                         </Viewbox.RenderTransform>
                         <Canvas Width="860" Height="580" ClipToBounds="False">
-                        <Border Canvas.Left="90" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="290" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="490" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="90" Canvas.Top="310" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="290" Canvas.Top="310" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="490" Canvas.Top="310" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
+                        <ItemsControl ItemsSource="{Binding Areas}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Polygon Points="{Binding PointsText}"
+                                             Fill="{Binding Fill}"
+                                             Stroke="{Binding Stroke}"
+                                             StrokeThickness="1"
+                                             Opacity="{Binding Opacity}"
+                                             IsHitTestVisible="False"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <ItemsControl ItemsSource="{Binding Areas}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding LabelLeft}"/>
+                                    <Setter Property="Canvas.Top" Value="{Binding LabelTop}"/>
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#AA0B1828" BorderBrush="{Binding Stroke}" BorderThickness="1" CornerRadius="3" Padding="6,2" IsHitTestVisible="False">
+                                        <TextBlock Text="{Binding AreaName}" Foreground="#DCEFFF" FontSize="11"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
                         <ItemsControl ItemsSource="{Binding Edges}">
                             <ItemsControl.ItemsPanel>
@@ -318,7 +350,12 @@
                 <!-- Path Planning Preview overlay (collapsible) -->
                 <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="20" Width="240" Background="#1A2536" BorderBrush="#2D5D88" BorderThickness="1" CornerRadius="4" Padding="15,10">
                     <StackPanel>
-                        <ToggleButton x:Name="PreviewToggle" IsChecked="False" Cursor="Hand" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <ToggleButton x:Name="PreviewToggle"
+                                      IsChecked="{Binding IsPreviewPanelExpanded, Mode=TwoWay}"
+                                      Cursor="Hand"
+                                      HorizontalContentAlignment="Stretch"
+                                      Background="Transparent"
+                                      BorderThickness="0">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Grid Background="Transparent">

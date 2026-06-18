@@ -76,8 +76,8 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel>
-                    <TextBlock Text="地图配置" Foreground="#00BFFF" FontSize="18" FontWeight="Bold"/>
-                    <TextBlock Text="管理地图节点和约束路线" Foreground="#8EA8C3" FontSize="12" Margin="0,6,0,0"/>
+                    <TextBlock Text="地图编辑与管理" Foreground="#00BFFF" FontSize="18" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding CurrentDraftId, StringFormat=草稿 {0}}" Foreground="#8EA8C3" FontSize="12" Margin="0,6,0,0"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -86,8 +86,11 @@
                     <TextBlock Text="{Binding TotalNodes, StringFormat=节点 {0}}" Foreground="#8EA8C3" VerticalAlignment="Center" Margin="0,0,12,0"/>
                     <TextBlock Text="{Binding TotalEdges, StringFormat=路径 {0}}" Foreground="#8EA8C3" VerticalAlignment="Center" Margin="0,0,12,0"/>
                     <TextBlock Text="{Binding TotalAliases, StringFormat=别名 {0}}" Foreground="#8EA8C3" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <Button Content="新建草稿" Command="{Binding NewDraftCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                    <Button Content="保存草稿" Command="{Binding SaveDraftCommand}" Style="{StaticResource ActionButtonStyle}" Background="#00BFFF" Foreground="#04101C" BorderThickness="0" FontWeight="Bold"/>
                     <Button Content="校验地图" Command="{Binding ValidateCommand}" Style="{StaticResource ActionButtonStyle}" Background="#FF8C00" Foreground="White" BorderThickness="0" />
-                    <Button Content="导入JSON" Command="{Binding ImportCommand}" Style="{StaticResource ActionButtonStyle}"/>
+                    <Button Content="发布地图" Command="{Binding PublishDraftCommand}" Style="{StaticResource ActionButtonStyle}" Background="#28A745" Foreground="White" BorderThickness="0"/>
+                    <Button Content="导入草稿" Command="{Binding ImportCommand}" Style="{StaticResource ActionButtonStyle}"/>
                     <Button Content="导出JSON" Command="{Binding ExportCommand}" Style="{StaticResource ActionButtonStyle}"/>
                     <Button Content="刷新" Command="{Binding RefreshCommand}" Style="{StaticResource ActionButtonStyle}"/>
                 </StackPanel>
@@ -138,15 +141,19 @@
                         <DataGridTextColumn Header="节点ID" Binding="{Binding NodeId}" Width="*"/>
                         <DataGridTextColumn Header="节点编码" Binding="{Binding NodeCode}" Width="*"/>
                         <DataGridTextColumn Header="节点名称" Binding="{Binding Name}" Width="*"/>
-                        <DataGridComboBoxColumn Header="类型" SelectedItemBinding="{Binding NodeType}" Width="*">
+                        <DataGridComboBoxColumn Header="类型"
+                                                SelectedValueBinding="{Binding NodeType}"
+                                                SelectedValuePath="Value"
+                                                DisplayMemberPath="DisplayName"
+                                                Width="*">
                             <DataGridComboBoxColumn.ElementStyle>
                                 <Style TargetType="ComboBox">
-                                    <Setter Property="ItemsSource" Value="{Binding DataContext.NodeTypes, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                    <Setter Property="ItemsSource" Value="{Binding DataContext.NodeTypeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                                 </Style>
                             </DataGridComboBoxColumn.ElementStyle>
                             <DataGridComboBoxColumn.EditingElementStyle>
                                 <Style TargetType="ComboBox">
-                                    <Setter Property="ItemsSource" Value="{Binding DataContext.NodeTypes, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                    <Setter Property="ItemsSource" Value="{Binding DataContext.NodeTypeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                                 </Style>
                             </DataGridComboBoxColumn.EditingElementStyle>
                         </DataGridComboBoxColumn>
@@ -215,22 +222,25 @@
                                 </Style>
                             </DataGridComboBoxColumn.EditingElementStyle>
                         </DataGridComboBoxColumn>
-                        <DataGridComboBoxColumn Header="方向" SelectedItemBinding="{Binding Direction}" Width="*">
+                        <DataGridComboBoxColumn Header="方向"
+                                                SelectedValueBinding="{Binding Direction}"
+                                                SelectedValuePath="Value"
+                                                DisplayMemberPath="DisplayName"
+                                                Width="*">
                             <DataGridComboBoxColumn.ElementStyle>
                                 <Style TargetType="ComboBox">
-                                    <Setter Property="ItemsSource" Value="{Binding DataContext.EdgeDirections, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                    <Setter Property="ItemsSource" Value="{Binding DataContext.EdgeDirectionOptions, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                                 </Style>
                             </DataGridComboBoxColumn.ElementStyle>
                             <DataGridComboBoxColumn.EditingElementStyle>
                                 <Style TargetType="ComboBox">
-                                    <Setter Property="ItemsSource" Value="{Binding DataContext.EdgeDirections, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                    <Setter Property="ItemsSource" Value="{Binding DataContext.EdgeDirectionOptions, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                                 </Style>
                             </DataGridComboBoxColumn.EditingElementStyle>
                         </DataGridComboBoxColumn>
                         <DataGridTextColumn Header="约束品牌" Binding="{Binding AllowedBrands}" Width="*"/>
                         <DataGridTextColumn Header="限速(m/s)" Binding="{Binding MaxSpeed}" Width="0.8*"/>
                         <DataGridTextColumn Header="最大车流量" Binding="{Binding MaxVehicleFlow}" Width="0.8*"/>
-                        <DataGridCheckBoxColumn Header="单向/锁" Binding="{Binding IsLocked}" Width="0.5*"/>
                         <DataGridCheckBoxColumn Header="是否启用" Binding="{Binding IsEnabled}" Width="0.5*"/>
                     </DataGrid.Columns>
                 </DataGrid>
@@ -287,10 +297,24 @@
             </DockPanel>
         </Border>
 
-        <Border Grid.Row="3" Style="{StaticResource PanelBorderStyle}" Margin="0,10,0,0" Visibility="{Binding IsValidationResultsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Border Grid.Row="3" Style="{StaticResource PanelBorderStyle}" Margin="0,10,0,0">
             <DockPanel>
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <TextBlock Text="地图校验结果" Foreground="#FF8C00" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="地图校验与版本" Foreground="#FF8C00" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <ComboBox ItemsSource="{Binding MapVersions}"
+                                  SelectedItem="{Binding SelectedMapVersion, Mode=TwoWay}"
+                                  DisplayMemberPath="Version"
+                                  Width="180"
+                                  Height="30"
+                                  Background="#0B1828"
+                                  Foreground="#DCEFFF"/>
+                        <Button Content="回滚版本" Command="{Binding RollbackVersionCommand}" Style="{StaticResource ActionButtonStyle}" Background="#8B2C2C" Foreground="White" BorderThickness="0"/>
+                    </StackPanel>
                 </Grid>
                 <DataGrid ItemsSource="{Binding ValidationResults}"
                           AutoGenerateColumns="False"

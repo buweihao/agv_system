@@ -3,6 +3,10 @@ using System.Linq;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
+using AgvDispatcher.Core.Contracts.Common;
+using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
+using AgvDispatcher.Core.Contracts.MapManagement.Requests;
+using AgvDispatcher.Core.Contracts.MapManagement.Results;
 using Prism.Commands;
 using Prism.Mvvm;
 using System.ComponentModel;
@@ -13,6 +17,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.Win32;
+using ContractMap = AgvDispatcher.Core.Contracts.Map;
 
 namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 {
@@ -35,6 +40,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private readonly IChargeStationRepository _chargeStationRepo;
         private readonly IMapLocationAliasRepository _aliasRepo;
         private readonly ISystemParameterRepository _parameterRepo;
+        private readonly IMapManagementService _mapManagementService;
 
         /// <summary>地图节点列表。</summary>
         public ObservableCollection<MapNode> Nodes { get; } = new();
@@ -48,11 +54,31 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// <summary>地图校验结果列表。</summary>
         public ObservableCollection<MapValidationResult> ValidationResults { get; } = new();
 
+        /// <summary>地图版本列表。</summary>
+        public ObservableCollection<MapVersionDto> MapVersions { get; } = new();
+
         /// <summary>节点类型可选值（供界面下拉绑定 <see cref="MapNodeType"/>）。</summary>
         public Array NodeTypes { get; } = System.Enum.GetValues(typeof(MapNodeType));
 
         /// <summary>边方向可选值（供界面下拉绑定 <see cref="EdgeDirection"/>）。</summary>
         public Array EdgeDirections { get; } = System.Enum.GetValues(typeof(EdgeDirection));
+
+        /// <summary>节点类型显示项：保留枚举值，界面显示中文说明。</summary>
+        public IReadOnlyList<EnumDisplayItem<MapNodeType>> NodeTypeOptions { get; } =
+            Enum.GetValues<MapNodeType>()
+                .Select(value => new EnumDisplayItem<MapNodeType>(value, FormatNodeType(value)))
+                .ToList();
+
+        /// <summary>路线方向显示项：保留枚举值，界面显示中文说明。</summary>
+        public IReadOnlyList<EnumDisplayItem<EdgeDirection>> EdgeDirectionOptions { get; } =
+            Enum.GetValues<EdgeDirection>()
+                .Select(value => new EnumDisplayItem<EdgeDirection>(value, FormatEdgeDirection(value)))
+                .ToList();
+
+        public IReadOnlyList<EnumDisplayItem<ContractMap.MapAreaType>> AreaTypeOptions { get; } =
+            Enum.GetValues<ContractMap.MapAreaType>()
+                .Select(value => new EnumDisplayItem<ContractMap.MapAreaType>(value, FormatAreaType(value)))
+                .ToList();
 
         private bool _isValidationResultsVisible;
         /// <summary>校验结果面板是否可见（执行校验后置为 true）。</summary>
@@ -86,8 +112,53 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             set => SetProperty(ref _selectedAlias, value);
         }
 
+        private MapVersionDto? _selectedMapVersion;
+        public MapVersionDto? SelectedMapVersion
+        {
+            get => _selectedMapVersion;
+            set
+            {
+                if (SetProperty(ref _selectedMapVersion, value))
+                {
+                    RollbackVersionCommand.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        private string _currentDraftId = string.Empty;
+        public string CurrentDraftId
+        {
+            get => _currentDraftId;
+            set => SetProperty(ref _currentDraftId, value);
+        }
+
+        private string _currentMapId = "MAIN";
+        public string CurrentMapId
+        {
+            get => _currentMapId;
+            set => SetProperty(ref _currentMapId, value);
+        }
+
+        private string _currentMapName = "AGV 主地图";
+        public string CurrentMapName
+        {
+            get => _currentMapName;
+            set => SetProperty(ref _currentMapName, value);
+        }
+
+        private string _currentMapVersion = "draft";
+        public string CurrentMapVersion
+        {
+            get => _currentMapVersion;
+            set => SetProperty(ref _currentMapVersion, value);
+        }
+
         /// <summary>刷新（重新加载全部地图数据）命令。</summary>
         public DelegateCommand RefreshCommand { get; }
+        public DelegateCommand NewDraftCommand { get; }
+        public DelegateCommand SaveDraftCommand { get; }
+        public DelegateCommand PublishDraftCommand { get; }
+        public DelegateCommand RollbackVersionCommand { get; }
 
         /// <summary>新增节点命令。</summary>
         public DelegateCommand AddNodeCommand { get; }
@@ -123,6 +194,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public int TotalEdges => Edges.Count;
         /// <summary>别名总数。</summary>
         public int TotalAliases => Aliases.Count;
+        public int TotalAreas => EditorAreas.Count;
 
         /// <summary>构造函数：注入仓储与校验服务，绑定全部命令并首次加载数据。</summary>
         /// <param name="mapRepository">地图仓储（节点/边）。</param>
@@ -135,15 +207,23 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             IMapValidationService validationService,
             IChargeStationRepository chargeStationRepo,
             IMapLocationAliasRepository aliasRepo,
-            ISystemParameterRepository parameterRepo)
+            ISystemParameterRepository parameterRepo,
+            IMapManagementService mapManagementService)
         {
             _mapRepository = mapRepository;
             _validationService = validationService;
             _chargeStationRepo = chargeStationRepo;
             _aliasRepo = aliasRepo;
             _parameterRepo = parameterRepo;
+            _mapManagementService = mapManagementService;
 
             RefreshCommand = new DelegateCommand(LoadData);
+            NewDraftCommand = new DelegateCommand(CreateNewDraft);
+            SaveDraftCommand = new DelegateCommand(SaveCurrentDraft);
+            PublishDraftCommand = new DelegateCommand(PublishCurrentDraft, () => !string.IsNullOrWhiteSpace(CurrentDraftId))
+                .ObservesProperty(() => CurrentDraftId);
+            RollbackVersionCommand = new DelegateCommand(RollbackSelectedVersion, () => SelectedMapVersion != null)
+                .ObservesProperty(() => SelectedMapVersion);
 
             AddNodeCommand = new DelegateCommand(AddNode);
             SaveNodeCommand = new DelegateCommand(SaveNode, () => SelectedNode != null).ObservesProperty(() => SelectedNode);
@@ -166,9 +246,17 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             LoadData();
         }
 
-        /// <summary>从仓储重新加载节点、边、别名三类数据并刷新计数。</summary>
+        /// <summary>从地图草稿加载静态点位、路线和厂商映射，UI 编辑不直接读取运行态交通状态。</summary>
         private void LoadData()
         {
+            var draftResult = EnsureDraft();
+            if (draftResult.Success && draftResult.Data is not null)
+            {
+                ApplyDraft(draftResult.Data);
+                LoadVersions();
+                return;
+            }
+
             Nodes.Clear();
             var nodes = _mapRepository.GetNodesAsync().GetAwaiter().GetResult();
             foreach (var n in nodes) Nodes.Add(n);
@@ -232,8 +320,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             if (!PassesPreSaveValidation()) return;
 
-            _mapRepository.SaveNodeAsync(SelectedNode).GetAwaiter().GetResult();
-            LoadData();
+            SaveCurrentDraft();
         }
 
         /// <summary>删除当前节点：若该节点仍被任意边引用则阻止删除并提示，否则删除并刷新。</summary>
@@ -246,8 +333,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 System.Windows.MessageBox.Show($"节点 {nodeId} 被路径引用，无法删除。请先删除相关路径。", "删除失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
-            _mapRepository.DeleteNodeAsync(nodeId).GetAwaiter().GetResult();
-            LoadData();
+            Nodes.Remove(SelectedNode);
+            SelectedNode = null;
+            RaisePropertyChanged(nameof(TotalNodes));
+            SaveCurrentDraft();
         }
 
         /// <summary>新增一条带默认参数的边（编号 E001 递增，限速 1.0），并选中它。</summary>
@@ -299,16 +388,17 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             if (!PassesPreSaveValidation()) return;
 
-            _mapRepository.SaveEdgeAsync(SelectedEdge).GetAwaiter().GetResult();
-            LoadData();
+            SaveCurrentDraft();
         }
 
         /// <summary>删除当前选中的边并刷新列表。</summary>
         private void DeleteEdge()
         {
             if (SelectedEdge == null) return;
-            _mapRepository.DeleteEdgeAsync(SelectedEdge.EdgeId).GetAwaiter().GetResult();
-            LoadData();
+            Edges.Remove(SelectedEdge);
+            SelectedEdge = null;
+            RaisePropertyChanged(nameof(TotalEdges));
+            SaveCurrentDraft();
         }
 
         /// <summary>
@@ -357,16 +447,17 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             if (!PassesPreSaveValidation()) return;
 
-            _aliasRepo.SaveAsync(SelectedAlias).GetAwaiter().GetResult();
-            LoadData();
+            SaveCurrentDraft();
         }
 
         /// <summary>删除当前选中的别名并刷新列表。</summary>
         private void DeleteAlias()
         {
             if (SelectedAlias == null) return;
-            _aliasRepo.DeleteAsync(SelectedAlias.AliasId).GetAwaiter().GetResult();
-            LoadData();
+            Aliases.Remove(SelectedAlias);
+            SelectedAlias = null;
+            RaisePropertyChanged(nameof(TotalAliases));
+            SaveCurrentDraft();
         }
 
         /// <summary>
@@ -377,17 +468,18 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// </summary>
         private bool PassesPreSaveValidation()
         {
-            var results = _validationService.ValidateMapDataAsync(
-                Nodes.ToList(),
-                Edges.ToList(),
-                new List<ChargeStation>(),
-                Aliases.ToList()).GetAwaiter().GetResult();
+            SaveCurrentDraft(showMessage: false);
+            var validation = _mapManagementService.ValidateDraftAsync(new ValidateMapDraftRequest
+            {
+                Context = new RequestContext(),
+                DraftId = CurrentDraftId
+            }).GetAwaiter().GetResult();
 
-            var firstError = results.FirstOrDefault(r => r.Level == MapValidationLevel.Error);
+            var firstError = validation.Data?.Messages.FirstOrDefault(message => message.StartsWith("P0", StringComparison.OrdinalIgnoreCase));
             if (firstError != null)
             {
                 System.Windows.MessageBox.Show(
-                    $"保存失败：地图数据存在错误，已中止保存。\n[{firstError.ObjectType} {firstError.ObjectId}] {firstError.Message}",
+                    $"保存失败：地图数据存在错误，已中止保存。\n{firstError}",
                     "保存前校验未通过", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 return false;
             }
@@ -403,18 +495,25 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         {
             ValidationResults.Clear();
 
-            var results = await _validationService.ValidateMapAsync();
-            foreach (var result in results)
+            SaveCurrentDraft(showMessage: false);
+            var validation = await _mapManagementService.ValidateDraftAsync(new ValidateMapDraftRequest
+            {
+                Context = new RequestContext(),
+                DraftId = CurrentDraftId
+            });
+
+            var messages = validation.Data?.Messages ?? Array.Empty<string>();
+            foreach (var result in ToLegacyValidationResults(messages))
             {
                 ValidationResults.Add(result);
             }
 
             IsValidationResultsVisible = true;
 
-            var errorCount = results.Count(x => x.Level == MapValidationLevel.Error);
-            var warningCount = results.Count(x => x.Level == MapValidationLevel.Warning);
+            var errorCount = ValidationResults.Count(x => x.Level == MapValidationLevel.Error);
+            var warningCount = ValidationResults.Count(x => x.Level == MapValidationLevel.Warning);
 
-            System.Windows.MessageBox.Show($"校验完成：Error={errorCount}, Warning={warningCount}, Total={results.Count}");
+            System.Windows.MessageBox.Show($"校验完成：Error={errorCount}, Warning={warningCount}, Total={ValidationResults.Count}");
         }
 
         /// <summary>
@@ -434,44 +533,22 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             try
             {
                 var json = await File.ReadAllTextAsync(openFileDialog.FileName);
-                var data = JsonSerializer.Deserialize<MapExportData>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                
-                if (data == null || data.MapNodes == null || data.MapEdges == null)
+                var import = await _mapManagementService.ImportMapAsync(new ImportMapRequest
                 {
-                    System.Windows.MessageBox.Show("导入失败：文件格式不正确或为空", "错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    Context = new RequestContext(),
+                    Payload = json,
+                    Format = "json",
+                    Comment = "UI import"
+                });
+                if (!import.Success || import.Data is null)
+                {
+                    System.Windows.MessageBox.Show($"导入失败：{import.Message}", "错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                     return;
                 }
 
-                // 前置校验
-                var chargeStations = data.ChargeStations ?? new List<ChargeStation>();
-                var aliases = data.MapLocationAliases ?? new List<MapLocationAlias>();
-                
-                var results = await _validationService.ValidateMapDataAsync(data.MapNodes, data.MapEdges, chargeStations, aliases);
-                if (results.Any(r => r.Level == MapValidationLevel.Error))
-                {
-                    var firstError = results.First(r => r.Level == MapValidationLevel.Error).Message;
-                    System.Windows.MessageBox.Show($"导入失败：检测到冲突或无效数据。\n{firstError}", "校验错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                    return;
-                }
-
-                // 校验通过，清理旧数据并保存新数据
-                var oldNodes = await _mapRepository.GetNodesAsync();
-                foreach (var n in oldNodes) await _mapRepository.DeleteNodeAsync(n.NodeId);
-                var oldEdges = await _mapRepository.GetEdgesAsync();
-                foreach (var e in oldEdges) await _mapRepository.DeleteEdgeAsync(e.EdgeId);
-                var oldCharges = await _chargeStationRepo.GetAllAsync();
-                foreach (var c in oldCharges) await _chargeStationRepo.DeleteAsync(c.StationId);
-                var oldAliases = await _aliasRepo.GetAllAsync();
-                foreach (var a in oldAliases) await _aliasRepo.DeleteAsync(a.AliasId);
-
-                // 保存新数据
-                foreach (var n in data.MapNodes) await _mapRepository.SaveNodeAsync(n);
-                foreach (var e in data.MapEdges) await _mapRepository.SaveEdgeAsync(e);
-                foreach (var c in chargeStations) await _chargeStationRepo.SaveAsync(c);
-                foreach (var a in aliases) await _aliasRepo.SaveAsync(a);
-
-                LoadData();
-                System.Windows.MessageBox.Show("导入地图配置成功", "成功", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                ApplyDraft(import.Data.Draft);
+                LoadVersions();
+                System.Windows.MessageBox.Show("导入成功：已生成地图草稿，尚未切换当前运行地图。", "成功", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -495,21 +572,20 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             try
             {
-                var data = new MapExportData
+                SaveCurrentDraft(showMessage: false);
+                var export = await _mapManagementService.ExportMapAsync(new ExportMapRequest
                 {
-                    MapNodes = (await _mapRepository.GetNodesAsync()).ToList(),
-                    MapEdges = (await _mapRepository.GetEdgesAsync()).ToList(),
-                    ChargeStations = (await _chargeStationRepo.GetAllAsync()).ToList(),
-                    MapLocationAliases = (await _aliasRepo.GetAllAsync()).ToList(),
-                    MapId = "default",
-                    Version = "1.0",
-                    ExportTime = DateTime.Now
-                };
+                    Context = new RequestContext(),
+                    MapId = CurrentMapId,
+                    Format = "json"
+                });
+                if (!export.Success || export.Data is null)
+                {
+                    System.Windows.MessageBox.Show($"导出失败：{export.Message}", "错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    return;
+                }
 
-                var options = new JsonSerializerOptions { WriteIndented = true };
-                var json = JsonSerializer.Serialize(data, options);
-
-                await File.WriteAllTextAsync(saveFileDialog.FileName, json);
+                await File.WriteAllTextAsync(saveFileDialog.FileName, export.Data.Payload);
                 System.Windows.MessageBox.Show("导出地图配置成功", "成功", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
             }
             catch (Exception ex)
@@ -517,6 +593,497 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 System.Windows.MessageBox.Show($"导出地图失败: {ex.Message}", "错误", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             }
         }
+
+        private void CreateNewDraft()
+        {
+            var result = _mapManagementService.CreateDraftAsync(new CreateMapDraftRequest
+            {
+                Context = new RequestContext(),
+                MapName = string.IsNullOrWhiteSpace(CurrentMapName) ? "AGV 主地图" : CurrentMapName
+            }).GetAwaiter().GetResult();
+
+            if (!result.Success || result.Data is null)
+            {
+                System.Windows.MessageBox.Show($"新建草稿失败：{result.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            ApplyDraft(result.Data);
+            System.Windows.MessageBox.Show("已创建地图草稿。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void SaveCurrentDraft()
+        {
+            SaveCurrentDraft(showMessage: true);
+        }
+
+        /// <summary>
+        /// 保存草稿只更新编辑草稿，不影响当前运行图，也不会触发地图发布事件。
+        /// </summary>
+        private void SaveCurrentDraft(bool showMessage)
+        {
+            var draft = EnsureDraft();
+            if (!draft.Success || string.IsNullOrWhiteSpace(CurrentDraftId))
+            {
+                if (showMessage)
+                {
+                    System.Windows.MessageBox.Show($"保存草稿失败：{draft.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+
+                return;
+            }
+
+            var save = _mapManagementService.SaveDraftAsync(new SaveMapDraftRequest
+            {
+                Context = new RequestContext(),
+                DraftId = CurrentDraftId,
+                Map = BuildSnapshotFromEditor(),
+                Comment = "UI save draft"
+            }).GetAwaiter().GetResult();
+
+            if (!save.Success || save.Data is null)
+            {
+                if (showMessage)
+                {
+                    System.Windows.MessageBox.Show($"保存草稿失败：{save.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+
+                return;
+            }
+
+            ApplyDraftMetadata(save.Data);
+            if (showMessage)
+            {
+                System.Windows.MessageBox.Show("地图草稿已保存，当前运行地图未切换。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        /// <summary>
+        /// 发布草稿会切换当前运行图，服务层发布 MapPublishedEvent 通知其他模块重新读取 IMapService。
+        /// </summary>
+        private void PublishCurrentDraft()
+        {
+            SaveCurrentDraft(showMessage: false);
+            var validation = _mapManagementService.ValidateDraftAsync(new ValidateMapDraftRequest
+            {
+                Context = new RequestContext(),
+                DraftId = CurrentDraftId
+            }).GetAwaiter().GetResult();
+
+            if (!validation.Success || validation.Data?.IsValid != true)
+            {
+                var message = validation.Data is null ? validation.Message : string.Join("\n", validation.Data.Messages);
+                System.Windows.MessageBox.Show($"发布失败：地图校验未通过。\n{message}", "发布失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirm = System.Windows.MessageBox.Show(
+                "发布地图会切换当前运行地图，确认发布当前草稿吗？",
+                "确认发布",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var publish = _mapManagementService.PublishDraftAsync(new PublishMapDraftRequest
+            {
+                Context = new RequestContext(),
+                DraftId = CurrentDraftId,
+                Comment = "UI publish"
+            }).GetAwaiter().GetResult();
+
+            if (!publish.Success || publish.Data is null)
+            {
+                System.Windows.MessageBox.Show($"发布失败：{publish.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            CurrentMapVersion = publish.Data.Version;
+            LoadVersions();
+            System.Windows.MessageBox.Show($"地图已发布为版本 {publish.Data.Version}。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        /// <summary>
+        /// 回滚版本会切换当前运行图，并触发运行图刷新事件。
+        /// </summary>
+        private void RollbackSelectedVersion()
+        {
+            if (SelectedMapVersion is null)
+            {
+                return;
+            }
+
+            var confirm = System.Windows.MessageBox.Show(
+                $"回滚会把当前运行地图切换到版本 {SelectedMapVersion.Version}，确认继续吗？",
+                "确认回滚",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var rollback = _mapManagementService.RollbackToVersionAsync(new RollbackMapVersionRequest
+            {
+                Context = new RequestContext(),
+                MapId = SelectedMapVersion.MapId,
+                Version = SelectedMapVersion.Version,
+                Reason = "UI rollback"
+            }).GetAwaiter().GetResult();
+
+            if (!rollback.Success || rollback.Data is null)
+            {
+                System.Windows.MessageBox.Show($"回滚失败：{rollback.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            CurrentMapVersion = rollback.Data.Version;
+            LoadVersions();
+            System.Windows.MessageBox.Show($"已回滚到版本 {rollback.Data.Version}。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private AgvResult<MapDraftDto> EnsureDraft()
+        {
+            if (!string.IsNullOrWhiteSpace(CurrentDraftId))
+            {
+                var existing = _mapManagementService.GetDraftAsync(new GetMapDraftRequest
+                {
+                    Context = new RequestContext(),
+                    DraftId = CurrentDraftId
+                }).GetAwaiter().GetResult();
+
+                if (existing.Success)
+                {
+                    return existing;
+                }
+            }
+
+            return _mapManagementService.CreateDraftAsync(new CreateMapDraftRequest
+            {
+                Context = new RequestContext(),
+                MapName = CurrentMapName
+            }).GetAwaiter().GetResult();
+        }
+
+        private void ApplyDraft(MapDraftDto draft)
+        {
+            ApplyDraftMetadata(draft);
+
+            Nodes.Clear();
+            foreach (var node in draft.Map.Nodes.Select(ToLegacyNode))
+            {
+                Nodes.Add(node);
+            }
+
+            Edges.Clear();
+            foreach (var edge in draft.Map.Edges.Select(ToLegacyEdge))
+            {
+                Edges.Add(edge);
+            }
+
+            Aliases.Clear();
+            foreach (var alias in draft.Map.VendorNodeMappings.Select(ToLegacyAlias))
+            {
+                Aliases.Add(alias);
+            }
+
+            Stations.Clear();
+            ApplyAreas(draft.Map.Areas);
+            RaiseEditorCounts();
+            RebuildEditorProjections();
+        }
+
+        private void ApplyDraftMetadata(MapDraftDto draft)
+        {
+            CurrentDraftId = draft.DraftId;
+            CurrentMapId = draft.Map.MapId;
+            CurrentMapName = draft.Map.MapName;
+            CurrentMapVersion = draft.Map.Version;
+            PublishDraftCommand.RaiseCanExecuteChanged();
+        }
+
+        private void LoadVersions()
+        {
+            MapVersions.Clear();
+            var versions = _mapManagementService.GetMapVersionsAsync(new GetMapVersionsRequest
+            {
+                Context = new RequestContext(),
+                MapId = CurrentMapId
+            }).GetAwaiter().GetResult();
+
+            if (versions.Data is null)
+            {
+                return;
+            }
+
+            foreach (var version in versions.Data)
+            {
+                MapVersions.Add(version);
+            }
+        }
+
+        private ContractMap.MapSnapshotDto BuildSnapshotFromEditor()
+        {
+            var areas = EditorAreas
+                .Select(area => area.ToDto())
+                .Where(area => !string.IsNullOrWhiteSpace(area.AreaId))
+                .ToDictionary(area => area.AreaId, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var area in Nodes.Select(node => node.AreaCode)
+                .Concat(Edges.Select(edge => edge.AreaCode))
+                .Where(area => !string.IsNullOrWhiteSpace(area))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(area => !areas.ContainsKey(area))
+                .Select(area => new ContractMap.MapAreaDto
+                {
+                    AreaId = area,
+                    AreaName = area,
+                    AreaType = ContractMap.MapAreaType.Normal,
+                    Properties = new Dictionary<string, string> { ["Capacity"] = "0", ["Color"] = "#5A7FA6" }
+                }))
+            {
+                areas[area.AreaId] = area;
+            }
+
+            return new ContractMap.MapSnapshotDto
+            {
+                MapId = string.IsNullOrWhiteSpace(CurrentMapId) ? "MAIN" : CurrentMapId,
+                MapName = string.IsNullOrWhiteSpace(CurrentMapName) ? "AGV 主地图" : CurrentMapName,
+                Version = "draft",
+                Nodes = Nodes.Select(ToContractNode).ToList(),
+                Edges = Edges.Select(ToContractEdge).ToList(),
+                Areas = areas.Values.ToList(),
+                VendorNodeMappings = Aliases.Where(alias => alias.IsEnabled).Select(ToContractMapping).ToList(),
+                UpdatedAt = DateTimeOffset.Now
+            };
+        }
+
+        private static ContractMap.MapNodeDto ToContractNode(MapNode node)
+        {
+            var properties = new Dictionary<string, string>
+            {
+                ["Capacity"] = node.ParkingCapacity.ToString(),
+                ["AllowedBrands"] = node.AllowedBrands,
+                ["RequiredCapabilities"] = ((int)node.RequiredCapabilities).ToString()
+            };
+            foreach (var tag in node.Tags)
+            {
+                properties[tag.Key] = tag.Value;
+            }
+
+            return new ContractMap.MapNodeDto
+            {
+                NodeId = node.NodeId,
+                NodeCode = node.NodeCode,
+                NodeName = node.Name,
+                NodeType = ToContractNodeType(node.NodeType),
+                X = node.Position.X,
+                Y = node.Position.Y,
+                Angle = node.Heading,
+                AreaId = string.IsNullOrWhiteSpace(node.AreaCode) ? null : node.AreaCode,
+                Enabled = node.IsEnabled,
+                Properties = properties
+            };
+        }
+
+        private static ContractMap.MapEdgeDto ToContractEdge(MapEdge edge)
+        {
+            return new ContractMap.MapEdgeDto
+            {
+                EdgeId = edge.EdgeId,
+                FromNodeId = edge.FromNodeId,
+                ToNodeId = edge.ToNodeId,
+                Distance = edge.Length,
+                Direction = edge.Direction == EdgeDirection.Bidirectional
+                    ? ContractMap.MapEdgeDirection.Bidirectional
+                    : ContractMap.MapEdgeDirection.OneWay,
+                Cost = edge.Cost,
+                SpeedLimit = edge.MaxSpeed,
+                AreaId = string.IsNullOrWhiteSpace(edge.AreaCode) ? null : edge.AreaCode,
+                Enabled = edge.IsEnabled && edge.Direction != EdgeDirection.Closed,
+                Properties = new Dictionary<string, string>
+                {
+                    ["AllowedBrands"] = edge.AllowedBrands,
+                    ["MaxVehicleFlow"] = edge.MaxVehicleFlow.ToString(),
+                    ["Remark"] = edge.Remark
+                }
+            };
+        }
+
+        private static ContractMap.VendorNodeMappingDto ToContractMapping(MapLocationAlias alias)
+        {
+            return new ContractMap.VendorNodeMappingDto
+            {
+                VendorCode = string.IsNullOrWhiteSpace(alias.Brand) ? "GLOBAL" : alias.Brand,
+                SystemNodeId = alias.NodeId,
+                VendorNodeCode = alias.AliasValue
+            };
+        }
+
+        private static MapNode ToLegacyNode(ContractMap.MapNodeDto node)
+        {
+            return new MapNode
+            {
+                NodeId = node.NodeId,
+                MapId = "MAIN",
+                NodeCode = node.NodeCode,
+                Name = string.IsNullOrWhiteSpace(node.NodeName) ? node.NodeCode : node.NodeName,
+                NodeType = ToLegacyNodeType(node.NodeType),
+                Position = new MapPosition { MapId = "MAIN", NodeId = node.NodeId, X = node.X, Y = node.Y },
+                Heading = node.Angle ?? 0,
+                AreaCode = node.AreaId ?? string.Empty,
+                IsEnabled = node.Enabled,
+                ParkingCapacity = TryReadInt(node.Properties, "Capacity", 1),
+                AllowedBrands = TryReadString(node.Properties, "AllowedBrands"),
+                RequiredCapabilities = (VehicleCapability)TryReadInt(node.Properties, "RequiredCapabilities", 0)
+            };
+        }
+
+        private static MapEdge ToLegacyEdge(ContractMap.MapEdgeDto edge)
+        {
+            return new MapEdge
+            {
+                EdgeId = edge.EdgeId,
+                MapId = "MAIN",
+                FromNodeId = edge.FromNodeId,
+                ToNodeId = edge.ToNodeId,
+                Direction = edge.Enabled
+                    ? edge.Direction == ContractMap.MapEdgeDirection.Bidirectional ? EdgeDirection.Bidirectional : EdgeDirection.ForwardOnly
+                    : EdgeDirection.Closed,
+                Length = edge.Distance,
+                MaxSpeed = edge.SpeedLimit ?? 0,
+                Cost = (int)Math.Round(edge.Cost),
+                IsEnabled = edge.Enabled,
+                AreaCode = edge.AreaId ?? string.Empty,
+                AllowedBrands = TryReadString(edge.Properties, "AllowedBrands"),
+                MaxVehicleFlow = TryReadInt(edge.Properties, "MaxVehicleFlow", 1),
+                Remark = TryReadString(edge.Properties, "Remark")
+            };
+        }
+
+        private static MapLocationAlias ToLegacyAlias(ContractMap.VendorNodeMappingDto mapping)
+        {
+            return new MapLocationAlias
+            {
+                AliasId = Guid.NewGuid().ToString("N"),
+                MapId = "MAIN",
+                NodeId = mapping.SystemNodeId,
+                AliasType = "Vendor",
+                AliasValue = mapping.VendorNodeCode,
+                Brand = string.Equals(mapping.VendorCode, "GLOBAL", StringComparison.OrdinalIgnoreCase) ? string.Empty : mapping.VendorCode,
+                IsEnabled = true
+            };
+        }
+
+        private static IEnumerable<MapValidationResult> ToLegacyValidationResults(IEnumerable<string> messages)
+        {
+            foreach (var message in messages)
+            {
+                var isError = message.StartsWith("P0", StringComparison.OrdinalIgnoreCase);
+                yield return new MapValidationResult
+                {
+                    Level = isError ? MapValidationLevel.Error : MapValidationLevel.Warning,
+                    ObjectType = message.Split(' ').Skip(1).FirstOrDefault() ?? "Map",
+                    ObjectId = string.Empty,
+                    Message = message
+                };
+            }
+        }
+
+        private void RaiseEditorCounts()
+        {
+            RaisePropertyChanged(nameof(TotalNodes));
+            RaisePropertyChanged(nameof(TotalEdges));
+            RaisePropertyChanged(nameof(TotalAliases));
+            RaisePropertyChanged(nameof(TotalAreas));
+        }
+
+        private static ContractMap.MapNodeType ToContractNodeType(MapNodeType nodeType) => nodeType switch
+        {
+            MapNodeType.Station => ContractMap.MapNodeType.WorkStation,
+            MapNodeType.Pickup => ContractMap.MapNodeType.PickPoint,
+            MapNodeType.Dropoff => ContractMap.MapNodeType.PutPoint,
+            MapNodeType.Charge => ContractMap.MapNodeType.ChargeStation,
+            MapNodeType.Waiting => ContractMap.MapNodeType.WaitingPoint,
+            MapNodeType.Elevator => ContractMap.MapNodeType.Elevator,
+            MapNodeType.Door => ContractMap.MapNodeType.Door,
+            _ => ContractMap.MapNodeType.Normal
+        };
+
+        private static MapNodeType ToLegacyNodeType(ContractMap.MapNodeType nodeType) => nodeType switch
+        {
+            ContractMap.MapNodeType.WorkStation => MapNodeType.Station,
+            ContractMap.MapNodeType.PickPoint => MapNodeType.Pickup,
+            ContractMap.MapNodeType.PutPoint => MapNodeType.Dropoff,
+            ContractMap.MapNodeType.ChargeStation => MapNodeType.Charge,
+            ContractMap.MapNodeType.WaitingPoint => MapNodeType.Waiting,
+            ContractMap.MapNodeType.Elevator => MapNodeType.Elevator,
+            ContractMap.MapNodeType.Door => MapNodeType.Door,
+            _ => MapNodeType.Normal
+        };
+
+        private static string FormatNodeType(MapNodeType nodeType) => nodeType switch
+        {
+            MapNodeType.Normal => "Normal（普通点）",
+            MapNodeType.Station => "Station（工位点）",
+            MapNodeType.Pickup => "Pickup（取货点）",
+            MapNodeType.Dropoff => "Dropoff（放货点）",
+            MapNodeType.Charge => "Charge（充电点）",
+            MapNodeType.Waiting => "Waiting（等待点）",
+            MapNodeType.Intersection => "Intersection（路口点）",
+            MapNodeType.Elevator => "Elevator（电梯点）",
+            MapNodeType.Door => "Door（门禁点）",
+            MapNodeType.Restricted => "Restricted（限制点）",
+            _ => $"{nodeType}（未知类型）"
+        };
+
+        private static string FormatEdgeDirection(EdgeDirection direction) => direction switch
+        {
+            EdgeDirection.Bidirectional => "Bidirectional（双向）",
+            EdgeDirection.ForwardOnly => "ForwardOnly（正向单行）",
+            EdgeDirection.ReverseOnly => "ReverseOnly（反向单行）",
+            EdgeDirection.Closed => "Closed（静态封闭）",
+            _ => $"{direction}（未知方向）"
+        };
+
+        private static string FormatAreaType(ContractMap.MapAreaType areaType) => areaType switch
+        {
+            ContractMap.MapAreaType.Normal => "Normal（普通区域）",
+            ContractMap.MapAreaType.WorkArea => "WorkArea（作业区域）",
+            ContractMap.MapAreaType.ChargingArea => "ChargingArea（充电区域）",
+            ContractMap.MapAreaType.WaitingArea => "WaitingArea（等待区域）",
+            ContractMap.MapAreaType.NarrowArea => "NarrowArea（窄道区域）",
+            ContractMap.MapAreaType.IntersectionArea => "IntersectionArea（路口区域）",
+            ContractMap.MapAreaType.BlockedArea => "BlockedArea（封闭区域）",
+            ContractMap.MapAreaType.Unknown => "Unknown（未知区域）",
+            _ => $"{areaType}（未知区域）"
+        };
+
+        private static int TryReadInt(IReadOnlyDictionary<string, string> properties, string key, int fallback)
+        {
+            return properties.TryGetValue(key, out var raw) && int.TryParse(raw, out var value) ? value : fallback;
+        }
+
+        private static string TryReadString(IReadOnlyDictionary<string, string> properties, string key)
+        {
+            return properties.TryGetValue(key, out var value) ? value : string.Empty;
+        }
+    }
+
+    public sealed class EnumDisplayItem<T>
+        where T : struct, Enum
+    {
+        public EnumDisplayItem(T value, string displayName)
+        {
+            Value = value;
+            DisplayName = displayName;
+        }
+
+        public T Value { get; }
+
+        public string DisplayName { get; }
     }
 
     /// <summary>

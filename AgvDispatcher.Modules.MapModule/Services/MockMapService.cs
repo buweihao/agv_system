@@ -6,133 +6,112 @@ using AgvDispatcher.Core.Contracts.Map;
 
 namespace AgvDispatcher.Modules.MapModule.Services
 {
-    public class MockMapService : IMapService
+    public sealed class MockMapService : IMapService
     {
-        private readonly MapSnapshotDto _snapshot;
+        private readonly MockMapStore _store;
 
-        public MockMapService()
+        public MockMapService(MockMapStore store)
         {
-            var nodes = new List<MapNodeDto>
-            {
-                new MapNodeDto { NodeId = "N1", NodeCode = "Point_A", NodeType = MapNodeType.PickPoint, X = 0, Y = 0 },
-                new MapNodeDto { NodeId = "N2", NodeCode = "Point_B", NodeType = MapNodeType.Normal, X = 10, Y = 0 },
-                new MapNodeDto { NodeId = "N3", NodeCode = "Point_C", NodeType = MapNodeType.ChargeStation, X = 10, Y = 10 }
-            };
-
-            var edges = new List<MapEdgeDto>
-            {
-                new MapEdgeDto { EdgeId = "E1", FromNodeId = "N1", ToNodeId = "N2", Distance = 10, Direction = MapEdgeDirection.Bidirectional },
-                new MapEdgeDto { EdgeId = "E2", FromNodeId = "N2", ToNodeId = "N3", Distance = 10, Direction = MapEdgeDirection.OneWay }
-            };
-
-            var areas = new List<MapAreaDto>
-            {
-                new MapAreaDto
-                {
-                    AreaId = "A1",
-                    AreaName = "Zone_1",
-                    AreaType = MapAreaType.WorkArea,
-                    BoundaryPoints = new List<MapPointDto>
-                    {
-                        new MapPointDto { X = -5, Y = -5 },
-                        new MapPointDto { X = 15, Y = -5 },
-                        new MapPointDto { X = 15, Y = 15 },
-                        new MapPointDto { X = -5, Y = 15 }
-                    }
-                }
-            };
-
-            var mappings = new List<VendorNodeMappingDto>
-            {
-                new VendorNodeMappingDto { VendorCode = "Seer", SystemNodeId = "N1", VendorNodeCode = "SEER_A01" }
-            };
-
-            _snapshot = new MapSnapshotDto
-            {
-                MapId = "Map_Mock_001",
-                MapName = "Mock Test Map",
-                Version = "1.0",
-                Nodes = nodes,
-                Edges = edges,
-                Areas = areas,
-                VendorNodeMappings = mappings,
-                UpdatedAt = DateTimeOffset.Now
-            };
+            _store = store;
         }
 
         public AgvResult<MapSnapshotDto> GetCurrentMap(GetMapSnapshotRequest request)
         {
-            if (request.ExpectedMapVersion != null && request.ExpectedMapVersion != _snapshot.Version)
+            var snapshot = _store.GetCurrentMap();
+            if (string.IsNullOrWhiteSpace(snapshot.MapId))
             {
-                return AgvResult<MapSnapshotDto>.Fail(FailureCode.MapVersionMismatch, "Map version mismatch");
+                return AgvResult<MapSnapshotDto>.Fail(FailureCode.MapNotLoaded, "Map was not loaded.");
             }
-            return AgvResult<MapSnapshotDto>.Ok(_snapshot);
+
+            if (!string.IsNullOrWhiteSpace(request.ExpectedMapVersion)
+                && !string.Equals(request.ExpectedMapVersion, snapshot.Version, StringComparison.OrdinalIgnoreCase))
+            {
+                return AgvResult<MapSnapshotDto>.Fail(FailureCode.MapVersionMismatch, "Map version mismatch.");
+            }
+
+            return AgvResult<MapSnapshotDto>.Ok(snapshot);
         }
 
         public AgvResult<IReadOnlyList<MapNodeDto>> GetNodes(GetMapSnapshotRequest request)
         {
-            return AgvResult<IReadOnlyList<MapNodeDto>>.Ok(_snapshot.Nodes);
+            var snapshot = _store.GetCurrentMap();
+            return AgvResult<IReadOnlyList<MapNodeDto>>.Ok(snapshot.Nodes);
         }
 
         public AgvResult<IReadOnlyList<MapEdgeDto>> GetEdges(GetMapSnapshotRequest request)
         {
-            return AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(_snapshot.Edges);
+            var snapshot = _store.GetCurrentMap();
+            return AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(snapshot.Edges);
         }
 
         public AgvResult<MapNodeDto> GetNode(GetMapNodeRequest request)
         {
-            var node = _snapshot.Nodes.FirstOrDefault(n => n.NodeId == request.NodeId);
-            return node != null 
-                ? AgvResult<MapNodeDto>.Ok(node) 
-                : AgvResult<MapNodeDto>.Fail(FailureCode.MapNodeNotFound, $"Node {request.NodeId} not found");
+            var node = _store.GetCurrentMap().Nodes.FirstOrDefault(item =>
+                string.Equals(item.NodeId, request.NodeId, StringComparison.OrdinalIgnoreCase));
+            return node is null
+                ? AgvResult<MapNodeDto>.Fail(FailureCode.MapNodeNotFound, $"Node {request.NodeId} not found.")
+                : AgvResult<MapNodeDto>.Ok(node);
         }
 
         public AgvResult<MapEdgeDto> GetEdge(GetMapEdgeRequest request)
         {
-            var edge = _snapshot.Edges.FirstOrDefault(e => e.EdgeId == request.EdgeId);
-            return edge != null 
-                ? AgvResult<MapEdgeDto>.Ok(edge) 
-                : AgvResult<MapEdgeDto>.Fail(FailureCode.MapEdgeNotFound, $"Edge {request.EdgeId} not found");
+            var edge = _store.GetCurrentMap().Edges.FirstOrDefault(item =>
+                string.Equals(item.EdgeId, request.EdgeId, StringComparison.OrdinalIgnoreCase));
+            return edge is null
+                ? AgvResult<MapEdgeDto>.Fail(FailureCode.MapEdgeNotFound, $"Edge {request.EdgeId} not found.")
+                : AgvResult<MapEdgeDto>.Ok(edge);
         }
 
         public AgvResult<bool> NodeExists(GetMapNodeRequest request)
         {
-            var exists = _snapshot.Nodes.Any(n => n.NodeId == request.NodeId);
-            return AgvResult<bool>.Ok(exists);
+            return AgvResult<bool>.Ok(_store.GetCurrentMap().Nodes.Any(item =>
+                string.Equals(item.NodeId, request.NodeId, StringComparison.OrdinalIgnoreCase)));
         }
 
         public AgvResult<bool> EdgeExists(GetMapEdgeRequest request)
         {
-            var exists = _snapshot.Edges.Any(e => e.EdgeId == request.EdgeId);
-            return AgvResult<bool>.Ok(exists);
+            return AgvResult<bool>.Ok(_store.GetCurrentMap().Edges.Any(item =>
+                string.Equals(item.EdgeId, request.EdgeId, StringComparison.OrdinalIgnoreCase)));
         }
 
         public AgvResult<IReadOnlyList<MapEdgeDto>> GetOutgoingEdges(GetOutgoingEdgesRequest request)
         {
-            var edges = _snapshot.Edges.Where(e => e.FromNodeId == request.NodeId || (e.ToNodeId == request.NodeId && e.Direction == MapEdgeDirection.Bidirectional)).ToList();
+            var edges = _store.GetCurrentMap().Edges
+                .Where(edge => edge.Enabled)
+                .Where(edge =>
+                    string.Equals(edge.FromNodeId, request.NodeId, StringComparison.OrdinalIgnoreCase)
+                    || (edge.Direction == MapEdgeDirection.Bidirectional
+                        && string.Equals(edge.ToNodeId, request.NodeId, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
             return AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(edges);
         }
 
         public AgvResult<IReadOnlyList<MapNodeDto>> GetNodesByType(GetNodesByTypeRequest request)
         {
-            var nodes = _snapshot.Nodes.Where(n => n.NodeType == request.NodeType).ToList();
+            var nodes = _store.GetCurrentMap().Nodes
+                .Where(node => node.NodeType == request.NodeType)
+                .ToList();
             return AgvResult<IReadOnlyList<MapNodeDto>>.Ok(nodes);
         }
 
         public AgvResult<string> GetVendorNodeCode(GetVendorNodeCodeRequest request)
         {
-            var mapping = _snapshot.VendorNodeMappings.FirstOrDefault(m => m.SystemNodeId == request.SystemNodeId && m.VendorCode == request.VendorCode);
-            return mapping != null
-                ? AgvResult<string>.Ok(mapping.VendorNodeCode)
-                : AgvResult<string>.Fail(FailureCode.VendorNodeMappingNotFound, "Mapping not found");
+            var mapping = _store.GetCurrentMap().VendorNodeMappings.FirstOrDefault(item =>
+                string.Equals(item.SystemNodeId, request.SystemNodeId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.VendorCode, request.VendorCode, StringComparison.OrdinalIgnoreCase));
+            return mapping is null
+                ? AgvResult<string>.Fail(FailureCode.VendorNodeMappingNotFound, "Mapping not found.")
+                : AgvResult<string>.Ok(mapping.VendorNodeCode);
         }
 
         public AgvResult<string> GetSystemNodeId(GetSystemNodeIdRequest request)
         {
-            var mapping = _snapshot.VendorNodeMappings.FirstOrDefault(m => m.VendorNodeCode == request.VendorNodeCode && m.VendorCode == request.VendorCode);
-            return mapping != null
-                ? AgvResult<string>.Ok(mapping.SystemNodeId)
-                : AgvResult<string>.Fail(FailureCode.VendorNodeMappingNotFound, "Mapping not found");
+            var mapping = _store.GetCurrentMap().VendorNodeMappings.FirstOrDefault(item =>
+                string.Equals(item.VendorNodeCode, request.VendorNodeCode, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.VendorCode, request.VendorCode, StringComparison.OrdinalIgnoreCase));
+            return mapping is null
+                ? AgvResult<string>.Fail(FailureCode.VendorNodeMappingNotFound, "Mapping not found.")
+                : AgvResult<string>.Ok(mapping.SystemNodeId);
         }
     }
 }

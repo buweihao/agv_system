@@ -50,6 +50,7 @@
         <!-- 工具栏 -->
         <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#0B1828" BorderBrush="#1F3A60" BorderThickness="0,0,0,1" Padding="12,8">
             <WrapPanel>
+                <Button Content="新增区域" Style="{StaticResource ToolButton}" Command="{Binding AddAreaCommand}"/>
                 <Button Content="新增节点" Style="{StaticResource ToolButton}" Command="{Binding AddNodeAtCenterCommand}"/>
                 <Button Content="连线模式" Style="{StaticResource ToggleToolButton}" Tag="{Binding IsConnectMode}" Command="{Binding ToggleConnectModeCommand}"/>
                 <Button Content="放置充电桩" Style="{StaticResource ToggleToolButton}" Tag="{Binding IsPlaceStationMode}" Command="{Binding TogglePlaceStationModeCommand}"/>
@@ -61,7 +62,7 @@
                 <Button Content="对齐网格" Style="{StaticResource ToggleToolButton}" Tag="{Binding IsGridSnapEnabled}" Command="{Binding ToggleGridSnapCommand}"/>
                 <Button Content="米/像素" Style="{StaticResource ToolButton}" Command="{Binding ToggleUnitCommand}"/>
                 <Border Width="1" Background="#1F3A60" Margin="4,2,12,2"/>
-                <Button Content="保存地图" Style="{StaticResource ToolButton}" Background="#00BFFF" Foreground="#04101C" BorderThickness="0" FontWeight="Bold" Command="{Binding SaveAllCommand}"/>
+                <Button Content="保存草稿" Style="{StaticResource ToolButton}" Background="#00BFFF" Foreground="#04101C" BorderThickness="0" FontWeight="Bold" Command="{Binding SaveAllCommand}"/>
             </WrapPanel>
         </Border>
 
@@ -98,6 +99,38 @@
                 </Canvas.RenderTransform>
 
                 <!-- 边层 -->
+                <ItemsControl ItemsSource="{Binding EditorAreas}">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Polygon Points="{Binding PointsText}"
+                                     Fill="{Binding Fill}"
+                                     Stroke="{Binding Stroke}"
+                                     StrokeThickness="{Binding StrokeThickness}"
+                                     Opacity="{Binding Opacity}"
+                                     Cursor="Hand"
+                                     MouseLeftButtonDown="Area_MouseLeftButtonDown"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <ItemsControl ItemsSource="{Binding EditorAreas}">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerStyle>
+                        <Style TargetType="ContentPresenter">
+                            <Setter Property="Canvas.Left" Value="{Binding LabelLeft}"/>
+                            <Setter Property="Canvas.Top" Value="{Binding LabelTop}"/>
+                        </Style>
+                    </ItemsControl.ItemContainerStyle>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="#AA0B1828" BorderBrush="{Binding Stroke}" BorderThickness="1" CornerRadius="3" Padding="6,2" IsHitTestVisible="False">
+                                <TextBlock Text="{Binding AreaDisplayName}" Foreground="#DCEFFF" FontSize="11"/>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
                 <ItemsControl ItemsSource="{Binding EditorEdges}">
                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
@@ -237,9 +270,16 @@
                         <TextBlock Text="节点编号" Style="{StaticResource PropLabel}"/>
                         <TextBox Text="{Binding NodeId, Mode=OneWay}" IsReadOnly="True" Background="#11243A" Foreground="#8EA8C3" BorderThickness="0" Padding="6,4"/>
                         <TextBlock Text="类型" Style="{StaticResource PropLabel}"/>
-                        <ComboBox SelectedItem="{Binding NodeType, Mode=TwoWay}"
-                                  ItemsSource="{Binding DataContext.NodeTypes, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                        <ComboBox SelectedValue="{Binding NodeType, Mode=TwoWay}"
+                                  SelectedValuePath="Value"
+                                  DisplayMemberPath="DisplayName"
+                                  ItemsSource="{Binding DataContext.NodeTypeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                         <TextBlock Text="X (像素)" Style="{StaticResource PropLabel}"/>
+                        <TextBlock Text="所属区域" Style="{StaticResource PropLabel}"/>
+                        <ComboBox SelectedValue="{Binding AreaCode, Mode=TwoWay}"
+                                  SelectedValuePath="AreaId"
+                                  DisplayMemberPath="AreaDisplayName"
+                                  ItemsSource="{Binding DataContext.EditorAreas, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                         <TextBox Text="{Binding X, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="6,4"/>
                         <TextBlock Text="Y (像素)" Style="{StaticResource PropLabel}"/>
                         <TextBox Text="{Binding Y, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="6,4"/>
@@ -247,6 +287,39 @@
                     </StackPanel>
 
                     <!-- 边属性 -->
+                    <StackPanel DataContext="{Binding SelectedEditorArea}">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=DataContext}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Text="区域编号" Style="{StaticResource PropLabel}"/>
+                        <TextBox Text="{Binding AreaId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="6,4"/>
+                        <TextBlock Text="区域名称" Style="{StaticResource PropLabel}"/>
+                        <TextBox Text="{Binding AreaName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="6,4"/>
+                        <TextBlock Text="区域类型" Style="{StaticResource PropLabel}"/>
+                        <ComboBox SelectedValue="{Binding AreaType, Mode=TwoWay}"
+                                  SelectedValuePath="Value"
+                                  DisplayMemberPath="DisplayName"
+                                  ItemsSource="{Binding DataContext.AreaTypeOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                        <TextBlock Text="颜色" Style="{StaticResource PropLabel}"/>
+                        <TextBox Text="{Binding Color, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Padding="6,4"/>
+                        <TextBlock Text="边界点" Style="{StaticResource PropLabel}"/>
+                        <TextBox Text="{Binding BoundaryText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True"
+                                 Height="72"
+                                 TextWrapping="Wrap"
+                                 Padding="6,4"/>
+                        <CheckBox Content="启用" IsChecked="{Binding Enabled, Mode=TwoWay}" Foreground="#DCEFFF" Margin="0,12,0,0"/>
+                        <TextBlock Text="边界格式：x,y; x,y; x,y。颜色格式：#RRGGBB。保存草稿后不切换运行图，发布地图后运行监控同步显示。"
+                                   Foreground="#6E8298" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                    </StackPanel>
+
                     <StackPanel DataContext="{Binding SelectedEditorEdge}">
                         <StackPanel.Style>
                             <Style TargetType="StackPanel">
@@ -261,10 +334,12 @@
                         <TextBlock Text="边编号" Style="{StaticResource PropLabel}"/>
                         <TextBox Text="{Binding EdgeId, Mode=OneWay}" IsReadOnly="True" Background="#11243A" Foreground="#8EA8C3" BorderThickness="0" Padding="6,4"/>
                         <TextBlock Text="方向" Style="{StaticResource PropLabel}"/>
-                        <ComboBox SelectedItem="{Binding Direction, Mode=TwoWay}"
-                                  ItemsSource="{Binding DataContext.EdgeDirections, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                        <ComboBox SelectedValue="{Binding Direction, Mode=TwoWay}"
+                                  SelectedValuePath="Value"
+                                  DisplayMemberPath="DisplayName"
+                                  ItemsSource="{Binding DataContext.EdgeDirectionOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                         <CheckBox Content="启用" IsChecked="{Binding IsEnabled, Mode=TwoWay}" Foreground="#DCEFFF" Margin="0,12,0,0"/>
-                        <CheckBox Content="锁定" IsChecked="{Binding IsLocked, Mode=TwoWay}" Foreground="#DCEFFF" Margin="0,8,0,0"/>
+                        <TextBlock Text="静态封闭请使用禁用或方向配置" Foreground="#8EA8C3" Margin="0,8,0,0"/>
                     </StackPanel>
 
                     <!-- 充电桩属性 -->

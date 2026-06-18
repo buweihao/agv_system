@@ -95,6 +95,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             }
         }
 
+        public string AreaCode
+        {
+            get => Model.AreaCode;
+            set
+            {
+                if (Model.AreaCode != value)
+                {
+                    Model.AreaCode = value ?? string.Empty;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
         /// <summary>是否启用（修改即写回模型并刷新配色/透明度）。</summary>
         public bool IsEnabled
         {

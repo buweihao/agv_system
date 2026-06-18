@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
+using AgvDispatcher.Core.Contracts.Common;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
@@ -7,6 +8,7 @@ using AgvDispatcher.Core.Models;
 using Prism.Commands;
 using Prism.Events;
 using Prism.Mvvm;
+using ContractMap = AgvDispatcher.Core.Contracts.Map;
 
 namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 {
@@ -25,7 +27,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     /// </summary>
     public class MapViewModel : BindableBase
     {
-        private readonly IMapRepository _mapRepository;
+        private readonly ContractMap.IMapService _mapService;
         private readonly IPathPlanningService _pathPlanningService;
         private readonly IVehicleStateStore _vehicleStateStore;
         private readonly ITaskService _taskService;
@@ -40,9 +42,12 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         private MapNodeViewItem? _previewStartNode;
         private MapNodeViewItem? _previewEndNode;
         private string _previewSummary = "选择起点与终点后点击\"预览路径\"";
+        private bool _isPreviewPanelExpanded = true;
 
         /// <summary>地图全部边（普通渲染图层）。</summary>
         public ObservableCollection<MapEdgeViewItem> Edges { get; } = new();
+
+        public ObservableCollection<MapAreaViewItem> Areas { get; } = new();
 
         /// <summary>当前选中车辆的规划路径所经过的边（高亮图层）。</summary>
         public ObservableCollection<MapEdgeViewItem> PlannedEdges { get; } = new();
@@ -94,6 +99,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 if (SetProperty(ref _previewStartNode, value))
                 {
                     PreviewPathCommand.RaiseCanExecuteChanged();
+                    RestoreOrClearPreview();
                 }
             }
         }
@@ -107,6 +113,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 if (SetProperty(ref _previewEndNode, value))
                 {
                     PreviewPathCommand.RaiseCanExecuteChanged();
+                    RestoreOrClearPreview();
                 }
             }
         }
@@ -116,6 +123,13 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         {
             get => _previewSummary;
             set => SetProperty(ref _previewSummary, value);
+        }
+
+        /// <summary>路径预览面板是否展开。保持在 ViewModel，避免点击地图后被视图重建为折叠状态。</summary>
+        public bool IsPreviewPanelExpanded
+        {
+            get => _isPreviewPanelExpanded;
+            set => SetProperty(ref _isPreviewPanelExpanded, value);
         }
 
         /// <summary>根据所选起点/终点计算并高亮显示预览路径。</summary>
@@ -134,13 +148,13 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// <param name="aliasRepo">地图别名仓储，用于位置别名到节点的映射。</param>
         public MapViewModel(
             IEventAggregator eventAggregator,
-            IMapRepository mapRepository,
+            ContractMap.IMapService mapService,
             IPathPlanningService pathPlanningService,
             IVehicleStateStore vehicleStateStore,
             ITaskService taskService,
             IMapLocationAliasRepository aliasRepo)
         {
-            _mapRepository = mapRepository;
+            _mapService = mapService;
             _pathPlanningService = pathPlanningService;
             _vehicleStateStore = vehicleStateStore;
             _taskService = taskService;
@@ -156,6 +170,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             eventAggregator.GetEvent<SelectedVehicleChangedEvent>().Subscribe(LoadMap, ThreadOption.UIThread);
             // 车辆状态变化：保持当前选中车辆并重绘
             eventAggregator.GetEvent<VehicleStateChangedEvent>().Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
+            eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>().Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
         }
 
         /// <summary>
@@ -166,6 +181,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         {
             if (item is MapNodeViewItem node)
             {
+                UseNodeForPreview(node);
                 DetailTitle = $"节点详情: {node.Name}";
                 DetailContent = $"节点ID: {node.NodeId}\n类型: {node.NodeType}\n区域: {node.AreaCode}\n" +
                                 $"启用状态: {(node.IsEnabled ? "是" : "否")}\n别名配置: 获取中...";
@@ -208,6 +224,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             var nodes = GetNodes();
             var edges = GetEdges();
+            var areas = GetAreas();
             var nodeMap = nodes.ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
             var selectedVehicle = string.IsNullOrWhiteSpace(selectedVehicleId)
                 ? null
@@ -219,6 +236,12 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 普通边图层（仅渲染两端节点都存在的边）
+            Areas.Clear();
+            foreach (var area in areas)
+            {
+                Areas.Add(CreateAreaItem(area));
+            }
+
             Edges.Clear();
             EdgeArrows.Clear();
             foreach (var edge in edges)
@@ -271,14 +294,14 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             PathSummary = BuildPathSummary(selectedVehicle, plannedPath, nodes);
 
             // 重建节点集合后，重新解析预览起止点引用并刷新预览路径图层
-            RefreshPreviewAfterReload(nodeMap);
+            RefreshPreviewAfterReload(nodes);
         }
 
         /// <summary>
         /// 地图重载后修复预览起止点对新节点视图项的引用，并据此重绘预览路径图层。
         /// 若原起止点在新地图中不存在则清空预览。
         /// </summary>
-        private void RefreshPreviewAfterReload(IReadOnlyDictionary<string, MapNode> nodeMap)
+        private void RefreshPreviewAfterReload(IReadOnlyList<MapNode> mapNodes)
         {
             var startId = _previewStartNode?.NodeId;
             var endId = _previewEndNode?.NodeId;
@@ -294,18 +317,56 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             RaisePropertyChanged(nameof(PreviewEndNode));
             PreviewPathCommand.RaiseCanExecuteChanged();
 
-            // 若已有有效预览路径，则用新坐标重绘；起止点失效则清除预览图层
-            if (PreviewEdges.Count > 0)
+            // 只要起止点仍有效，就在刷新后自动恢复预览路径，不依赖旧 PreviewEdges 是否还存在。
+            if (_previewStartNode is not null && _previewEndNode is not null)
             {
-                if (_previewStartNode is not null && _previewEndNode is not null)
+                RenderPreviewPath(mapNodes.ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase));
+            }
+            else if (PreviewEdges.Count > 0)
+            {
+                PreviewEdges.Clear();
+                PreviewSummary = "选择起点与终点后点击\"预览路径\"";
+            }
+        }
+
+        /// <summary>
+        /// 点击地图点位时辅助选择预览起终点：首次点选起点，第二次点选终点并自动预览。
+        /// 若已经存在完整起终点，再点其他节点则开始一条新的预览。
+        /// </summary>
+        private void UseNodeForPreview(MapNodeViewItem node)
+        {
+            IsPreviewPanelExpanded = true;
+
+            if (PreviewStartNode is null || (PreviewStartNode is not null && PreviewEndNode is not null))
+            {
+                PreviewStartNode = node;
+                PreviewEndNode = null;
+                PreviewEdges.Clear();
+                PreviewSummary = $"已选择起点 {node.NodeCode}，请点击终点或从下拉框选择。";
+                return;
+            }
+
+            if (PreviewStartNode is { } startNode &&
+                !string.Equals(startNode.NodeId, node.NodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                PreviewEndNode = node;
+                if (CanPreviewPath())
                 {
-                    RenderPreviewPath(nodeMap);
+                    OnPreviewPath();
                 }
-                else
-                {
-                    PreviewEdges.Clear();
-                    PreviewSummary = "选择起点与终点后点击\"预览路径\"";
-                }
+            }
+        }
+
+        private void RestoreOrClearPreview()
+        {
+            if (_previewStartNode is not null && _previewEndNode is not null && CanPreviewPath())
+            {
+                var nodeMap = GetNodes().ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
+                RenderPreviewPath(nodeMap);
+            }
+            else if (_previewStartNode is null || _previewEndNode is null)
+            {
+                PreviewEdges.Clear();
             }
         }
 
@@ -408,17 +469,87 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
         private IReadOnlyList<MapNode> GetNodes()
         {
-            return _mapRepository.GetNodesAsync().GetAwaiter().GetResult();
+            var result = _mapService.GetNodes(new ContractMap.GetMapSnapshotRequest { Context = new RequestContext() });
+            return result.Data?.Select(ToLegacyNode).ToList() ?? [];
         }
 
         private IReadOnlyList<MapEdge> GetEdges()
         {
-            return _mapRepository.GetEdgesAsync().GetAwaiter().GetResult();
+            var result = _mapService.GetEdges(new ContractMap.GetMapSnapshotRequest { Context = new RequestContext() });
+            return result.Data?.Select(ToLegacyEdge).ToList() ?? [];
+        }
+
+        private IReadOnlyList<ContractMap.MapAreaDto> GetAreas()
+        {
+            var result = _mapService.GetCurrentMap(new ContractMap.GetMapSnapshotRequest { Context = new RequestContext() });
+            return result.Data?.Areas ?? [];
         }
 
         private PlannedPath BuildDisplayPath(string startNodeId, string endNodeId)
         {
             return _pathPlanningService.PlanPath(GetNodes(), GetEdges(), startNodeId, endNodeId);
+        }
+
+        private static MapNode ToLegacyNode(ContractMap.MapNodeDto node)
+        {
+            return new MapNode
+            {
+                NodeId = node.NodeId,
+                MapId = "MAIN",
+                NodeCode = node.NodeCode,
+                Name = string.IsNullOrWhiteSpace(node.NodeName) ? node.NodeCode : node.NodeName,
+                NodeType = ToLegacyNodeType(node.NodeType),
+                Position = new MapPosition { MapId = "MAIN", NodeId = node.NodeId, X = node.X, Y = node.Y },
+                Heading = node.Angle ?? 0,
+                AreaCode = node.AreaId ?? string.Empty,
+                IsEnabled = node.Enabled,
+                ParkingCapacity = TryReadInt(node.Properties, "Capacity", 1),
+                AllowedBrands = TryReadString(node.Properties, "AllowedBrands")
+            };
+        }
+
+        private static MapEdge ToLegacyEdge(ContractMap.MapEdgeDto edge)
+        {
+            return new MapEdge
+            {
+                EdgeId = edge.EdgeId,
+                MapId = "MAIN",
+                FromNodeId = edge.FromNodeId,
+                ToNodeId = edge.ToNodeId,
+                Direction = edge.Enabled
+                    ? edge.Direction == ContractMap.MapEdgeDirection.Bidirectional ? EdgeDirection.Bidirectional : EdgeDirection.ForwardOnly
+                    : EdgeDirection.Closed,
+                Length = edge.Distance,
+                MaxSpeed = edge.SpeedLimit ?? 0,
+                Cost = (int)Math.Round(edge.Cost),
+                IsEnabled = edge.Enabled,
+                AreaCode = edge.AreaId ?? string.Empty,
+                AllowedBrands = TryReadString(edge.Properties, "AllowedBrands"),
+                MaxVehicleFlow = TryReadInt(edge.Properties, "MaxVehicleFlow", 1),
+                Remark = TryReadString(edge.Properties, "Remark")
+            };
+        }
+
+        private static MapNodeType ToLegacyNodeType(ContractMap.MapNodeType nodeType) => nodeType switch
+        {
+            ContractMap.MapNodeType.WorkStation => MapNodeType.Station,
+            ContractMap.MapNodeType.PickPoint => MapNodeType.Pickup,
+            ContractMap.MapNodeType.PutPoint => MapNodeType.Dropoff,
+            ContractMap.MapNodeType.ChargeStation => MapNodeType.Charge,
+            ContractMap.MapNodeType.WaitingPoint => MapNodeType.Waiting,
+            ContractMap.MapNodeType.Elevator => MapNodeType.Elevator,
+            ContractMap.MapNodeType.Door => MapNodeType.Door,
+            _ => MapNodeType.Normal
+        };
+
+        private static int TryReadInt(IReadOnlyDictionary<string, string> properties, string key, int fallback)
+        {
+            return properties.TryGetValue(key, out var raw) && int.TryParse(raw, out var value) ? value : fallback;
+        }
+
+        private static string TryReadString(IReadOnlyDictionary<string, string> properties, string key)
+        {
+            return properties.TryGetValue(key, out var value) ? value : string.Empty;
         }
 
         /// <summary>
@@ -480,6 +611,29 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// 由领域边模型构建画布边视图项：计算两端坐标，按状态区分着色
         /// （正常=绿、锁定=橙、禁用/封闭=红），规划路径上的边加粗。
         /// </summary>
+        private static MapAreaViewItem CreateAreaItem(ContractMap.MapAreaDto area)
+        {
+            var color = area.Properties.TryGetValue("Color", out var configuredColor) && !string.IsNullOrWhiteSpace(configuredColor)
+                ? NormalizeColor(configuredColor)
+                : AreaColor(area.AreaType);
+            var points = area.BoundaryPoints.Count > 0
+                ? area.BoundaryPoints
+                : Array.Empty<ContractMap.MapPointDto>();
+
+            return new MapAreaViewItem
+            {
+                AreaId = area.AreaId,
+                AreaName = string.IsNullOrWhiteSpace(area.AreaName) ? area.AreaId : area.AreaName,
+                AreaType = area.AreaType.ToString(),
+                PointsText = string.Join(" ", points.Select(point => $"{point.X:0.##},{point.Y:0.##}")),
+                Fill = ToAlphaColor(color, "26"),
+                Stroke = color,
+                Opacity = area.Enabled ? 1.0 : 0.35,
+                LabelLeft = points.Count > 0 ? points.Average(point => point.X) : 0,
+                LabelTop = points.Count > 0 ? points.Average(point => point.Y) : 0
+            };
+        }
+
         private static MapEdgeViewItem CreateEdgeItem(
             MapEdge edge,
             MapNode fromNode,
@@ -693,6 +847,34 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             }
         }
 
+        private static string AreaColor(ContractMap.MapAreaType areaType) => areaType switch
+        {
+            ContractMap.MapAreaType.WorkArea => "#2D8CFF",
+            ContractMap.MapAreaType.ChargingArea => "#9B6DFF",
+            ContractMap.MapAreaType.WaitingArea => "#00BFA6",
+            ContractMap.MapAreaType.NarrowArea => "#FFB020",
+            ContractMap.MapAreaType.IntersectionArea => "#32D583",
+            ContractMap.MapAreaType.BlockedArea => "#FF4D4F",
+            _ => "#5A7FA6"
+        };
+
+        private static string NormalizeColor(string color)
+        {
+            if (string.IsNullOrWhiteSpace(color))
+            {
+                return "#5A7FA6";
+            }
+
+            color = color.Trim();
+            return color.StartsWith("#", StringComparison.Ordinal) ? color : $"#{color}";
+        }
+
+        private static string ToAlphaColor(string color, string alpha)
+        {
+            var normalized = NormalizeColor(color);
+            return normalized.Length == 7 ? $"#{alpha}{normalized[1..]}" : normalized;
+        }
+
         /// <summary>
         /// 将一个位置字符串解析为地图节点，按以下优先级匹配：
         /// ① 启用的位置别名 → ② 节点 ID/编码精确匹配 → ③ 含 "Charge" 时回退到任一充电节点 →
@@ -748,6 +930,27 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     }
 
     /// <summary>地图边的画布渲染视图项：携带两端坐标与样式（颜色/粗细/透明度）。</summary>
+    public class MapAreaViewItem
+    {
+        public string AreaId { get; set; } = string.Empty;
+
+        public string AreaName { get; set; } = string.Empty;
+
+        public string AreaType { get; set; } = string.Empty;
+
+        public string PointsText { get; set; } = string.Empty;
+
+        public string Fill { get; set; } = "#265A7FA6";
+
+        public string Stroke { get; set; } = "#5A7FA6";
+
+        public double Opacity { get; set; } = 1.0;
+
+        public double LabelLeft { get; set; }
+
+        public double LabelTop { get; set; }
+    }
+
     public class MapEdgeViewItem
     {
         /// <summary>边编号。</summary>

@@ -237,6 +237,16 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
 
         // ====== 键盘：Delete 删除 / Ctrl+Z 撤销 / Ctrl+Y 重做 ======
 
+        private void Area_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (Vm == null) return;
+            if (sender is FrameworkElement fe && fe.DataContext is EditorAreaVm area && !Vm.IsConnectMode && !Vm.IsPlaceStationMode)
+            {
+                Vm.SelectedEditorArea = area;
+                e.Handled = true;
+            }
+        }
+
         private void Root_KeyDown(object sender, KeyEventArgs e)
         {
             if (Vm == null) return;

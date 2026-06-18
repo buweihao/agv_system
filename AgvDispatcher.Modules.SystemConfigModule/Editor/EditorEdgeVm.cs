@@ -11,7 +11,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
     /// 包裹领域模型 <see cref="MapEdge"/> 并持有两端节点画布项 <see cref="EditorNodeVm"/> 引用，
     /// 订阅其坐标变化，使边线段（<see cref="X1"/>..<see cref="Y2"/>）与方向箭头折点随节点拖拽实时联动。
     /// </para>
-    /// <para>配色规则与监控页一致：禁用/封闭=红，锁定=橙，正常=绿。</para>
+    /// <para>配色规则与监控页一致：禁用/封闭=红，正常=绿。</para>
     /// </summary>
     public class EditorEdgeVm : BindableBase, IDisposable
     {
@@ -92,21 +92,6 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             }
         }
 
-        private bool _isLocked;
-
-        /// <summary>是否锁定（仅用于编辑器本地显示，不写入 Core MapEdge）。</summary>
-        public bool IsLocked
-        {
-            get => _isLocked;
-            set
-            {
-                if (SetProperty(ref _isLocked, value))
-                {
-                    RaiseStyleChanged();
-                }
-            }
-        }
-
         private bool _isSelected;
         /// <summary>是否处于选中态（加粗高亮）。</summary>
         public bool IsSelected
@@ -122,14 +107,13 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             }
         }
 
-        /// <summary>线条颜色：禁用/封闭=红，锁定=橙，正常=绿；选中时统一金色。</summary>
+        /// <summary>线条颜色：禁用/封闭=红，正常=绿；选中时统一金色。</summary>
         public string Stroke
         {
             get
             {
                 if (IsSelected) return "#FFD700";
                 if (!Model.IsEnabled || Model.Direction == EdgeDirection.Closed) return "#FF4500";
-                if (IsLocked) return "#FFA500";
                 return "#00FF7F";
             }
         }

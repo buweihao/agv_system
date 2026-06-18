@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AgvDispatcher.Core.Contracts.Common;
 using AgvDispatcher.Core.Contracts.Reservations.Enums;
 using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
@@ -16,26 +17,50 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
     public sealed class MockRouteReservationService : IRouteReservationService
     {
         private readonly ITrafficControlService _trafficControlService;
-        private readonly Dictionary<string, RouteReservationDto> _reservations = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, RouteReservationDto> _reservations =
+            new(StringComparer.Ordinal);
         private readonly SemaphoreSlim _gate = new(1, 1);
 
         public MockRouteReservationService(ITrafficControlService trafficControlService)
         {
-            _trafficControlService = trafficControlService;
+            _trafficControlService = trafficControlService ??
+                throw new ArgumentNullException(nameof(trafficControlService));
         }
 
         public async Task<AgvResult<RouteReservationDto>> CreateReservationAsync(
             CreateRouteReservationRequest request,
             CancellationToken cancellationToken = default)
         {
+            if (request is null)
+            {
+                return AgvResult<RouteReservationDto>.Fail(
+                    FailureCode.InvalidRequest,
+                    "A route reservation request is required.");
+            }
+
             if (string.IsNullOrWhiteSpace(request.TaskId) ||
                 string.IsNullOrWhiteSpace(request.VehicleId) ||
+                string.IsNullOrWhiteSpace(request.PlanId) ||
+                string.IsNullOrWhiteSpace(request.MapId) ||
+                string.IsNullOrWhiteSpace(request.MapVersion) ||
+                request.Segments is null ||
                 request.Segments.Count == 0 ||
                 request.RollingWindowSize <= 0)
             {
                 return AgvResult<RouteReservationDto>.Fail(
                     FailureCode.InvalidRequest,
-                    "TaskId, VehicleId, route segments, and a positive rolling window size are required.");
+                    "TaskId, VehicleId, PlanId, MapId, MapVersion, route segments, and a positive rolling window size are required.");
+            }
+
+            if (request.Segments.Any(segment =>
+                    segment is null ||
+                    string.IsNullOrWhiteSpace(segment.FromNodeId) ||
+                    string.IsNullOrWhiteSpace(segment.ToNodeId) ||
+                    string.IsNullOrWhiteSpace(segment.EdgeId)))
+            {
+                return AgvResult<RouteReservationDto>.Fail(
+                    FailureCode.InvalidRequest,
+                    "Every route segment must define FromNodeId, ToNodeId, and EdgeId.");
             }
 
             if (request.Segments.Select(segment => segment.Sequence).Distinct().Count() != request.Segments.Count)
@@ -72,7 +97,34 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
             await _gate.WaitAsync(cancellationToken);
             try
             {
-                _reservations.Add(reservation.ReservationId, reservation);
+                if (!_reservations.TryAdd(reservation.ReservationId, reservation))
+                {
+                    return AgvResult<RouteReservationDto>.Fail(
+                        FailureCode.UnknownError,
+                        "Could not allocate a unique route reservation id.");
+                }
+
+                // Rolling-window reservations are intentionally created without taking traffic
+                // resources. LockFullPath is the only policy that acquires during creation.
+                if (request.ReservationPolicy == RouteReservationPolicy.LockFullPath)
+                {
+                    var acquireResult = await AcquireSegmentsAsync(
+                        reservation,
+                        reservation.Segments,
+                        request.Context,
+                        "Full-path route lock",
+                        cancellationToken);
+                    reservation = acquireResult.Reservation;
+                    if (acquireResult.Acquired)
+                    {
+                        reservation = CopyReservation(
+                            reservation,
+                            currentWindow: BuildWindow(reservation.Segments, reservation.Segments));
+                    }
+
+                    _reservations[reservation.ReservationId] = reservation;
+                }
+
                 return AgvResult<RouteReservationDto>.Ok(reservation);
             }
             finally
@@ -105,7 +157,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                         $"Reservation cannot acquire resources while in state {reservation.State}.");
                 }
 
-                var windowSize = request.RollingWindowSize > 0
+                var windowSize = reservation.ReservationPolicy == RouteReservationPolicy.LockFullPath
+                    ? reservation.Segments.Count
+                    : request.RollingWindowSize > 0
                     ? request.RollingWindowSize
                     : reservation.RollingWindowSize;
                 var windowSegments = reservation.Segments
@@ -135,27 +189,15 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                 var segmentsToAcquire = windowSegments.Where(segment => !segment.IsLocked).ToArray();
                 if (segmentsToAcquire.Length > 0)
                 {
-                    var acquireResult = await _trafficControlService.TryAcquireAsync(
-                        new TrafficAcquireRequest
-                        {
-                            Context = request.Context,
-                            AgvId = reservation.VehicleId,
-                            TaskId = reservation.TaskId,
-                            LockMode = TrafficLockMode.Lock,
-                            Resources = DistinctResources(segmentsToAcquire.SelectMany(segment => segment.Resources)),
-                            Reason = $"Rolling route window for {reservation.ReservationId}",
-                            ExpectedMapVersion = reservation.MapVersion
-                        },
+                    var acquire = await AcquireSegmentsAsync(
+                        reservation,
+                        segmentsToAcquire,
+                        request.Context,
+                        $"Rolling route window for {reservation.ReservationId}",
                         cancellationToken);
-
-                    if (!acquireResult.Success || acquireResult.Data is null)
+                    if (!acquire.Acquired)
                     {
-                        var failure = await DescribeAcquireFailureAsync(
-                            reservation,
-                            segmentsToAcquire,
-                            request.Context,
-                            cancellationToken);
-                        reservation = CopyReservation(reservation, state: RouteReservationState.Waiting);
+                        reservation = acquire.Reservation;
                         _reservations[reservation.ReservationId] = reservation;
 
                         return AgvResult<RouteRollingLockResultDto>.Ok(new RouteRollingLockResultDto
@@ -163,33 +205,15 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                             ReservationId = reservation.ReservationId,
                             State = RouteReservationState.Waiting,
                             Acquired = false,
-                            ShouldWait = !failure.RequiresReplan,
-                            RequiresReplan = failure.RequiresReplan,
-                            FailureReason = failure.Reason,
-                            Message = acquireResult.Message
+                            ShouldWait = !acquire.RequiresReplan,
+                            RequiresReplan = acquire.RequiresReplan,
+                            FailureReason = acquire.FailureReason,
+                            Message = acquire.Message
                         });
                     }
 
-                    var lockedAt = DateTimeOffset.Now;
-                    var acquiredSequences = segmentsToAcquire
-                        .Select(segment => segment.Segment.Sequence)
-                        .ToHashSet();
-                    var updatedSegments = reservation.Segments.Select(segment =>
-                        acquiredSequences.Contains(segment.Segment.Sequence)
-                            ? CopySegment(
-                                segment,
-                                isReserved: true,
-                                isLocked: true,
-                                trafficReservationIds: segment.TrafficReservationIds
-                                    .Append(acquireResult.Data.ReservationId)
-                                    .Distinct(StringComparer.Ordinal)
-                                    .ToArray(),
-                                lockedAt: lockedAt)
-                            : segment).ToArray();
-
-                    var state = updatedSegments.Where(segment => !segment.IsReleased).All(segment => segment.IsLocked)
-                        ? RouteReservationState.FullyLocked
-                        : RouteReservationState.PartiallyLocked;
+                    reservation = acquire.Reservation;
+                    var updatedSegments = reservation.Segments;
                     var updatedWindowSegments = updatedSegments
                         .Where(segment => windowSegments.Any(window =>
                             window.Segment.Sequence == segment.Segment.Sequence))
@@ -197,8 +221,6 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                     var currentWindow = BuildWindow(updatedWindowSegments, updatedSegments);
                     reservation = CopyReservation(
                         reservation,
-                        state: state,
-                        segments: updatedSegments,
                         currentWindow: currentWindow);
                     _reservations[reservation.ReservationId] = reservation;
                 }
@@ -244,6 +266,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                         "Route reservation was not found.");
                 }
 
+                // PassedSegmentSequence is the last segment sequence the AGV has completely traversed.
                 var passedSegments = reservation.Segments
                     .Where(segment => !segment.IsReleased &&
                                       segment.Segment.Sequence <= request.PassedSegmentSequence)
@@ -298,7 +321,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                     ReservationId = reservation.ReservationId,
                     State = state,
                     ReleasedSegmentSequences = passedSegments.Select(segment => segment.Segment.Sequence).ToArray(),
-                    ReleasedResources = DistinctResources(passedSegments.SelectMany(segment => segment.Resources)),
+                    ReleasedResources = DistinctResources(
+                        passedSegments.Where(segment => segment.IsLocked)
+                            .SelectMany(segment => segment.Resources)),
                     CurrentWindow = currentWindow
                 });
             }
@@ -345,9 +370,12 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                 var releasedAt = DateTimeOffset.Now;
                 var releasedSegments = reservation.Segments.Select(segment =>
                     CopySegment(segment, isLocked: false, isReleased: true, releasedAt: releasedAt)).ToArray();
+                var finalState = request.Reason.Contains("cancel", StringComparison.OrdinalIgnoreCase)
+                    ? RouteReservationState.Canceled
+                    : RouteReservationState.Released;
                 reservation = CopyReservation(
                     reservation,
-                    state: RouteReservationState.Released,
+                    state: finalState,
                     segments: releasedSegments,
                     currentWindow: null,
                     releasedAt: releasedAt,
@@ -445,6 +473,66 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
             };
         }
 
+        private async Task<AcquireSegmentsResult> AcquireSegmentsAsync(
+            RouteReservationDto reservation,
+            IReadOnlyList<RouteReservedSegmentDto> segments,
+            RequestContext context,
+            string reason,
+            CancellationToken cancellationToken)
+        {
+            var acquireResult = await _trafficControlService.TryAcquireAsync(
+                new TrafficAcquireRequest
+                {
+                    Context = context,
+                    AgvId = reservation.VehicleId,
+                    TaskId = reservation.TaskId,
+                    LockMode = TrafficLockMode.Lock,
+                    Resources = DistinctResources(segments.SelectMany(segment => segment.Resources)),
+                    Reason = reason,
+                    ExpectedMapVersion = reservation.MapVersion
+                },
+                cancellationToken);
+
+            if (!acquireResult.Success || acquireResult.Data is null)
+            {
+                var failure = await DescribeAcquireFailureAsync(
+                    reservation,
+                    segments,
+                    context,
+                    cancellationToken);
+                return new AcquireSegmentsResult(
+                    CopyReservation(reservation, state: RouteReservationState.Waiting),
+                    false,
+                    failure.RequiresReplan,
+                    failure.Reason,
+                    acquireResult.Message);
+            }
+
+            var acquiredSequences = segments.Select(segment => segment.Segment.Sequence).ToHashSet();
+            var lockedAt = DateTimeOffset.Now;
+            var updatedSegments = reservation.Segments.Select(segment =>
+                acquiredSequences.Contains(segment.Segment.Sequence)
+                    ? CopySegment(
+                        segment,
+                        isReserved: true,
+                        isLocked: true,
+                        trafficReservationIds: segment.TrafficReservationIds
+                            .Append(acquireResult.Data.ReservationId)
+                            .Distinct(StringComparer.Ordinal)
+                            .ToArray(),
+                        lockedAt: lockedAt)
+                    : segment).ToArray();
+            var state = updatedSegments.Where(segment => !segment.IsReleased).All(segment => segment.IsLocked)
+                ? RouteReservationState.FullyLocked
+                : RouteReservationState.PartiallyLocked;
+            return new AcquireSegmentsResult(
+                CopyReservation(reservation, state: state, segments: updatedSegments),
+                true,
+                false,
+                RouteReservationFailureReason.None,
+                acquireResult.Message);
+        }
+
         private static IReadOnlyList<TrafficResourceKey> ToTrafficResources(
             AgvDispatcher.Core.Contracts.Planning.Results.PathSegmentDto segment)
         {
@@ -454,6 +542,11 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                 {
                     ResourceType = TrafficResourceType.Edge,
                     ResourceId = segment.EdgeId
+                },
+                new TrafficResourceKey
+                {
+                    ResourceType = TrafficResourceType.Node,
+                    ResourceId = segment.ToNodeId
                 }
             };
         }
@@ -536,5 +629,12 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                 ReleasedAt = setReleasedAt ? releasedAt : source.ReleasedAt
             };
         }
+
+        private sealed record AcquireSegmentsResult(
+            RouteReservationDto Reservation,
+            bool Acquired,
+            bool RequiresReplan,
+            RouteReservationFailureReason FailureReason,
+            string Message);
     }
 }

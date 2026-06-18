@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AgvDispatcher.Core.Contracts.Common;
 using AgvDispatcher.Core.Contracts.Traffic.Enums;
 using AgvDispatcher.Core.Contracts.Traffic.Interfaces;
@@ -12,7 +13,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
     public sealed class MockTrafficControlService : ITrafficControlService
     {
         private readonly object _syncRoot = new();
-        private readonly Dictionary<ResourceIdentity, ResourceEntry> _resources = new();
+        private readonly ConcurrentDictionary<string, TrafficResourceStatusDto> _resources = new();
         private long _version;
 
         public Task<AgvResult<TrafficSnapshotDto>> GetTrafficSnapshotAsync(
@@ -27,7 +28,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
                 {
                     Version = _version,
                     GeneratedAt = DateTimeOffset.Now,
-                    Resources = _resources.Values.Select(ToStatus).ToArray()
+                    Resources = _resources.Values.Select(CopyStatus).ToArray()
                 }));
             }
         }
@@ -91,7 +92,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(request.AgvId) || request.Resources.Count == 0)
+            if (string.IsNullOrWhiteSpace(request.AgvId) || request.Resources.Count == 0 ||
+                !Enum.IsDefined(request.LockMode))
             {
                 return Task.FromResult(AgvResult<TrafficReservationDto>.Fail(
                     FailureCode.InvalidRequest,
@@ -117,16 +119,18 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
                 DateTimeOffset? expiresAt = request.Ttl.HasValue ? now.Add(request.Ttl.Value) : null;
                 foreach (var resource in resources)
                 {
-                    _resources[ToIdentity(resource)] = new ResourceEntry
+                    _resources[ToDictionaryKey(resource)] = new TrafficResourceStatusDto
                     {
                         Resource = CopyResource(resource),
                         State = ToState(request.LockMode),
-                        OwnerTaskId = request.TaskId,
-                        OwnerVehicleId = request.AgvId,
+                        OccupiedByAgvId = request.LockMode == TrafficLockMode.Occupy ? request.AgvId : null,
+                        ReservedByAgvId = request.LockMode != TrafficLockMode.Occupy
+                            ? request.AgvId
+                            : null,
+                        TaskId = request.TaskId,
                         ReservationId = reservationId,
-                        LockMode = request.LockMode,
                         Reason = request.Reason,
-                        ExpiresAt = expiresAt,
+                        ExpireAt = expiresAt,
                         UpdatedAt = now
                     };
                 }
@@ -151,7 +155,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (request.ReservationId is null && request.AgvId is null && request.TaskId is null)
+            if (string.IsNullOrWhiteSpace(request.ReservationId) &&
+                string.IsNullOrWhiteSpace(request.AgvId) &&
+                string.IsNullOrWhiteSpace(request.TaskId))
             {
                 return Task.FromResult(AgvResult.Fail(
                     FailureCode.InvalidRequest,
@@ -163,7 +169,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
                 RemoveExpiredEntries();
                 var candidates = request.Resources.Count == 0
                     ? _resources.Keys.ToArray()
-                    : DistinctResources(request.Resources).Select(ToIdentity).ToArray();
+                    : DistinctResources(request.Resources).Select(ToDictionaryKey).ToArray();
                 var released = 0;
 
                 foreach (var identity in candidates)
@@ -173,7 +179,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
                         continue;
                     }
 
-                    _resources.Remove(identity);
+                    _resources.TryRemove(identity, out _);
                     released++;
                 }
 
@@ -197,22 +203,30 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
             }
 
             var reported = request.OccupiedNodeIds
-                .Select(id => new TrafficResourceKey { ResourceType = TrafficResourceType.Node, ResourceId = id })
-                .Concat(request.OccupiedEdgeIds.Select(id => new TrafficResourceKey
-                {
-                    ResourceType = TrafficResourceType.Edge,
-                    ResourceId = id
-                }))
+                .Append(request.CurrentNodeId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => new TrafficResourceKey { ResourceType = TrafficResourceType.Node, ResourceId = id! })
+                .Concat(request.OccupiedEdgeIds
+                    .Append(request.CurrentEdgeId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Select(id => new TrafficResourceKey
+                    {
+                        ResourceType = TrafficResourceType.Edge,
+                        ResourceId = id!
+                    }))
+                .GroupBy(ToDictionaryKey)
+                .Select(group => group.First())
                 .ToArray();
 
             lock (_syncRoot)
             {
                 RemoveExpiredEntries();
-                var reportedIds = reported.Select(ToIdentity).ToHashSet();
+                var reportedIds = reported.Select(ToDictionaryKey).ToHashSet(StringComparer.Ordinal);
                 var conflict = reported.Select(GetStatus).FirstOrDefault(status =>
                     status.State != TrafficResourceState.Free &&
-                    status.OccupiedByAgvId != request.AgvId &&
-                    status.ReservedByAgvId != request.AgvId);
+                    (status.State is TrafficResourceState.Blocked or TrafficResourceState.Disabled ||
+                     status.OccupiedByAgvId != request.AgvId &&
+                     status.ReservedByAgvId != request.AgvId));
                 if (conflict is not null)
                 {
                     return Task.FromResult(AgvResult.Fail(
@@ -222,23 +236,22 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
 
                 foreach (var identity in _resources
                     .Where(pair => pair.Value.State == TrafficResourceState.Occupied &&
-                                   pair.Value.OwnerVehicleId == request.AgvId &&
+                                   pair.Value.OccupiedByAgvId == request.AgvId &&
                                    !reportedIds.Contains(pair.Key))
                     .Select(pair => pair.Key)
                     .ToArray())
                 {
-                    _resources.Remove(identity);
+                    _resources.TryRemove(identity, out _);
                 }
 
                 foreach (var resource in reported)
                 {
-                    _resources[ToIdentity(resource)] = new ResourceEntry
+                    _resources[ToDictionaryKey(resource)] = new TrafficResourceStatusDto
                     {
                         Resource = CopyResource(resource),
                         State = TrafficResourceState.Occupied,
-                        OwnerTaskId = request.TaskId,
-                        OwnerVehicleId = request.AgvId,
-                        LockMode = TrafficLockMode.Occupy,
+                        OccupiedByAgvId = request.AgvId,
+                        TaskId = request.TaskId,
                         Reason = "AGV occupancy report",
                         UpdatedAt = request.ReportTime
                     };
@@ -279,14 +292,13 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
                 DateTimeOffset? expiresAt = request.Ttl.HasValue ? now.Add(request.Ttl.Value) : null;
                 foreach (var resource in resources)
                 {
-                    _resources[ToIdentity(resource)] = new ResourceEntry
+                    _resources[ToDictionaryKey(resource)] = new TrafficResourceStatusDto
                     {
                         Resource = CopyResource(resource),
                         State = TrafficResourceState.Blocked,
                         ReservationId = blockId,
-                        LockMode = TrafficLockMode.Block,
                         Reason = request.Reason,
-                        ExpiresAt = expiresAt,
+                        ExpireAt = expiresAt,
                         UpdatedAt = now
                     };
                 }
@@ -313,11 +325,11 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
             {
                 RemoveExpiredEntries();
                 var unblocked = 0;
-                foreach (var identity in DistinctResources(request.Resources).Select(ToIdentity))
+                foreach (var identity in DistinctResources(request.Resources).Select(ToDictionaryKey))
                 {
                     if (_resources.TryGetValue(identity, out var entry) && entry.State == TrafficResourceState.Blocked)
                     {
-                        _resources.Remove(identity);
+                        _resources.TryRemove(identity, out _);
                         unblocked++;
                     }
                 }
@@ -333,8 +345,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
 
         private TrafficResourceStatusDto GetStatus(TrafficResourceKey resource)
         {
-            return _resources.TryGetValue(ToIdentity(resource), out var entry)
-                ? ToStatus(entry)
+            return _resources.TryGetValue(ToDictionaryKey(resource), out var entry)
+                ? CopyStatus(entry)
                 : new TrafficResourceStatusDto
                 {
                     Resource = CopyResource(resource),
@@ -343,21 +355,19 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
                 };
         }
 
-        private static TrafficResourceStatusDto ToStatus(ResourceEntry entry)
+        private static TrafficResourceStatusDto CopyStatus(TrafficResourceStatusDto status)
         {
             return new TrafficResourceStatusDto
             {
-                Resource = CopyResource(entry.Resource),
-                State = entry.State,
-                OccupiedByAgvId = entry.State == TrafficResourceState.Occupied ? entry.OwnerVehicleId : null,
-                ReservedByAgvId = entry.State is TrafficResourceState.Reserved or TrafficResourceState.Locked
-                    ? entry.OwnerVehicleId
-                    : null,
-                TaskId = entry.OwnerTaskId,
-                ReservationId = entry.ReservationId,
-                Reason = entry.Reason,
-                ExpireAt = entry.ExpiresAt,
-                UpdatedAt = entry.UpdatedAt
+                Resource = CopyResource(status.Resource),
+                State = status.State,
+                OccupiedByAgvId = status.OccupiedByAgvId,
+                ReservedByAgvId = status.ReservedByAgvId,
+                TaskId = status.TaskId,
+                ReservationId = status.ReservationId,
+                Reason = status.Reason,
+                ExpireAt = status.ExpireAt,
+                UpdatedAt = status.UpdatedAt
             };
         }
 
@@ -382,23 +392,24 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
             };
         }
 
-        private static bool OwnerMatches(ResourceEntry entry, TrafficReleaseRequest request)
+        private static bool OwnerMatches(TrafficResourceStatusDto status, TrafficReleaseRequest request)
         {
-            return (request.ReservationId is null || request.ReservationId == entry.ReservationId) &&
-                   (request.AgvId is null || request.AgvId == entry.OwnerVehicleId) &&
-                   (request.TaskId is null || request.TaskId == entry.OwnerTaskId);
+            return (!string.IsNullOrWhiteSpace(request.ReservationId) && request.ReservationId == status.ReservationId) ||
+                   (!string.IsNullOrWhiteSpace(request.AgvId) &&
+                    request.AgvId == (status.OccupiedByAgvId ?? status.ReservedByAgvId)) ||
+                   (!string.IsNullOrWhiteSpace(request.TaskId) && request.TaskId == status.TaskId);
         }
 
         private void RemoveExpiredEntries()
         {
             var now = DateTimeOffset.Now;
             var expired = _resources
-                .Where(pair => pair.Value.ExpiresAt <= now)
+                .Where(pair => pair.Value.ExpireAt <= now)
                 .Select(pair => pair.Key)
                 .ToArray();
             foreach (var identity in expired)
             {
-                _resources.Remove(identity);
+                _resources.TryRemove(identity, out _);
             }
 
             if (expired.Length > 0)
@@ -410,7 +421,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
         private static IReadOnlyList<TrafficResourceKey> DistinctResources(IEnumerable<TrafficResourceKey> resources)
         {
             return resources
-                .GroupBy(ToIdentity)
+                .GroupBy(ToDictionaryKey)
                 .Select(group => CopyResource(group.First()))
                 .ToArray();
         }
@@ -424,8 +435,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
             _ => TrafficResourceState.Unknown
         };
 
-        private static ResourceIdentity ToIdentity(TrafficResourceKey resource) =>
-            new(resource.ResourceType, resource.ResourceId);
+        private static string ToDictionaryKey(TrafficResourceKey resource) =>
+            $"{(int)resource.ResourceType}:{resource.ResourceId}";
 
         private static TrafficResourceKey CopyResource(TrafficResourceKey resource) => new()
         {
@@ -433,19 +444,6 @@ namespace AgvDispatcher.Infrastructure.Mock.Traffic
             ResourceId = resource.ResourceId
         };
 
-        private readonly record struct ResourceIdentity(TrafficResourceType Type, string Id);
-
-        private sealed class ResourceEntry
-        {
-            public TrafficResourceKey Resource { get; init; } = new();
-            public TrafficResourceState State { get; init; }
-            public string? OwnerTaskId { get; init; }
-            public string? OwnerVehicleId { get; init; }
-            public string? ReservationId { get; init; }
-            public TrafficLockMode LockMode { get; init; }
-            public string? Reason { get; init; }
-            public DateTimeOffset? ExpiresAt { get; init; }
-            public DateTimeOffset UpdatedAt { get; init; }
-        }
+        // TODO: Publish TrafficResourceChangedEvent when Core exposes a transport-agnostic event publisher.
     }
 }

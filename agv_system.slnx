@@ -5,6 +5,7 @@
   <Project Path="AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
   <Project Path="AgvDispatcher.Infrastructure.Okapi\AgvDispatcher.Infrastructure.Okapi.csproj" />
   <Project Path="AgvDispatcher.Infrastructure.Sqlite\AgvDispatcher.Infrastructure.Sqlite.csproj" />
+  <Project Path="AgvDispatcher.Tests\AgvDispatcher.Tests.csproj" />
   <Project Path="AgvDispatcher.Modules.TemplateModule\AgvDispatcher.Modules.TemplateModule.csproj" />
   <Project Path="AgvDispatcher.Modules.MonitorWorkspaceModule\AgvDispatcher.Modules.MonitorWorkspaceModule.csproj" />
   <Project Path="AgvDispatcher.Modules.ChargeModule\AgvDispatcher.Modules.ChargeModule.csproj" />

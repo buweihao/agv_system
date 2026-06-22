@@ -100,6 +100,27 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             }
 
             var parameter = CurrentParameter.ToConfig();
+            if (string.Equals(
+                    parameter.ParamKey,
+                    "Dispatching:TrafficReservationMode",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(parameter.ParamValue, "InMemory", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(parameter.ParamValue, "Persistent", StringComparison.OrdinalIgnoreCase))
+                {
+                    StatusMessage = "交通预约存储模式只能设置为 InMemory 或 Persistent";
+                    return;
+                }
+
+                parameter.ParamValue = string.Equals(
+                    parameter.ParamValue,
+                    "Persistent",
+                    StringComparison.OrdinalIgnoreCase)
+                    ? "Persistent"
+                    : "InMemory";
+                parameter.RequiresRestart = true;
+            }
+
             _parameterRepository.SaveAsync(parameter).GetAwaiter().GetResult();
             
             _eventAggregator.GetEvent<SystemParameterChangedEvent>().Publish(parameter);

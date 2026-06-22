@@ -34,6 +34,10 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         public DbSet<OperationLog> OperationLogs => Set<OperationLog>();
 
         public DbSet<TaskOrder> TaskOrders => Set<TaskOrder>();
+        public DbSet<TrafficResourceLockEntity> TrafficResourceLocks => Set<TrafficResourceLockEntity>();
+        public DbSet<RouteReservationEntity> RouteReservations => Set<RouteReservationEntity>();
+        public DbSet<RouteReservationSegmentEntity> RouteReservationSegments => Set<RouteReservationSegmentEntity>();
+        public DbSet<RouteReservationEventEntity> RouteReservationEvents => Set<RouteReservationEventEntity>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -45,6 +49,35 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             ConfigureAlarm(modelBuilder);
             ConfigureOperationLog(modelBuilder);
             ConfigureTaskOrder(modelBuilder);
+            ConfigureTrafficReservations(modelBuilder);
+        }
+
+        private static void ConfigureTrafficReservations(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<TrafficResourceLockEntity>(entity =>
+            {
+                entity.ToTable("TrafficResourceLocks"); entity.HasKey(x => x.Id);
+                entity.HasIndex(x => new { x.ResourceType, x.ResourceId }).IsUnique();
+                entity.Property(x => x.ResourceId).HasMaxLength(128);
+                entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            });
+            modelBuilder.Entity<RouteReservationEntity>(entity =>
+            {
+                entity.ToTable("RouteReservations"); entity.HasKey(x => x.ReservationId);
+                entity.HasMany(x => x.Segments).WithOne(x => x.Reservation)
+                    .HasForeignKey(x => x.ReservationId).OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(x => x.TaskId); entity.HasIndex(x => x.VehicleId);
+            });
+            modelBuilder.Entity<RouteReservationSegmentEntity>(entity =>
+            {
+                entity.ToTable("RouteReservationSegments"); entity.HasKey(x => x.Id);
+                entity.HasIndex(x => new { x.ReservationId, x.Sequence }).IsUnique();
+            });
+            modelBuilder.Entity<RouteReservationEventEntity>(entity =>
+            {
+                entity.ToTable("RouteReservationEvents"); entity.HasKey(x => x.EventId);
+                entity.HasIndex(x => x.ReservationId);
+            });
         }
 
         private static void ConfigureMapLocationAlias(ModelBuilder modelBuilder)

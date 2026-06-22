@@ -1,5 +1,4 @@
 using AgvDispatcher.Core.Constants;
-using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
 using AgvDispatcher.Modules.MapModule.Services;
 using AgvDispatcher.Modules.MapModule.Views;

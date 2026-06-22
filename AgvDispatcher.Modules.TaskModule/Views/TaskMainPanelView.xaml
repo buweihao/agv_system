@@ -204,7 +204,7 @@
         </Grid>
 
         <!-- 3. 数据表格 -->
-        <DataGrid Grid.Row="2" ItemsSource="{Binding PagedTaskList}" AutoGenerateColumns="False" Background="Transparent" 
+        <DataGrid Grid.Row="2" ItemsSource="{Binding PagedTaskList}" SelectedItem="{Binding SelectedTask, Mode=TwoWay}" AutoGenerateColumns="False" Background="Transparent" 
                   RowBackground="Transparent" AlternatingRowBackground="#0A111E" 
                   Foreground="White" GridLinesVisibility="None" BorderThickness="0" HeadersVisibility="Column"
                   CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True">

@@ -47,29 +47,29 @@
                     
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="任务类型" Foreground="Gray" FontSize="12" Margin="0,0,0,5"/>
-                        <TextBlock Text="搬运任务" FontWeight="Bold" FontSize="14"/>
+                        <TextBlock Text="{Binding Type, FallbackValue='搬运任务'}" FontWeight="Bold" FontSize="14"/>
                     </StackPanel>
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="优先级" Foreground="Gray" FontSize="12" Margin="0,0,0,5"/>
                         <Border Background="#20FF4500" BorderBrush="#FF4500" BorderThickness="1" CornerRadius="2" Padding="8,2" HorizontalAlignment="Left">
-                            <TextBlock Text="高" Foreground="#FF4500" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding Priority, FallbackValue='高'}" Foreground="#FF4500" FontWeight="Bold"/>
                         </Border>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="状态" Foreground="Gray" FontSize="12" Margin="0,0,0,5"/>
-                        <TextBlock Text="运行中" Foreground="#00FF7F" FontWeight="Bold" FontSize="14"/>
+                        <TextBlock Text="{Binding StateDisplay, FallbackValue='运行中'}" Foreground="#00FF7F" FontWeight="Bold" FontSize="14"/>
                     </StackPanel>
                     <StackPanel Grid.Column="3">
                         <TextBlock Text="AGV编号" Foreground="Gray" FontSize="12" Margin="0,0,0,5"/>
-                        <TextBlock Text="AGV-001" FontWeight="Bold" FontSize="14" Foreground="#00BFFF"/>
+                        <TextBlock Text="{Binding AgvId, FallbackValue='AGV-001'}" FontWeight="Bold" FontSize="14" Foreground="#00BFFF"/>
                     </StackPanel>
                     <StackPanel Grid.Column="4">
                         <TextBlock Text="创建时间" Foreground="Gray" FontSize="12" Margin="0,0,0,5"/>
-                        <TextBlock Text="2026-06-04 16:30:00" FontSize="14"/>
+                        <TextBlock Text="{Binding CreatedTime, FallbackValue='2026-06-04 16:30:00'}" FontSize="14"/>
                     </StackPanel>
                     <StackPanel Grid.Column="5">
                         <TextBlock Text="预计完成时间" Foreground="Gray" FontSize="12" Margin="0,0,0,5"/>
-                        <TextBlock Text="2026-06-04 16:45:00" FontSize="14"/>
+                        <TextBlock Text="{Binding EstimatedTime, FallbackValue='2026-06-04 16:45:00'}" FontSize="14"/>
                     </StackPanel>
                 </Grid>
 
@@ -90,14 +90,14 @@
                             <!-- 起点 -->
                             <StackPanel HorizontalAlignment="Left" Margin="10,-5,0,0">
                                 <Ellipse Width="16" Height="16" Fill="#1F3A60" Stroke="#00BFFF" StrokeThickness="2" HorizontalAlignment="Center"/>
-                                <TextBlock Text="起点 (A01-01)" FontSize="12" Margin="0,5,0,0" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding StartPoint, StringFormat='起点 ({0})', FallbackValue='起点 (A01-01)'}" FontSize="12" Margin="0,5,0,0" HorizontalAlignment="Center"/>
                                 <TextBlock Text="已出发" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
                             </StackPanel>
                             
                             <!-- AGV 图标 (当前位置) -->
                             <StackPanel HorizontalAlignment="Left" Margin="135,-10,0,0">
                                 <Border Background="#00FF7F" CornerRadius="4" Padding="5,2" HorizontalAlignment="Center" Margin="0,0,0,5">
-                                    <TextBlock Text="AGV-001" Foreground="Black" FontWeight="Bold" FontSize="10"/>
+                                    <TextBlock Text="{Binding AgvId, FallbackValue='AGV-001'}" Foreground="Black" FontWeight="Bold" FontSize="10"/>
                                 </Border>
                                 <Ellipse Width="10" Height="10" Fill="#00FF7F" HorizontalAlignment="Center" Margin="0,-5,0,0"/>
                                 <TextBlock Text="当前 (A02-01)" FontSize="12" Foreground="#00FF7F" Margin="0,5,0,0" HorizontalAlignment="Center"/>
@@ -107,7 +107,7 @@
                             <!-- 终点 -->
                             <StackPanel HorizontalAlignment="Left" Margin="280,-5,0,0">
                                 <Ellipse Width="16" Height="16" Fill="#1F3A60" Stroke="#FFD700" StrokeThickness="2" HorizontalAlignment="Center"/>
-                                <TextBlock Text="终点 (B03-05)" FontSize="12" Margin="0,5,0,0" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding EndPoint, StringFormat='终点 ({0})', FallbackValue='终点 (B03-05)'}" FontSize="12" Margin="0,5,0,0" HorizontalAlignment="Center"/>
                                 <TextBlock Text="预计 16:45" Foreground="Gray" FontSize="10" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Grid>

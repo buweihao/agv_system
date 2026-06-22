@@ -1,13 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <BuildInParallel>false</BuildInParallel>
     <UseSharedCompilation>false</UseSharedCompilation>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
+    <ProjectReference Include="..\AgvDispatcher.Infrastructure.Sqlite\AgvDispatcher.Infrastructure.Sqlite.csproj" />
+    <ProjectReference Include="..\AgvDispatcher.Modules.MapModule\AgvDispatcher.Modules.MapModule.csproj" />
   </ItemGroup>
 
 </Project>

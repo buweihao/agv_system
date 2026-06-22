@@ -1,4 +1,9 @@
 using System.Collections.Concurrent;
+using AgvDispatcher.Core.Contracts.Common;
+using AgvDispatcher.Core.Contracts.Dispatching.Interfaces;
+using AgvDispatcher.Core.Contracts.Dispatching.Requests;
+using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
+using AgvDispatcher.Core.Contracts.Reservations.Requests;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
@@ -16,6 +21,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IAuditTrailService _auditTrail;
         private readonly IChargeStationRepository _chargeStationRepository;
         private readonly IVehicleStateStore _vehicleStateStore;
+        private readonly IDispatchOrchestrationService _dispatchOrchestrationService;
+        private readonly IRouteReservationService _routeReservationService;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _runningTasks = new(StringComparer.OrdinalIgnoreCase);
 
         public MockTaskExecutionSimulator(
@@ -24,7 +31,9 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             IVehicleAdapterManager vehicleAdapterManager,
             IAuditTrailService auditTrail,
             IChargeStationRepository chargeStationRepository,
-            IVehicleStateStore vehicleStateStore)
+            IVehicleStateStore vehicleStateStore,
+            IDispatchOrchestrationService dispatchOrchestrationService,
+            IRouteReservationService routeReservationService)
         {
             _taskService = taskService;
             // _mapService = mapService;
@@ -32,6 +41,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             _auditTrail = auditTrail;
             _chargeStationRepository = chargeStationRepository;
             _vehicleStateStore = vehicleStateStore;
+            _dispatchOrchestrationService = dispatchOrchestrationService;
+            _routeReservationService = routeReservationService;
         }
 
         public void Start(TaskOrder task, string vehicleId)
@@ -97,7 +108,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     Operator = "MockTaskExecutionSimulator"
                 });
 
-                var route = ResolveRoute(task);
+                var context = new RequestContext { SourceModule = nameof(MockTaskExecutionSimulator) };
+                var route = await ResolveRouteAsync(task, context, cancellationToken);
                 _taskService.UpdateTaskProgress(taskId, 0, route.FirstOrDefault() ?? task.SourceNodeId);
 
                 var segmentCount = Math.Max(route.Count - 1, 1);
@@ -129,6 +141,43 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                                 TargetNodeId = toNodeId,
                                 IssuedBy = nameof(MockTaskExecutionSimulator)
                             }, cancellationToken);
+
+                            var advance = await _dispatchOrchestrationService.AdvanceRouteAsync(
+                                new AdvanceDispatchRouteRequest
+                                {
+                                    Context = context,
+                                    TaskId = taskId,
+                                    VehicleId = vehicleId,
+                                    CurrentNodeId = toNodeId,
+                                    PassedSegmentSequence = segmentIndex + 1,
+                                    AcquireNextWindow = segmentIndex < segmentCount - 1
+                                },
+                                cancellationToken);
+                            if (!advance.Success || advance.Data is null)
+                            {
+                                RecordSimulationStop(
+                                    "SimulationAdvanceFailed",
+                                    $"Task {taskId} could not advance after segment {segmentIndex + 1}: {advance.Message}",
+                                    taskId,
+                                    vehicleId);
+                                return;
+                            }
+
+                            if (advance.Data.RequiresReplan)
+                            {
+                                RecordSimulationStop(
+                                    "SimulationReplanRequired",
+                                    $"Task {taskId} requires replanning after segment {segmentIndex + 1}.",
+                                    taskId,
+                                    vehicleId);
+                                return;
+                            }
+
+                            if (advance.Data.ShouldWait &&
+                                !await WaitForTrafficAsync(taskId, vehicleId, context, cancellationToken))
+                            {
+                                return;
+                            }
                         }
                     }
                 }
@@ -144,14 +193,33 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     IssuedBy = nameof(MockTaskExecutionSimulator)
                 }, cancellationToken);
 
-                _taskService.UpdateTaskProgress(taskId, 100, task.TargetNodeId);
-
                 if (task.TaskType == "Charge")
                 {
                     await SimulateChargingAsync(task, vehicleId, cancellationToken);
                 }
 
-                _taskService.UpdateTaskState(taskId, TaskState.Completed);
+                var completion = await _dispatchOrchestrationService.CompleteTaskAsync(
+                    new CompleteDispatchTaskRequest
+                    {
+                        Context = context,
+                        TaskId = taskId,
+                        VehicleId = vehicleId,
+                        CurrentNodeId = task.TargetNodeId
+                    },
+                    cancellationToken);
+                if (!completion.Success)
+                {
+                    _auditTrail.Record(new OperationLog
+                    {
+                        Category = "Task",
+                        Action = "SimulationCompletionFailed",
+                        Message = $"Task {taskId} reached its target but completion cleanup failed: {completion.Message}",
+                        TaskId = taskId,
+                        VehicleId = vehicleId,
+                        Operator = nameof(MockTaskExecutionSimulator)
+                    });
+                    return;
+                }
 
                 _auditTrail.Record(new OperationLog
                 {
@@ -184,16 +252,42 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             }
         }
 
-        private List<string> ResolveRoute(TaskOrder task)
+        private async Task<List<string>> ResolveRouteAsync(
+            TaskOrder task,
+            RequestContext context,
+            CancellationToken cancellationToken)
         {
-            // TODO: Use correct MapService methods when available
-            // var plannedPath = _mapService.FindPlannedPath(task.SourceNodeId, task.TargetNodeId);
-            var route = new List<string>();
-
-            if (route.Count == 0 || !string.Equals(route[0], task.SourceNodeId, StringComparison.OrdinalIgnoreCase))
+            var execution = await _dispatchOrchestrationService.GetExecutionAsync(
+                new GetDispatchExecutionRequest
+                {
+                    Context = context,
+                    TaskId = task.TaskId
+                },
+                cancellationToken);
+            if (execution.Success && !string.IsNullOrWhiteSpace(execution.Data?.ReservationId))
             {
-                route.Insert(0, task.SourceNodeId);
+                var reservation = await _routeReservationService.GetReservationAsync(
+                    new GetRouteReservationRequest
+                    {
+                        Context = context,
+                        ReservationId = execution.Data.ReservationId
+                    },
+                    cancellationToken);
+                var segments = reservation.Data?.Segments
+                    .OrderBy(item => item.Segment.Sequence)
+                    .Select(item => item.Segment)
+                    .ToArray();
+                if (segments is { Length: > 0 })
+                {
+                    var plannedRoute = new List<string> { segments[0].FromNodeId };
+                    plannedRoute.AddRange(segments.Select(segment => segment.ToNodeId));
+                    return plannedRoute;
+                }
             }
+
+            // A source-to-target fallback keeps the simulator usable for legacy dispatches that
+            // do not have an orchestration execution or route reservation.
+            var route = new List<string> { task.SourceNodeId };
 
             if (!route.Any(nodeId => string.Equals(nodeId, task.TargetNodeId, StringComparison.OrdinalIgnoreCase)))
             {
@@ -201,6 +295,81 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             }
 
             return route;
+        }
+
+        private async Task<bool> WaitForTrafficAsync(
+            string taskId,
+            string vehicleId,
+            RequestContext context,
+            CancellationToken cancellationToken)
+        {
+            const int maxRetryCount = 30;
+            for (var retry = 1; retry <= maxRetryCount; retry++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                var retryResult = await _dispatchOrchestrationService.RetryWaitingTaskAsync(
+                    new RetryWaitingDispatchRequest
+                    {
+                        Context = context,
+                        TaskId = taskId,
+                        SendVehicleCommand = true
+                    },
+                    cancellationToken);
+                if (!retryResult.Success || retryResult.Data is null)
+                {
+                    RecordSimulationStop(
+                        "SimulationAdvanceFailed",
+                        $"Task {taskId} traffic retry {retry} failed: {retryResult.Message}",
+                        taskId,
+                        vehicleId);
+                    return false;
+                }
+
+                if (retryResult.Data.RequiresReplan)
+                {
+                    RecordSimulationStop(
+                        "SimulationReplanRequired",
+                        $"Task {taskId} requires replanning while waiting for traffic.",
+                        taskId,
+                        vehicleId);
+                    return false;
+                }
+
+                if (retryResult.Data.FirstWindowLocked)
+                {
+                    return true;
+                }
+
+                if (!retryResult.Data.ShouldWait)
+                {
+                    RecordSimulationStop(
+                        "SimulationAdvanceFailed",
+                        $"Task {taskId} traffic retry ended without acquiring the next window.",
+                        taskId,
+                        vehicleId);
+                    return false;
+                }
+            }
+
+            RecordSimulationStop(
+                "SimulationWaitingTimeout",
+                $"Task {taskId} was still waiting for traffic after {maxRetryCount} retries.",
+                taskId,
+                vehicleId);
+            return false;
+        }
+
+        private void RecordSimulationStop(string action, string message, string taskId, string vehicleId)
+        {
+            _auditTrail.Record(new OperationLog
+            {
+                Category = "Task",
+                Action = action,
+                Message = message,
+                TaskId = taskId,
+                VehicleId = vehicleId,
+                Operator = nameof(MockTaskExecutionSimulator)
+            });
         }
 
         private async System.Threading.Tasks.Task SimulateChargingAsync(TaskOrder task, string vehicleId, CancellationToken cancellationToken)

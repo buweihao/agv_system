@@ -17,6 +17,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
     public class TaskMainPanelViewModel : BindableBase
     {
         private readonly Dictionary<string, string> _pausedAgvReasons = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _dispatchingTaskIds = new(StringComparer.OrdinalIgnoreCase);
         private readonly IEventAggregator _eventAggregator;
         private readonly ITaskService _taskService;
         private readonly IDispatchService _dispatchService;
@@ -44,6 +45,13 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         {
             get => _taskList;
             set => SetProperty(ref _taskList, value);
+        }
+
+        private TaskModel? _selectedTask;
+        public TaskModel? SelectedTask
+        {
+            get => _selectedTask;
+            set => SetProperty(ref _selectedTask, value);
         }
 
         private ObservableCollection<TaskModel> _pagedTaskList = new();
@@ -292,6 +300,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         {
             return task is not null
                 && task.State == TaskState.Pending
+                && !_dispatchingTaskIds.Contains(task.Id)
                 && !task.IsDispatchPaused;
         }
 
@@ -302,12 +311,24 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 return;
             }
 
-            var result = await _dispatchService.AssignTaskAsync(task.Id);
-            DispatchMessage = result.Succeeded
-                ? $"派发成功：{result.TaskId} -> {result.VehicleId}"
-                : $"派发失败：{result.Code}，{result.Message}";
+            if (!_dispatchingTaskIds.Add(task.Id))
+            {
+                return;
+            }
 
-            RefreshTasks();
+            AutoDispatchCommand.RaiseCanExecuteChanged();
+            try
+            {
+                var result = await _dispatchService.AssignTaskAsync(task.Id);
+                DispatchMessage = result.Succeeded
+                    ? $"派发成功：{result.TaskId} -> {result.VehicleId}"
+                    : $"派发失败：{result.Code}，{result.Message}";
+            }
+            finally
+            {
+                _dispatchingTaskIds.Remove(task.Id);
+                RefreshTasks();
+            }
         }
 
         private bool CanOperateInterrupted(TaskModel? task)

@@ -1,4 +1,7 @@
 using AgvDispatcher.Core.Enums;
+using AgvDispatcher.Core.Contracts.Common;
+using AgvDispatcher.Core.Contracts.Dispatching.Interfaces;
+using AgvDispatcher.Core.Contracts.Dispatching.Requests;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 
@@ -15,6 +18,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IAuditTrailService _auditTrail;
         private readonly ITaskExecutionSimulator _taskExecutionSimulator;
         private readonly IDispatchScoringService _scoringService;
+        private readonly IDispatchOrchestrationService _dispatchOrchestrationService;
 
         public AdapterDispatchService(
             IVehicleAdapterManager vehicleAdapterManager,
@@ -23,7 +27,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             // IMapService mapService,
             IAuditTrailService auditTrail,
             ITaskExecutionSimulator taskExecutionSimulator,
-            IDispatchScoringService scoringService)
+            IDispatchScoringService scoringService,
+            IDispatchOrchestrationService dispatchOrchestrationService)
         {
             _vehicleAdapterManager = vehicleAdapterManager;
             _vehicleService = vehicleService;
@@ -32,6 +37,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             _auditTrail = auditTrail;
             _taskExecutionSimulator = taskExecutionSimulator;
             _scoringService = scoringService;
+            _dispatchOrchestrationService = dispatchOrchestrationService;
         }
 
         public DispatchResult AssignTask(string taskId, string? preferredVehicleId = null)
@@ -39,7 +45,48 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             return Task.Run(() => AssignTaskAsync(taskId, preferredVehicleId, CancellationToken.None)).GetAwaiter().GetResult();
         }
 
-        public async Task<DispatchResult> AssignTaskAsync(string taskId, string? preferredVehicleId = null, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Assigns a task through the new dispatch orchestration workflow and converts its result
+        /// to the legacy UI-facing dispatch result.
+        /// </summary>
+        public async Task<DispatchResult> AssignTaskAsync(
+            string taskId,
+            string? preferredVehicleId = null,
+            CancellationToken cancellationToken = default)
+        {
+            var result = await _dispatchOrchestrationService.StartTaskAsync(
+                new StartDispatchTaskRequest
+                {
+                    Context = new RequestContext { SourceModule = nameof(AdapterDispatchService) },
+                    TaskId = taskId,
+                    PreferredVehicleId = preferredVehicleId
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            if (!result.Success || result.Data is null)
+            {
+                return AuditAndReturn(DispatchResult.Failure(
+                    result.Error?.Code ?? result.Code.ToString(),
+                    result.Message,
+                    taskId), "AssignTask");
+            }
+
+            var task = _taskService.GetTask(taskId);
+            var vehicle = _vehicleService.GetVehicle(result.Data.VehicleId);
+            if (task is not null && vehicle?.AdapterType.StartsWith("Mock", StringComparison.OrdinalIgnoreCase) == true &&
+                result.Data.FirstWindowLocked)
+            {
+                _taskExecutionSimulator.Start(task, result.Data.VehicleId);
+            }
+
+            return AuditAndReturn(DispatchResult.Success(
+                result.Data.Message ?? $"Task {taskId} dispatched to {result.Data.VehicleId}.",
+                taskId,
+                result.Data.VehicleId,
+                result.Data.CommandId), "AssignTask");
+        }
+
+        private async Task<DispatchResult> AssignTaskLegacyAsync(string taskId, string? preferredVehicleId = null, CancellationToken cancellationToken = default)
         {
             var task = _taskService.GetTask(taskId);
             if (task is null)
@@ -174,7 +221,30 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             });
         }
 
+        /// <summary>
+        /// Cancels a task through the orchestration layer while preserving the legacy synchronous API.
+        /// </summary>
         public DispatchResult CancelTask(string taskId, string? reason = null)
+        {
+            var result = Task.Run(() => _dispatchOrchestrationService.CancelTaskAsync(
+                new CancelDispatchTaskRequest
+                {
+                    Context = new RequestContext { SourceModule = nameof(AdapterDispatchService) },
+                    TaskId = taskId,
+                    Reason = reason ?? "Canceled through legacy dispatch service"
+                },
+                CancellationToken.None)).GetAwaiter().GetResult();
+
+            return AuditAndReturn(result.Success
+                ? DispatchResult.Success(result.Message, taskId, _taskService.GetTask(taskId)?.AssignedVehicleId)
+                : DispatchResult.Failure(
+                    result.Error?.Code ?? result.Code.ToString(),
+                    result.Message,
+                    taskId,
+                    _taskService.GetTask(taskId)?.AssignedVehicleId), "CancelTask");
+        }
+
+        private DispatchResult CancelTaskLegacy(string taskId, string? reason = null)
         {
             var task = _taskService.GetTask(taskId);
             if (task is null)

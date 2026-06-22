@@ -3,6 +3,7 @@
 ## 覆盖范围
 
 - `Routing/`：路径规划、交通管制和路径预约的既有冒烟测试。
+- `Dispatching/`：调度编排的任务选车、规划、预约、滚动窗口、车辆命令、推进和取消流程。
 - `Map/MapStaticQueryServiceTests.cs`：`IMapService` 的只读静态地图查询，包括地图快照、节点、边、方向、节点类型和厂商节点映射。
 - `Map/MapManagementServiceTests.cs`：`IMapManagementService` 的草稿创建与保存、校验、发布、版本回滚、事件、导入和导出。
 

@@ -8,6 +8,13 @@ using Microsoft.EntityFrameworkCore;
 using Prism.Ioc;
 using System.Net.Http;
 using AgvDispatcher.Infrastructure.Okapi;
+using AgvDispatcher.Core.Contracts.Dispatching.Interfaces;
+using AgvDispatcher.Core.Contracts.Planning.Interfaces;
+using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
+using AgvDispatcher.Core.Contracts.Traffic.Interfaces;
+using AgvDispatcher.Infrastructure.Mock.Planning;
+using AgvDispatcher.Infrastructure.Mock.Reservations;
+using AgvDispatcher.Infrastructure.Mock.Traffic;
 
 namespace AgvDispatcher.Infrastructure.Sqlite
 {
@@ -60,6 +67,10 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IVehicleAdapterManager, VehicleAdapterManager>();
             containerRegistry.RegisterSingleton<ITaskExecutionSimulator, MockTaskExecutionSimulator>();
             containerRegistry.RegisterSingleton<IDispatchScoringService, DispatchScoringService>();
+            containerRegistry.RegisterSingleton<IPathPlanner, DijkstraPathPlanner>();
+            containerRegistry.RegisterSingleton<ITrafficControlService, MockTrafficControlService>();
+            containerRegistry.RegisterSingleton<IRouteReservationService, MockRouteReservationService>();
+            containerRegistry.RegisterSingleton<IDispatchOrchestrationService, DispatchOrchestrationService>();
             containerRegistry.RegisterSingleton<IDispatchService, AdapterDispatchService>();
 
             containerRegistry.RegisterSingleton<IVehicleService, PersistentVehicleService>();

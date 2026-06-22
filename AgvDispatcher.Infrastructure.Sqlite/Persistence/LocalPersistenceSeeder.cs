@@ -10,6 +10,19 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             db.Database.EnsureCreated();
 
+            // EnsureCreated does not add newly introduced tables to an existing database.
+            // Keep this idempotent bootstrap until the application adopts versioned migrations.
+            db.Database.ExecuteSqlRaw(@"
+CREATE TABLE IF NOT EXISTS TrafficResourceLocks (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ResourceType INTEGER NOT NULL, ResourceId TEXT NOT NULL, State INTEGER NOT NULL, OccupiedByAgvId TEXT NULL, ReservedByAgvId TEXT NULL, TaskId TEXT NULL, RouteReservationId TEXT NULL, TrafficReservationId TEXT NULL, LockMode INTEGER NULL, Reason TEXT NULL, ExpireAt TEXT NULL, CreatedAt TEXT NOT NULL, UpdatedAt TEXT NOT NULL, ConcurrencyToken INTEGER NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_TrafficResourceLocks_ResourceType_ResourceId ON TrafficResourceLocks(ResourceType, ResourceId);
+CREATE TABLE IF NOT EXISTS RouteReservations (ReservationId TEXT NOT NULL PRIMARY KEY, TaskId TEXT NOT NULL, VehicleId TEXT NOT NULL, PlanId TEXT NOT NULL, MapId TEXT NOT NULL, MapVersion TEXT NOT NULL, RollingWindowSize INTEGER NOT NULL, ReservationPolicy INTEGER NOT NULL, State INTEGER NOT NULL, CreatedAt TEXT NOT NULL, UpdatedAt TEXT NOT NULL, ReleasedAt TEXT NULL, LastFailureReason TEXT NULL);
+CREATE INDEX IF NOT EXISTS IX_RouteReservations_TaskId ON RouteReservations(TaskId);
+CREATE INDEX IF NOT EXISTS IX_RouteReservations_VehicleId ON RouteReservations(VehicleId);
+CREATE TABLE IF NOT EXISTS RouteReservationSegments (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ReservationId TEXT NOT NULL, Sequence INTEGER NOT NULL, FromNodeId TEXT NOT NULL, ToNodeId TEXT NOT NULL, EdgeId TEXT NOT NULL, Distance REAL NOT NULL, Cost REAL NOT NULL, IsReserved INTEGER NOT NULL, IsLocked INTEGER NOT NULL, IsReleased INTEGER NOT NULL, LockedAt TEXT NULL, ReleasedAt TEXT NULL, TrafficReservationIdsJson TEXT NOT NULL, ResourcesJson TEXT NOT NULL, FOREIGN KEY(ReservationId) REFERENCES RouteReservations(ReservationId) ON DELETE CASCADE);
+CREATE UNIQUE INDEX IF NOT EXISTS IX_RouteReservationSegments_ReservationId_Sequence ON RouteReservationSegments(ReservationId, Sequence);
+CREATE TABLE IF NOT EXISTS RouteReservationEvents (EventId TEXT NOT NULL PRIMARY KEY, ReservationId TEXT NOT NULL, TaskId TEXT NOT NULL, VehicleId TEXT NOT NULL, EventType TEXT NOT NULL, Message TEXT NULL, CreatedAt TEXT NOT NULL, SnapshotJson TEXT NULL);
+CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReservationEvents(ReservationId);");
+
             // Execute raw SQL to ensure MapLocationAliases exists for existing databases
             db.Database.ExecuteSqlRaw(@"
                 CREATE TABLE IF NOT EXISTS ""MapLocationAliases"" (
@@ -52,6 +65,20 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             if (!db.SystemParameters.Any())
             {
                 db.SystemParameters.AddRange(CreateSystemParameters());
+            }
+
+            if (!db.SystemParameters.Any(parameter =>
+                    parameter.ParamKey == "Dispatching:TrafficReservationMode"))
+            {
+                db.SystemParameters.Add(new ParameterConfig
+                {
+                    ParamKey = "Dispatching:TrafficReservationMode",
+                    ParamName = "交通预约存储模式",
+                    ParamValue = "InMemory",
+                    DataType = "Enum(InMemory|Persistent)",
+                    Description = "调度交通控制与路径预约的存储模式。可选 InMemory 或 Persistent，修改后需重启系统。",
+                    RequiresRestart = true
+                });
             }
 
             if (!db.Alarms.Any())

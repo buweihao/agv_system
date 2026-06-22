@@ -55,6 +55,78 @@ public sealed class InMemoryTrafficReservationLifecycleTests
     }
 
     [Fact]
+    public async Task AdvanceRouteAsync_ShouldKeepCurrentNodeOccupied_WhenReleasingPassedSegment()
+    {
+        var fixture = CreateFixture();
+        Assert.True((await fixture.Service.StartTaskAsync(StartRequest("TASK-001", "AGV-001"))).Success);
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E1"));
+        Assert.Equal(TrafficResourceState.Locked, await NodeStateAsync(fixture.Traffic, "N2"));
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E2"));
+        Assert.Equal(TrafficResourceState.Locked, await NodeStateAsync(fixture.Traffic, "N3"));
+
+        var firstAdvance = await fixture.Service.AdvanceRouteAsync(new AdvanceDispatchRouteRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001",
+            VehicleId = "AGV-001",
+            CurrentNodeId = "N2",
+            PassedSegmentSequence = 1,
+            AcquireNextWindow = true
+        });
+
+        Assert.True(firstAdvance.Success);
+        Assert.Equal(TrafficResourceState.Free, await EdgeStateAsync(fixture.Traffic, "E1"));
+        Assert.Equal(TrafficResourceState.Occupied, await NodeStateAsync(fixture.Traffic, "N2"));
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E2"));
+        Assert.Equal(TrafficResourceState.Locked, await NodeStateAsync(fixture.Traffic, "N3"));
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E3"));
+        Assert.Equal(TrafficResourceState.Locked, await NodeStateAsync(fixture.Traffic, "N4"));
+
+        var secondAdvance = await fixture.Service.AdvanceRouteAsync(new AdvanceDispatchRouteRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001",
+            VehicleId = "AGV-001",
+            CurrentNodeId = "N3",
+            PassedSegmentSequence = 2,
+            AcquireNextWindow = true
+        });
+
+        Assert.True(secondAdvance.Success);
+        Assert.Equal(TrafficResourceState.Free, await NodeStateAsync(fixture.Traffic, "N2"));
+        Assert.Equal(TrafficResourceState.Free, await EdgeStateAsync(fixture.Traffic, "E2"));
+        Assert.Equal(TrafficResourceState.Occupied, await NodeStateAsync(fixture.Traffic, "N3"));
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E3"));
+        Assert.Equal(TrafficResourceState.Locked, await NodeStateAsync(fixture.Traffic, "N4"));
+    }
+
+    [Fact]
+    public async Task SecondVehicle_ShouldWait_WhenFirstVehicleOccupiesCurrentNode()
+    {
+        var fixture = CreateFixture();
+        Assert.True((await fixture.Service.StartTaskAsync(StartRequest("TASK-001", "AGV-001"))).Success);
+        Assert.True((await fixture.Service.AdvanceRouteAsync(new AdvanceDispatchRouteRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001",
+            VehicleId = "AGV-001",
+            CurrentNodeId = "N2",
+            PassedSegmentSequence = 1,
+            AcquireNextWindow = true
+        })).Success);
+        Assert.Equal(TrafficResourceState.Occupied, await NodeStateAsync(fixture.Traffic, "N2"));
+
+        fixture.Tasks.AddTask("TASK-002");
+        var second = await fixture.Service.StartTaskAsync(StartRequest("TASK-002", "AGV-002"));
+
+        Assert.True(second.Success);
+        Assert.False(second.Data!.FirstWindowLocked);
+        Assert.False(second.Data.VehicleCommandSent);
+        Assert.Equal(DispatchExecutionState.WaitingForTraffic, second.Data.Execution.State);
+        Assert.Equal(TaskState.Pending, fixture.Tasks.GetTask("TASK-002")!.State);
+    }
+
+    [Fact]
     public async Task SecondVehicle_ShouldWait_WhenFirstVehicleLocksSameResource()
     {
         var fixture = CreateFixture();
@@ -234,6 +306,12 @@ public sealed class InMemoryTrafficReservationLifecycleTests
     private static async Task<TrafficResourceState> EdgeStateAsync(MockTrafficControlService traffic, string edgeId)
     {
         var result = await traffic.GetResourceStatusAsync(Resource(TrafficResourceType.Edge, edgeId), Context);
+        return result.Data!.State;
+    }
+
+    private static async Task<TrafficResourceState> NodeStateAsync(MockTrafficControlService traffic, string nodeId)
+    {
+        var result = await traffic.GetResourceStatusAsync(Resource(TrafficResourceType.Node, nodeId), Context);
         return result.Data!.State;
     }
 

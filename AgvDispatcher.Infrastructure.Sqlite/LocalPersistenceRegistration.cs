@@ -69,8 +69,19 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<ITaskExecutionSimulator, MockTaskExecutionSimulator>();
             containerRegistry.RegisterSingleton<IDispatchScoringService, DispatchScoringService>();
             containerRegistry.RegisterSingleton<IPathPlanner, DijkstraPathPlanner>();
-            containerRegistry.RegisterSingleton<ITrafficControlService, MockTrafficControlService>();
-            containerRegistry.RegisterSingleton<IRouteReservationService, MockRouteReservationService>();
+            // This is a startup-time composition choice. Read it directly from the system
+            // parameter table because repositories are not registered/resolvable yet.
+            var trafficReservationMode = GetTrafficReservationMode(options);
+            if (string.Equals(trafficReservationMode, "Persistent", StringComparison.OrdinalIgnoreCase))
+            {
+                containerRegistry.RegisterSingleton<ITrafficControlService, PersistentTrafficControlService>();
+                containerRegistry.RegisterSingleton<IRouteReservationService, PersistentRouteReservationService>();
+            }
+            else
+            {
+                containerRegistry.RegisterSingleton<ITrafficControlService, MockTrafficControlService>();
+                containerRegistry.RegisterSingleton<IRouteReservationService, MockRouteReservationService>();
+            }
             containerRegistry.RegisterSingleton<IDispatchOrchestrationService, DispatchOrchestrationService>();
             containerRegistry.RegisterSingleton<IDispatchService, AdapterDispatchService>();
 
@@ -89,6 +100,25 @@ namespace AgvDispatcher.Infrastructure.Sqlite
         {
             var directory = AppDomain.CurrentDomain.BaseDirectory;
             return Path.Combine(directory, "agv_dispatcher.db");
+        }
+
+        private static string GetTrafficReservationMode(DbContextOptions<AgvDispatcherDbContext> options)
+        {
+            try
+            {
+                using var db = new AgvDispatcherDbContext(options);
+                db.Database.EnsureCreated();
+                return db.SystemParameters
+                    .AsNoTracking()
+                    .Where(parameter => parameter.ParamKey == "Dispatching:TrafficReservationMode")
+                    .Select(parameter => parameter.ParamValue)
+                    .FirstOrDefault() ?? "InMemory";
+            }
+            catch
+            {
+                // A missing or not-yet-initialized database must preserve the safe demo mode.
+                return "InMemory";
+            }
         }
     }
 }

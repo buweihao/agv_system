@@ -697,6 +697,28 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     "The vehicle does not own this dispatch execution.");
             }
 
+            var finalNodeId = FirstNonEmpty(request.CurrentNodeId, task.TargetNodeId);
+            if (!string.IsNullOrWhiteSpace(finalNodeId))
+            {
+                var occupancyResult = await _trafficControlService.UpdateAgvOccupancyAsync(
+                    new AgvOccupancyUpdateRequest
+                    {
+                        Context = request.Context,
+                        AgvId = request.VehicleId,
+                        TaskId = request.TaskId,
+                        CurrentNodeId = finalNodeId,
+                        OccupiedNodeIds = new[] { finalNodeId },
+                        ReportTime = DateTimeOffset.Now
+                    },
+                    cancellationToken).ConfigureAwait(false);
+                if (!occupancyResult.Success)
+                {
+                    return Fail(
+                        DispatchOrchestrationFailureCode.TrafficResourceBusy,
+                        occupancyResult.Message);
+                }
+            }
+
             // Completion closes the rolling-window lifecycle. Any segments not explicitly
             // released by progress reports are released here so they cannot block the next task.
             if (request.ReleaseReservation && !string.IsNullOrWhiteSpace(execution.ReservationId))
@@ -717,7 +739,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 }
             }
 
-            var finalNodeId = FirstNonEmpty(request.CurrentNodeId, task.TargetNodeId);
             _taskService.UpdateTaskProgress(request.TaskId, 100, finalNodeId);
             _taskService.UpdateTaskState(request.TaskId, TaskState.Completed);
             execution = CopyExecution(

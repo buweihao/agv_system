@@ -271,8 +271,40 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                     .Where(segment => !segment.IsReleased &&
                                       segment.Segment.Sequence <= request.PassedSegmentSequence)
                     .ToArray();
+                var keepCurrentNodeOccupied = false;
+                if (!string.IsNullOrWhiteSpace(request.CurrentNodeId))
+                {
+                    var currentNodeStatus = await _trafficControlService.GetResourceStatusAsync(
+                        new TrafficResourceKey
+                        {
+                            ResourceType = TrafficResourceType.Node,
+                            ResourceId = request.CurrentNodeId
+                        },
+                        request.Context,
+                        cancellationToken);
+                    keepCurrentNodeOccupied = currentNodeStatus.Success &&
+                        currentNodeStatus.Data?.State == TrafficResourceState.Occupied &&
+                        string.Equals(
+                            currentNodeStatus.Data.OccupiedByAgvId,
+                            reservation.VehicleId,
+                            StringComparison.OrdinalIgnoreCase);
+                }
+
+                var releasedResources = new List<TrafficResourceKey>();
                 foreach (var segment in passedSegments.Where(segment => segment.IsLocked))
                 {
+                    // The passed segment's ToNode is also the AGV's current physical occupancy.
+                    // End the segment reservation, but leave that node under occupancy control;
+                    // the next position report will release it after the AGV moves away.
+                    var resourcesToRelease = segment.Resources
+                        .Where(resource => !keepCurrentNodeOccupied ||
+                            !IsCurrentNode(resource, request.CurrentNodeId))
+                        .ToArray();
+                    if (resourcesToRelease.Length == 0)
+                    {
+                        continue;
+                    }
+
                     foreach (var trafficReservationId in segment.TrafficReservationIds)
                     {
                         var releaseResult = await _trafficControlService.ReleaseAsync(
@@ -282,7 +314,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                                 ReservationId = trafficReservationId,
                                 AgvId = reservation.VehicleId,
                                 TaskId = reservation.TaskId,
-                                Resources = segment.Resources,
+                                Resources = resourcesToRelease,
                                 Reason = $"Passed node {request.CurrentNodeId}"
                             },
                             cancellationToken);
@@ -294,6 +326,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                                 releaseResult.Retryable);
                         }
                     }
+
+                    releasedResources.AddRange(resourcesToRelease);
                 }
 
                 var releasedAt = DateTimeOffset.Now;
@@ -321,9 +355,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                     ReservationId = reservation.ReservationId,
                     State = state,
                     ReleasedSegmentSequences = passedSegments.Select(segment => segment.Segment.Sequence).ToArray(),
-                    ReleasedResources = DistinctResources(
-                        passedSegments.Where(segment => segment.IsLocked)
-                            .SelectMany(segment => segment.Resources)),
+                    ReleasedResources = DistinctResources(releasedResources),
                     CurrentWindow = currentWindow
                 });
             }
@@ -549,6 +581,13 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                     ResourceId = segment.ToNodeId
                 }
             };
+        }
+
+        private static bool IsCurrentNode(TrafficResourceKey resource, string? currentNodeId)
+        {
+            return resource.ResourceType == TrafficResourceType.Node &&
+                   !string.IsNullOrWhiteSpace(currentNodeId) &&
+                   string.Equals(resource.ResourceId, currentNodeId, StringComparison.OrdinalIgnoreCase);
         }
 
         private static IReadOnlyList<TrafficResourceKey> DistinctResources(

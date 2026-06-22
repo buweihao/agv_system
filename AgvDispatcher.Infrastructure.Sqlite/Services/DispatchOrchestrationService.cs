@@ -181,9 +181,13 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 var plan = planResult.Data;
                 if (!plan.IsReachable || plan.Segments is null)
                 {
+                    var blockedByTraffic = constraint.ForbiddenNodeIds?.Count > 0 ||
+                        constraint.ForbiddenEdgeIds?.Count > 0;
                     return FailExecution<StartDispatchTaskResultDto>(
                         execution,
-                        DispatchOrchestrationFailureCode.PathNotReachable,
+                        blockedByTraffic
+                            ? DispatchOrchestrationFailureCode.ReplanRequired
+                            : DispatchOrchestrationFailureCode.PathNotReachable,
                         $"No route is reachable from {startNodeId} to {task.TargetNodeId}.");
                 }
 
@@ -526,6 +530,29 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 return Fail<RetryWaitingDispatchResultDto>(
                     DispatchOrchestrationFailureCode.RouteReservationFailed,
                     reservationResult.Message);
+            }
+
+            // A running execution can enter WaitingForTraffic while advancing its rolling
+            // window. In that case the vehicle already owns the task and must not receive a
+            // second AssignTask command; only restore the execution to Running.
+            if (task.State == TaskState.Running)
+            {
+                execution = CopyExecution(execution, state: DispatchExecutionState.Running);
+                SaveExecution(
+                    execution,
+                    DispatchOrchestrationEventType.NextWindowLocked,
+                    "The next rolling route window is locked.");
+                return AgvResult<RetryWaitingDispatchResultDto>.Ok(new RetryWaitingDispatchResultDto
+                {
+                    Execution = execution,
+                    TaskId = execution.TaskId,
+                    VehicleId = vehicleId,
+                    PlanId = planId,
+                    ReservationId = reservationId,
+                    FirstWindowLocked = true,
+                    VehicleCommandSent = false,
+                    Message = acquireResult.Data.Message
+                });
             }
 
             var startResult = await CompleteDispatchStartAsync(

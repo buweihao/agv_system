@@ -57,8 +57,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 OccupiedEdgeIds = occupiedEdges,
                 ReservedNodeIds = reservedNodes,
                 ReservedEdgeIds = reservedEdges,
-                AvoidOccupiedResources = true,
-                AvoidReservedResources = true
+                // Occupied/reserved resources are temporary traffic conflicts. Keep their
+                // identities in the constraint for planner awareness, but let reservation
+                // locking decide WaitingForTraffic. Only forbidden resources are hard blocks.
+                AvoidOccupiedResources = false,
+                AvoidReservedResources = false
             };
         }
 

@@ -18,6 +18,7 @@ public sealed class DispatchTrafficConstraintMapperTests
 
         Assert.Contains("N2", constraint.OccupiedNodeIds!);
         Assert.Contains("E2", constraint.OccupiedEdgeIds!);
+        Assert.False(constraint.AvoidOccupiedResources);
     }
 
     [Fact]
@@ -31,6 +32,7 @@ public sealed class DispatchTrafficConstraintMapperTests
 
         Assert.Contains("N3", constraint.ReservedNodeIds!);
         Assert.Contains("E3", constraint.ReservedEdgeIds!);
+        Assert.False(constraint.AvoidReservedResources);
     }
 
     [Fact]

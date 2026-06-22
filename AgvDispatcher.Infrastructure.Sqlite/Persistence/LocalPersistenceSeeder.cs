@@ -1,4 +1,4 @@
-using AgvDispatcher.Core.Enums;
+﻿using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,22 +24,28 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 );
             ");
 
+            EnsureReferenceMapSeed(db);
+
             if (!db.Vehicles.Any())
             {
                 db.Vehicles.AddRange(CreateVehicles());
             }
+            else
+            {
+                EnsureReferenceVehicleSeed(db);
+            }
 
-            if (!db.ChargeStations.Any())
+            if (!db.ChargeStations.Any() && !db.ChangeTracker.Entries<ChargeStation>().Any())
             {
                 db.ChargeStations.AddRange(CreateChargeStations());
             }
 
-            if (!db.MapNodes.Any())
+            if (!db.MapNodes.Any() && !db.ChangeTracker.Entries<MapNode>().Any())
             {
                 db.MapNodes.AddRange(CreateMapNodes());
             }
 
-            if (!db.MapEdges.Any())
+            if (!db.MapEdges.Any() && !db.ChangeTracker.Entries<MapEdge>().Any())
             {
                 db.MapEdges.AddRange(CreateMapEdges());
             }
@@ -67,15 +73,100 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             db.SaveChanges();
         }
 
+        private static void EnsureReferenceMapSeed(AgvDispatcherDbContext db)
+        {
+            var hasReferenceMap = db.MapNodes.Any(node => node.NodeId == "PICK-A1")
+                && db.MapEdges.Any(edge => edge.EdgeId == "E-PICK-A1-PICK-A2")
+                && db.ChargeStations.Any(station => station.NodeId == "CHG-01");
+
+            if (hasReferenceMap)
+            {
+                EnsureReferenceMapDisplayNames(db);
+                return;
+            }
+
+            db.MapEdges.RemoveRange(db.MapEdges.Where(edge => edge.MapId == "MAIN"));
+            db.MapNodes.RemoveRange(db.MapNodes.Where(node => node.MapId == "MAIN"));
+            db.MapLocationAliases.RemoveRange(db.MapLocationAliases.Where(alias => alias.MapId == "MAIN"));
+            db.ChargeStations.RemoveRange(db.ChargeStations.Where(station =>
+                station.NodeId.StartsWith("Charge-")
+                || station.NodeId == "CHG-01"
+                || station.NodeId == "CHG-02"
+                || station.NodeId == "CHG-03"
+                || station.StationId.StartsWith("C-")));
+
+            db.MapNodes.AddRange(CreateMapNodes());
+            db.MapEdges.AddRange(CreateMapEdges());
+            db.MapLocationAliases.AddRange(CreateMapLocationAliases());
+            db.ChargeStations.AddRange(CreateChargeStations());
+        }
+
+        private static void EnsureReferenceMapDisplayNames(AgvDispatcherDbContext db)
+        {
+            var referenceNodes = CreateMapNodes().ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
+            foreach (var node in db.MapNodes.Where(node => node.MapId == "MAIN"))
+            {
+                if (referenceNodes.TryGetValue(node.NodeId, out var reference))
+                {
+                    node.Name = reference.Name;
+                    node.AreaCode = reference.AreaCode;
+                    node.NodeType = reference.NodeType;
+                    node.ParkingCapacity = reference.ParkingCapacity;
+                    node.AllowedBrands = reference.AllowedBrands;
+                }
+            }
+
+            var referenceStations = CreateChargeStations().ToDictionary(station => station.StationId, StringComparer.OrdinalIgnoreCase);
+            foreach (var station in db.ChargeStations)
+            {
+                if (referenceStations.TryGetValue(station.StationId, out var reference))
+                {
+                    station.Name = reference.Name;
+                    station.AreaCode = reference.AreaCode;
+                    station.NodeId = reference.NodeId;
+                    station.AllowedBrands = reference.AllowedBrands;
+                }
+            }
+        }
+
+        private static void EnsureReferenceVehicleSeed(AgvDispatcherDbContext db)
+        {
+            foreach (var reference in CreateVehicles())
+            {
+                var vehicle = db.Vehicles.FirstOrDefault(item => item.VehicleId == reference.VehicleId);
+                if (vehicle is null)
+                {
+                    db.Vehicles.Add(reference);
+                    continue;
+                }
+
+                vehicle.VehicleCode = reference.VehicleCode;
+                vehicle.Name = reference.Name;
+                vehicle.Brand = reference.Brand;
+                vehicle.Model = reference.Model;
+                vehicle.AreaCode = reference.AreaCode;
+                vehicle.HomeNodeId = reference.HomeNodeId;
+                vehicle.ChargeNodeId = reference.ChargeNodeId;
+                vehicle.AdapterType = reference.AdapterType;
+                vehicle.ProtocolType = reference.ProtocolType;
+                vehicle.Endpoint = reference.Endpoint;
+                vehicle.MaxSpeed = reference.MaxSpeed;
+                vehicle.RatedLoad = reference.RatedLoad;
+                vehicle.CapabilityFlags = reference.CapabilityFlags;
+                vehicle.MinDispatchBattery = reference.MinDispatchBattery;
+                vehicle.IsEnabled = true;
+            }
+        }
+
         private static IReadOnlyList<Vehicle> CreateVehicles()
         {
             return new[]
             {
-                new Vehicle { VehicleId = "AGV-002", VehicleCode = "AGV-002", Name = "AGV 002", Brand = "RGV-A", Model = "A100", AreaCode = "A", MaxSpeed = 1.5, RatedLoad = 500, AdapterType = "MockBrandA", ProtocolType = "HTTP", Endpoint = "http://192.168.1.10:8000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Lift, MinDispatchBattery = 30.0 },
-                new Vehicle { VehicleId = "AGV-003", VehicleCode = "AGV-003", Name = "AGV 003", Brand = "RGV-A", Model = "A100", AreaCode = "A", MaxSpeed = 1.5, RatedLoad = 500, AdapterType = "MockBrandA", ProtocolType = "HTTP", Endpoint = "http://192.168.1.11:8000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Lift, MinDispatchBattery = 30.0 },
-                new Vehicle { VehicleId = "AGV-008", VehicleCode = "AGV-008", Name = "AGV 008", Brand = "RGV-B", Model = "B200", AreaCode = "B", MaxSpeed = 1.2, RatedLoad = 800, AdapterType = "MockBrandB", ProtocolType = "TCP", Endpoint = "192.168.1.20:5000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Tow, MinDispatchBattery = 40.0 },
-                new Vehicle { VehicleId = "AGV-010", VehicleCode = "AGV-010", Name = "AGV 010", Brand = "RGV-B", Model = "B200", AreaCode = "A", MaxSpeed = 1.2, RatedLoad = 800, AdapterType = "MockBrandB", ProtocolType = "TCP", Endpoint = "192.168.1.21:5000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Tow, MinDispatchBattery = 40.0 },
-                new Vehicle { VehicleId = "AGV-017", VehicleCode = "AGV-017", Name = "AGV 017", Brand = "RGV-C", Model = "C300", AreaCode = "C", MaxSpeed = 1.0, RatedLoad = 1000, AdapterType = "RealTcp", ProtocolType = "TCP", Endpoint = "192.168.1.30:4000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Fork, MinDispatchBattery = 20.0 }
+                new Vehicle { VehicleId = "AGV-002", VehicleCode = "AGV-002", Name = "\u6d77\u5eb7\u642c\u8fd0\u8f66 002", Brand = "RGV-A", Model = "A100", AreaCode = "CAP-A", HomeNodeId = "PICK-A1", ChargeNodeId = "CHG-01", MaxSpeed = 1.5, RatedLoad = 500, AdapterType = "MockBrandA", ProtocolType = "HTTP", Endpoint = "http://192.168.1.10:8000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Lift, MinDispatchBattery = 30.0 },
+                new Vehicle { VehicleId = "AGV-003", VehicleCode = "AGV-003", Name = "\u6d77\u5eb7\u642c\u8fd0\u8f66 003", Brand = "RGV-A", Model = "A100", AreaCode = "CAP-A", HomeNodeId = "PICK-A2", ChargeNodeId = "CHG-02", MaxSpeed = 1.5, RatedLoad = 500, AdapterType = "MockBrandA", ProtocolType = "HTTP", Endpoint = "http://192.168.1.11:8000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Lift, MinDispatchBattery = 30.0 },
+                new Vehicle { VehicleId = "AGV-008", VehicleCode = "AGV-008", Name = "\u676d\u53c9\u7275\u5f15\u8f66 008", Brand = "RGV-B", Model = "B200", AreaCode = "RAW-B", HomeNodeId = "RAW-IN-01", ChargeNodeId = "CHG-02", MaxSpeed = 1.2, RatedLoad = 800, AdapterType = "MockBrandB", ProtocolType = "TCP", Endpoint = "192.168.1.20:5000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Tow, MinDispatchBattery = 40.0 },
+                new Vehicle { VehicleId = "AGV-010", VehicleCode = "AGV-010", Name = "\u676d\u53c9\u7275\u5f15\u8f66 010", Brand = "RGV-B", Model = "B200", AreaCode = "INT-01", HomeNodeId = "INT-C", ChargeNodeId = "CHG-02", MaxSpeed = 1.2, RatedLoad = 800, AdapterType = "MockBrandB", ProtocolType = "TCP", Endpoint = "192.168.1.21:5000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Tow, MinDispatchBattery = 40.0 },
+                new Vehicle { VehicleId = "AGV-017", VehicleCode = "AGV-017", Name = "\u6fc0\u5149\u53c9\u53d6\u8f66 017", Brand = "RGV-C", Model = "C300", AreaCode = "STBY-CHG", HomeNodeId = "WAIT-02", ChargeNodeId = "CHG-03", MaxSpeed = 1.0, RatedLoad = 1000, AdapterType = "RealTcp", ProtocolType = "TCP", Endpoint = "192.168.1.30:4000", CapabilityFlags = VehicleCapability.Transfer | VehicleCapability.Fork, MinDispatchBattery = 20.0 }
             };
         }
 
@@ -83,11 +174,9 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             return new[]
             {
-                CreateStation("C-01", "Charge Station 01", ChargeStationState.Charging, "AGV-002", 30, 0, 760, 500, "RGV-A", "HTTP", "192.168.1.100", 80),
-                CreateStation("C-02", "Charge Station 02", ChargeStationState.Occupied, "AGV-015", 10, 1, 820, 500, "RGV-B", "TCP", "192.168.1.101", 502),
-                CreateStation("C-03", "Charge Station 03", ChargeStationState.Available, null, 20, 0, 880, 500, "RGV-A,RGV-B", "TCP", "192.168.1.102", 502),
-                CreateStation("C-04", "Charge Station 04", ChargeStationState.Fault, null, 0, 0, 940, 500, "RGV-C", "MQTT", "192.168.1.103", 1883),
-                CreateStation("C-05", "Charge Station 05", ChargeStationState.Offline, null, 0, 0, 1000, 500, "", "", "", 0)
+                CreateStation("CHG-01", "1鍙峰厖鐢垫々", ChargeStationState.Available, null, 3.3, 0, 760, 455, "HANGCHA,RGV-A", "TCP", "192.168.1.100", 502),
+                CreateStation("CHG-02", "2鍙峰厖鐢垫々", ChargeStationState.Available, null, 6.6, 0, 810, 455, "RGV-A,RGV-B", "TCP", "192.168.1.101", 502),
+                CreateStation("CHG-03", "3鍙峰揩鍏呮々", ChargeStationState.Available, null, 12.0, 0, 760, 510, "HANGCHA,RGV-C", "TCP", "192.168.1.102", 502)
             };
         }
 
@@ -95,11 +184,35 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             return new[]
             {
-                new MapNode { NodeId = "A1", MapId = "MAIN", NodeCode = "A1", Name = "Pickup A1", NodeType = MapNodeType.Pickup, AreaCode = "A", Position = new MapPosition { MapId = "MAIN", X = 60, Y = 60, NodeId = "A1", AreaCode = "A" } },
-                new MapNode { NodeId = "A2", MapId = "MAIN", NodeCode = "A2", Name = "Pickup A2", NodeType = MapNodeType.Pickup, AreaCode = "A", Position = new MapPosition { MapId = "MAIN", X = 260, Y = 60, NodeId = "A2", AreaCode = "A" } },
-                new MapNode { NodeId = "B2", MapId = "MAIN", NodeCode = "B2", Name = "Dropoff B2", NodeType = MapNodeType.Dropoff, AreaCode = "B", Position = new MapPosition { MapId = "MAIN", X = 460, Y = 280, NodeId = "B2", AreaCode = "B" } },
-                new MapNode { NodeId = "B3", MapId = "MAIN", NodeCode = "B3", Name = "Dropoff B3", NodeType = MapNodeType.Dropoff, AreaCode = "B", Position = new MapPosition { MapId = "MAIN", X = 680, Y = 280, NodeId = "B3", AreaCode = "B" } },
-                new MapNode { NodeId = "Charge-1", MapId = "MAIN", NodeCode = "Charge-1", Name = "Charge Node 1", NodeType = MapNodeType.Charge, AreaCode = "C", Position = new MapPosition { MapId = "MAIN", X = 760, Y = 500, NodeId = "Charge-1", AreaCode = "C" } }
+                Node("PICK-A1", "\u6210\u54c1\u5e93\u53d6\u8d27\u70b9A1", MapNodeType.Pickup, 85, 85, "CAP-A", 1, "RGV-A,HIK"),
+                Node("PICK-A2", "\u6210\u54c1\u5e93\u53d6\u8d27\u70b9A2", MapNodeType.Pickup, 185, 85, "CAP-A", 1, "RGV-A,HIK"),
+                Node("PUT-A1", "\u6210\u54c1\u5e93\u653e\u8d27\u70b9A1", MapNodeType.Dropoff, 240, 165, "CAP-A", 1, "RGV-A"),
+                Node("RAW-IN-01", "\u539f\u6599\u533a\u5165\u5e93\u70b91", MapNodeType.Pickup, 105, 305, "RAW-B", 1, "HANGCHA,RGV-B"),
+                Node("RAW-IN-02", "\u539f\u6599\u533a\u5165\u5e93\u70b92", MapNodeType.Pickup, 185, 305, "RAW-B", 1, "HANGCHA,RGV-B"),
+                Node("RAW-OUT-01", "\u539f\u6599\u533a\u51fa\u5e93\u70b91", MapNodeType.Dropoff, 245, 370, "RAW-B", 1, "HANGCHA"),
+                Node("QR-01", "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b91", MapNodeType.Normal, 355, 100, "QR-A", 1, "HIK"),
+                Node("QR-02", "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b92", MapNodeType.Normal, 455, 120, "QR-A", 1, "HIK"),
+                Node("QR-03", "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b93", MapNodeType.Normal, 500, 240, "QR-A", 1, "HIK"),
+                Node("SLAM-01", "\u6fc0\u5149\u533a\u5165\u53e3", MapNodeType.Normal, 645, 95, "SLAM-B", 1, "RGV-C"),
+                Node("SLAM-02", "\u6fc0\u5149\u5de5\u4f4d", MapNodeType.Station, 760, 165, "SLAM-B", 1, "RGV-C"),
+                Node("INT-N", "\u4e92\u65a5\u533a\u5317\u53e3", MapNodeType.Intersection, 390, 255, "INT-01", 1, string.Empty),
+                Node("INT-C", "\u4e92\u65a5\u533a\u4e2d\u5fc3", MapNodeType.Intersection, 455, 300, "INT-01", 1, string.Empty),
+                Node("INT-S", "\u4e92\u65a5\u533a\u5357\u53e3", MapNodeType.Intersection, 420, 365, "INT-01", 1, string.Empty),
+                Node("FIRE-G1", "\u6d88\u9632\u95e8\u524d\u70b9", MapNodeType.Door, 650, 285, "FIRE-01", 1, "RGV-A,RGV-C"),
+                Node("FIRE-G2", "\u6d88\u9632\u95e8\u540e\u70b9", MapNodeType.Door, 790, 285, "FIRE-01", 1, "RGV-A,RGV-C"),
+                Node("SPEED-IN", "\u9650\u901f\u533a\u5165\u53e3", MapNodeType.Normal, 870, 320, "SPD-01", 1, string.Empty),
+                Node("WEIGH-01", "\u5730\u78c5\u79f0\u91cd\u70b9", MapNodeType.Station, 965, 360, "SPD-01", 1, "HANGCHA"),
+                Node("WASH-01", "\u6e05\u6d17\u5de5\u4f4d", MapNodeType.Station, 1035, 420, "SPD-01", 1, "HANGCHA"),
+                Node("SPEED-OUT", "\u9650\u901f\u533a\u51fa\u53e3", MapNodeType.Normal, 1085, 480, "SPD-01", 1, string.Empty),
+                Node("WAIT-01", "\u5f85\u673a\u4f4d1", MapNodeType.Waiting, 595, 430, "STBY-CHG", 1, string.Empty),
+                Node("WAIT-02", "\u5f85\u673a\u4f4d2", MapNodeType.Waiting, 645, 430, "STBY-CHG", 1, string.Empty),
+                Node("WAIT-03", "\u5f85\u673a\u4f4d3", MapNodeType.Waiting, 595, 500, "STBY-CHG", 1, string.Empty),
+                Node("PARK-01", "\u505c\u8f66\u4f4d1", MapNodeType.Waiting, 700, 430, "STBY-CHG", 1, string.Empty),
+                Node("CHG-01", "\u5145\u7535\u68691", MapNodeType.Charge, 760, 455, "STBY-CHG", 1, "HANGCHA,RGV-A"),
+                Node("CHG-02", "\u5145\u7535\u68692", MapNodeType.Charge, 810, 455, "STBY-CHG", 1, "RGV-A,RGV-B"),
+                Node("CHG-03", "\u5feb\u5145\u68693", MapNodeType.Charge, 760, 510, "STBY-CHG", 1, "HANGCHA,RGV-C"),
+                Node("MAINT-IN", "\u7ef4\u62a4\u533a\u5165\u53e3", MapNodeType.Normal, 360, 450, "MAINT-01", 1, string.Empty),
+                Node("MAINT-OUT", "\u7ef4\u62a4\u533a\u51fa\u53e3", MapNodeType.Normal, 500, 500, "MAINT-01", 1, string.Empty)
             };
         }
 
@@ -107,10 +220,116 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             return new[]
             {
-                new MapEdge { EdgeId = "E-A1-A2", MapId = "MAIN", FromNodeId = "A1", ToNodeId = "A2", Length = 200, MaxSpeed = 1.5 },
-                new MapEdge { EdgeId = "E-A2-B2", MapId = "MAIN", FromNodeId = "A2", ToNodeId = "B2", Length = 280, MaxSpeed = 1.5 },
-                new MapEdge { EdgeId = "E-B2-B3", MapId = "MAIN", FromNodeId = "B2", ToNodeId = "B3", Length = 220, MaxSpeed = 1.2 },
-                new MapEdge { EdgeId = "E-B3-CH1", MapId = "MAIN", FromNodeId = "B3", ToNodeId = "Charge-1", Length = 260, MaxSpeed = 1.0 }
+                Edge("PICK-A1", "PICK-A2", 90, "CAP-A", 1.2),
+                Edge("PICK-A2", "PUT-A1", 120, "CAP-A", 1.2),
+                Edge("PUT-A1", "INT-N", 210, "INT-01", 1.5),
+                Edge("RAW-IN-01", "RAW-IN-02", 75, "RAW-B", 1.0),
+                Edge("RAW-IN-02", "RAW-OUT-01", 105, "RAW-B", 1.0),
+                Edge("RAW-OUT-01", "QR-03", 95, "QR-A", 1.0),
+                Edge("QR-01", "QR-02", 110, "QR-A", 1.0),
+                Edge("QR-02", "QR-03", 110, "QR-A", 1.0),
+                Edge("QR-03", "INT-S", 170, "INT-01", 1.2),
+                Edge("SLAM-01", "SLAM-02", 170, "SLAM-B", 1.5),
+                Edge("SLAM-02", "INT-N", 170, "INT-01", 1.2),
+                Edge("INT-N", "INT-C", 75, "INT-01", 0.8),
+                Edge("INT-C", "INT-S", 70, "INT-01", 0.8),
+                Edge("INT-C", "FIRE-G1", 230, "FIRE-01", 1.0, EdgeDirection.ForwardOnly),
+                Edge("FIRE-G1", "FIRE-G2", 140, "FIRE-01", 0.8, EdgeDirection.ForwardOnly),
+                Edge("FIRE-G2", "SPEED-IN", 190, "SPD-01", 1.2),
+                Edge("SPEED-IN", "WEIGH-01", 115, "SPD-01", 0.3),
+                Edge("WEIGH-01", "WASH-01", 80, "SPD-01", 0.3),
+                Edge("WASH-01", "SPEED-OUT", 65, "SPD-01", 0.3),
+                Edge("SPEED-OUT", "CHG-02", 200, "STBY-CHG", 0.8),
+                Edge("WAIT-01", "WAIT-02", 50, "STBY-CHG", 0.6),
+                Edge("WAIT-01", "WAIT-03", 70, "STBY-CHG", 0.6),
+                Edge("WAIT-02", "PARK-01", 55, "STBY-CHG", 0.6),
+                Edge("PARK-01", "CHG-01", 70, "STBY-CHG", 0.5),
+                Edge("CHG-01", "CHG-02", 50, "STBY-CHG", 0.5),
+                Edge("WAIT-03", "CHG-03", 165, "STBY-CHG", 0.5),
+                Edge("CHG-03", "CHG-01", 70, "STBY-CHG", 0.5),
+                Edge("INT-S", "MAINT-IN", 145, "MAINT-01", 0.8),
+                Edge("MAINT-IN", "MAINT-OUT", 150, "MAINT-01", 0.5, EdgeDirection.Closed, false),
+                Edge("MAINT-OUT", "WAIT-01", 140, "STBY-CHG", 0.6)
+            };
+        }
+
+        private static IReadOnlyList<MapLocationAlias> CreateMapLocationAliases()
+        {
+            return new[]
+            {
+                Alias("PICK-A1", "GLOBAL", "STATION-01"),
+                Alias("RAW-IN-01", "GLOBAL", "RAW-IN-01"),
+                Alias("QR-02", "HIK", "HK_QR_002"),
+                Alias("INT-C", "HIK", "HK_CROSS_01"),
+                Alias("WEIGH-01", "HANGCHA", "HC_WEIGHT_01"),
+                Alias("CHG-01", "HANGCHA", "HC_CHARGE_01"),
+                Alias("CHG-03", "HANGCHA", "HC_FAST_CHARGE_03"),
+                Alias("FIRE-G1", "RGV-A", "DOOR_SAFE_A")
+            };
+        }
+
+        private static MapNode Node(
+            string id,
+            string name,
+            MapNodeType type,
+            double x,
+            double y,
+            string areaCode,
+            int capacity,
+            string allowedBrands)
+        {
+            return new MapNode
+            {
+                NodeId = id,
+                MapId = "MAIN",
+                NodeCode = id,
+                Name = name,
+                NodeType = type,
+                AreaCode = areaCode,
+                IsEnabled = true,
+                ParkingCapacity = capacity,
+                AllowedBrands = allowedBrands,
+                Position = new MapPosition { MapId = "MAIN", NodeId = id, X = x, Y = y, AreaCode = areaCode }
+            };
+        }
+
+        private static MapEdge Edge(
+            string from,
+            string to,
+            double length,
+            string areaCode,
+            double maxSpeed,
+            EdgeDirection direction = EdgeDirection.Bidirectional,
+            bool enabled = true)
+        {
+            return new MapEdge
+            {
+                EdgeId = $"E-{from}-{to}",
+                MapId = "MAIN",
+                FromNodeId = from,
+                ToNodeId = to,
+                Direction = direction,
+                Length = length,
+                MaxSpeed = maxSpeed,
+                Cost = Math.Max(1, (int)Math.Round(length)),
+                IsEnabled = enabled,
+                AreaCode = areaCode,
+                MaxVehicleFlow = areaCode is "CAP-A" or "RAW-B" ? 2 : 1,
+                Remark = direction == EdgeDirection.Closed ? "Static maintenance candidate edge for map display only" : string.Empty
+            };
+        }
+
+        private static MapLocationAlias Alias(string nodeId, string brand, string value)
+        {
+            return new MapLocationAlias
+            {
+                AliasId = $"{brand}-{nodeId}",
+                MapId = "MAIN",
+                NodeId = nodeId,
+                AliasType = "Vendor",
+                AliasValue = value,
+                Brand = brand == "GLOBAL" ? string.Empty : brand,
+                IsEnabled = true
             };
         }
 
@@ -129,19 +348,19 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         {
             return new List<ParameterConfig>
             {
-                new ParameterConfig { ParamKey = "MAX_WAIT_TIME", ParamName = "最大等待时间", ParamValue = "300", DataType = "Int(seconds)", Description = "任务节点最大允许等待时间。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "DEFAULT_SPEED", ParamName = "默认速度", ParamValue = "1.2", DataType = "Float(m/s)", Description = "创建任务时的默认速度。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "RETRY_COUNT", ParamName = "重试次数", ParamValue = "3", DataType = "Int", Description = "派发失败后的自动重试次数。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "LOG_RETENTION_DAYS", ParamName = "日志保留天数", ParamValue = "90", DataType = "Int(days)", Description = "本地操作日志保留窗口。", RequiresRestart = true },
-                new ParameterConfig { ParamKey = "MIN_DISPATCH_BATTERY", ParamName = "最低派发电量", ParamValue = "20", DataType = "Float(%)", Description = "全局最低派发电量，低于此电量不派发任务。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "LOW_BATTERY_ALARM", ParamName = "低电量告警阈值", ParamValue = "15", DataType = "Float(%)", Description = "低于此电量触发告警。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "TASK_TIMEOUT_MINUTES", ParamName = "任务超时时间", ParamValue = "60", DataType = "Int(minutes)", Description = "任务执行超时时间。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "AUTO_DISPATCH_ENABLED", ParamName = "自动派发开关", ParamValue = "true", DataType = "Boolean", Description = "是否开启自动任务派发。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "SCORE_WEIGHT_BATTERY", ParamName = "电量评分权重", ParamValue = "25.0", DataType = "Float", Description = "调度时电量的得分权重 (0-100)。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "SCORE_WEIGHT_DISTANCE", ParamName = "距离评分权重", ParamValue = "35.0", DataType = "Float", Description = "调度时距离的得分权重 (0-100)。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "SCORE_WEIGHT_LOAD", ParamName = "载重评分权重", ParamValue = "10.0", DataType = "Float", Description = "调度时载重能力的得分权重 (0-100)。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "SCORE_WEIGHT_PRIORITY", ParamName = "优先级评分权重", ParamValue = "15.0", DataType = "Float", Description = "调度时优先级的得分权重 (0-100)。", RequiresRestart = false },
-                new ParameterConfig { ParamKey = "SCORE_WEIGHT_AREA", ParamName = "区域评分权重", ParamValue = "15.0", DataType = "Float", Description = "调度时同区域的得分权重 (0-100)。", RequiresRestart = false }
+                new ParameterConfig { ParamKey = "MAX_WAIT_TIME", ParamName = "\u6700\u5927\u7b49\u5f85\u65f6\u95f4", ParamValue = "300", DataType = "Int(seconds)", Description = "\u4efb\u52a1\u8282\u70b9\u6700\u5927\u5141\u8bb8\u7b49\u5f85\u65f6\u95f4\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "DEFAULT_SPEED", ParamName = "\u9ed8\u8ba4\u901f\u5ea6", ParamValue = "1.2", DataType = "Float(m/s)", Description = "\u521b\u5efa\u4efb\u52a1\u65f6\u7684\u9ed8\u8ba4\u901f\u5ea6\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "RETRY_COUNT", ParamName = "\u91cd\u8bd5\u6b21\u6570", ParamValue = "3", DataType = "Int", Description = "\u6d3e\u53d1\u5931\u8d25\u540e\u7684\u81ea\u52a8\u91cd\u8bd5\u6b21\u6570\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "LOG_RETENTION_DAYS", ParamName = "\u65e5\u5fd7\u4fdd\u7559\u5929\u6570", ParamValue = "90", DataType = "Int(days)", Description = "\u672c\u5730\u64cd\u4f5c\u65e5\u5fd7\u4fdd\u7559\u7a97\u53e3\u3002", RequiresRestart = true },
+                new ParameterConfig { ParamKey = "MIN_DISPATCH_BATTERY", ParamName = "\u6700\u4f4e\u6d3e\u53d1\u7535\u91cf", ParamValue = "20", DataType = "Float(%)", Description = "\u5168\u5c40\u6700\u4f4e\u6d3e\u53d1\u7535\u91cf\uff0c\u4f4e\u4e8e\u6b64\u7535\u91cf\u4e0d\u6d3e\u53d1\u4efb\u52a1\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "LOW_BATTERY_ALARM", ParamName = "\u4f4e\u7535\u91cf\u544a\u8b66\u9608\u503c", ParamValue = "15", DataType = "Float(%)", Description = "\u4f4e\u4e8e\u6b64\u7535\u91cf\u89e6\u53d1\u544a\u8b66\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "TASK_TIMEOUT_MINUTES", ParamName = "\u4efb\u52a1\u8d85\u65f6\u65f6\u95f4", ParamValue = "60", DataType = "Int(minutes)", Description = "\u4efb\u52a1\u6267\u884c\u8d85\u65f6\u65f6\u95f4\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "AUTO_DISPATCH_ENABLED", ParamName = "\u81ea\u52a8\u6d3e\u53d1\u5f00\u5173", ParamValue = "true", DataType = "Boolean", Description = "\u662f\u5426\u5f00\u542f\u81ea\u52a8\u4efb\u52a1\u6d3e\u53d1\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_BATTERY", ParamName = "\u7535\u91cf\u8bc4\u5206\u6743\u91cd", ParamValue = "25.0", DataType = "Float", Description = "\u8c03\u5ea6\u65f6\u7535\u91cf\u7684\u5f97\u5206\u6743\u91cd (0-100)\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_DISTANCE", ParamName = "\u8ddd\u79bb\u8bc4\u5206\u6743\u91cd", ParamValue = "35.0", DataType = "Float", Description = "\u8c03\u5ea6\u65f6\u8ddd\u79bb\u7684\u5f97\u5206\u6743\u91cd (0-100)\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_LOAD", ParamName = "\u8f7d\u91cd\u8bc4\u5206\u6743\u91cd", ParamValue = "10.0", DataType = "Float", Description = "\u8c03\u5ea6\u65f6\u8f7d\u91cd\u80fd\u529b\u7684\u5f97\u5206\u6743\u91cd (0-100)\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_PRIORITY", ParamName = "\u4f18\u5148\u7ea7\u8bc4\u5206\u6743\u91cd", ParamValue = "15.0", DataType = "Float", Description = "\u8c03\u5ea6\u65f6\u4f18\u5148\u7ea7\u7684\u5f97\u5206\u6743\u91cd (0-100)\u3002", RequiresRestart = false },
+                new ParameterConfig { ParamKey = "SCORE_WEIGHT_AREA", ParamName = "\u533a\u57df\u8bc4\u5206\u6743\u91cd", ParamValue = "15.0", DataType = "Float", Description = "\u8c03\u5ea6\u65f6\u540c\u533a\u57df\u7684\u5f97\u5206\u6743\u91cd (0-100)\u3002", RequiresRestart = false }
             };
         }
 
@@ -194,3 +413,5 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
         }
     }
 }
+
+

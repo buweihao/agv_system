@@ -93,6 +93,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         }
 
         private bool _isSelected;
+        private bool _isBulkHighlighted;
         /// <summary>是否处于选中态（加粗高亮）。</summary>
         public bool IsSelected
         {
@@ -107,19 +108,32 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             }
         }
 
+        public bool IsBulkHighlighted
+        {
+            get => _isBulkHighlighted;
+            set
+            {
+                if (SetProperty(ref _isBulkHighlighted, value))
+                {
+                    RaisePropertyChanged(nameof(Stroke));
+                    RaisePropertyChanged(nameof(StrokeThickness));
+                }
+            }
+        }
+
         /// <summary>线条颜色：禁用/封闭=红，正常=绿；选中时统一金色。</summary>
         public string Stroke
         {
             get
             {
-                if (IsSelected) return "#FFD700";
+                if (IsSelected || IsBulkHighlighted) return "#FFD700";
                 if (!Model.IsEnabled || Model.Direction == EdgeDirection.Closed) return "#FF4500";
                 return "#00FF7F";
             }
         }
 
         /// <summary>线条粗细：选中加粗。</summary>
-        public double StrokeThickness => IsSelected ? 4 : 2;
+        public double StrokeThickness => IsSelected || IsBulkHighlighted ? 4 : 2;
 
         /// <summary>线条透明度。</summary>
         public double Opacity => 0.85;

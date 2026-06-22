@@ -10,7 +10,12 @@ using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
 using AgvDispatcher.Core.Contracts.MapManagement.Requests;
 using AgvDispatcher.Core.Contracts.MapManagement.Results;
 using AgvDispatcher.Core.Events;
+using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Core.Models;
 using Prism.Events;
+using LegacyEdgeDirection = AgvDispatcher.Core.Enums.EdgeDirection;
+using LegacyMapNodeType = AgvDispatcher.Core.Enums.MapNodeType;
+using VehicleCapability = AgvDispatcher.Core.Enums.VehicleCapability;
 
 namespace AgvDispatcher.Modules.MapModule.Services
 {
@@ -22,15 +27,21 @@ namespace AgvDispatcher.Modules.MapModule.Services
         private readonly MockMapStore _store;
         private readonly MapStaticValidator _validator;
         private readonly IEventAggregator _eventAggregator;
+        private readonly IMapRepository _mapRepository;
+        private readonly IMapLocationAliasRepository _aliasRepository;
 
         public MockMapManagementService(
             MockMapStore store,
             MapStaticValidator validator,
-            IEventAggregator eventAggregator)
+            IEventAggregator eventAggregator,
+            IMapRepository mapRepository,
+            IMapLocationAliasRepository aliasRepository)
         {
             _store = store;
             _validator = validator;
             _eventAggregator = eventAggregator;
+            _mapRepository = mapRepository;
+            _aliasRepository = aliasRepository;
         }
 
         public Task<AgvResult<MapDraftDto>> CreateDraftAsync(
@@ -91,6 +102,7 @@ namespace AgvDispatcher.Modules.MapModule.Services
             }
 
             var (snapshot, version) = _store.PublishDraft(request.DraftId, request.Context.OperatorId);
+            await PersistCurrentMapAsync(snapshot, cancellationToken);
             PublishMapChanged(snapshot.MapId, snapshot.Version, version.PublishedAt ?? DateTimeOffset.Now, request.Context.OperatorId);
 
             return AgvResult<MapPublishResultDto>.Ok(new MapPublishResultDto
@@ -122,6 +134,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
             }
 
             var now = DateTimeOffset.Now;
+            var snapshot = _store.GetPublishedSnapshot(request.MapId, request.Version) ?? _store.GetCurrentMap();
+            PersistCurrentMapAsync(snapshot, cancellationToken).GetAwaiter().GetResult();
             PublishMapChanged(request.MapId, request.Version, now, request.Context.OperatorId);
             return Task.FromResult(AgvResult<MapRollbackResultDto>.Ok(new MapRollbackResultDto
             {
@@ -130,6 +144,136 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 RolledBackAt = now,
                 OperatorId = request.Context.OperatorId
             }));
+        }
+
+        private async Task PersistCurrentMapAsync(MapSnapshotDto snapshot, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var nextNodeIds = snapshot.Nodes
+                .Select(node => node.NodeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var currentNodes = await _mapRepository.GetNodesAsync();
+            foreach (var node in currentNodes.Where(node =>
+                string.Equals(node.MapId, snapshot.MapId, StringComparison.OrdinalIgnoreCase)
+                && !nextNodeIds.Contains(node.NodeId)))
+            {
+                await _mapRepository.DeleteNodeAsync(node.NodeId);
+            }
+
+            foreach (var node in snapshot.Nodes.Select(node => ToLegacyNode(snapshot.MapId, node)))
+            {
+                await _mapRepository.SaveNodeAsync(node);
+            }
+
+            var nextEdgeIds = snapshot.Edges
+                .Select(edge => edge.EdgeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var currentEdges = await _mapRepository.GetEdgesAsync();
+            foreach (var edge in currentEdges.Where(edge =>
+                string.Equals(edge.MapId, snapshot.MapId, StringComparison.OrdinalIgnoreCase)
+                && !nextEdgeIds.Contains(edge.EdgeId)))
+            {
+                await _mapRepository.DeleteEdgeAsync(edge.EdgeId);
+            }
+
+            foreach (var edge in snapshot.Edges.Select(edge => ToLegacyEdge(snapshot.MapId, edge)))
+            {
+                await _mapRepository.SaveEdgeAsync(edge);
+            }
+
+            var currentAliases = await _aliasRepository.GetAllAsync();
+            foreach (var alias in currentAliases.Where(alias =>
+                string.Equals(alias.MapId, snapshot.MapId, StringComparison.OrdinalIgnoreCase)))
+            {
+                await _aliasRepository.DeleteAsync(alias.AliasId);
+            }
+
+            foreach (var alias in snapshot.VendorNodeMappings.Select(mapping => ToLegacyAlias(snapshot.MapId, mapping)))
+            {
+                await _aliasRepository.SaveAsync(alias);
+            }
+        }
+
+        private static MapNode ToLegacyNode(string mapId, MapNodeDto node)
+        {
+            return new MapNode
+            {
+                NodeId = node.NodeId,
+                MapId = mapId,
+                NodeCode = string.IsNullOrWhiteSpace(node.NodeCode) ? node.NodeId : node.NodeCode,
+                Name = string.IsNullOrWhiteSpace(node.NodeName) ? node.NodeId : node.NodeName,
+                NodeType = ToLegacyNodeType(node.NodeType),
+                Position = new MapPosition { MapId = mapId, NodeId = node.NodeId, X = node.X, Y = node.Y, AreaCode = node.AreaId },
+                Heading = node.Angle ?? 0,
+                AreaCode = node.AreaId ?? string.Empty,
+                IsEnabled = node.Enabled,
+                ParkingCapacity = TryReadInt(node.Properties, "Capacity", 1),
+                AllowedBrands = TryReadString(node.Properties, "AllowedBrands"),
+                RequiredCapabilities = (VehicleCapability)TryReadInt(node.Properties, "RequiredCapabilities", 0),
+                Tags = node.Properties
+                    .Where(item => item.Key is not ("Capacity" or "AllowedBrands" or "RequiredCapabilities"))
+                    .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase)
+            };
+        }
+
+        private static MapEdge ToLegacyEdge(string mapId, MapEdgeDto edge)
+        {
+            return new MapEdge
+            {
+                EdgeId = string.IsNullOrWhiteSpace(edge.EdgeId) ? $"E-{edge.FromNodeId}-{edge.ToNodeId}" : edge.EdgeId,
+                MapId = mapId,
+                FromNodeId = edge.FromNodeId,
+                ToNodeId = edge.ToNodeId,
+                Direction = edge.Enabled
+                    ? edge.Direction == MapEdgeDirection.Bidirectional ? LegacyEdgeDirection.Bidirectional : LegacyEdgeDirection.ForwardOnly
+                    : LegacyEdgeDirection.Closed,
+                Length = edge.Distance,
+                MaxSpeed = edge.SpeedLimit ?? 0,
+                Cost = Math.Max(1, (int)Math.Round(edge.Cost <= 0 ? edge.Distance : edge.Cost)),
+                IsEnabled = edge.Enabled,
+                AreaCode = edge.AreaId ?? string.Empty,
+                AllowedBrands = TryReadString(edge.Properties, "AllowedBrands"),
+                MaxVehicleFlow = TryReadInt(edge.Properties, "MaxVehicleFlow", 1),
+                Remark = TryReadString(edge.Properties, "Remark")
+            };
+        }
+
+        private static MapLocationAlias ToLegacyAlias(string mapId, VendorNodeMappingDto mapping)
+        {
+            var vendorCode = string.IsNullOrWhiteSpace(mapping.VendorCode) ? "GLOBAL" : mapping.VendorCode;
+            return new MapLocationAlias
+            {
+                AliasId = $"{vendorCode}-{mapping.SystemNodeId}",
+                MapId = mapId,
+                NodeId = mapping.SystemNodeId,
+                AliasType = "Vendor",
+                AliasValue = mapping.VendorNodeCode,
+                Brand = string.Equals(vendorCode, "GLOBAL", StringComparison.OrdinalIgnoreCase) ? string.Empty : vendorCode,
+                IsEnabled = true
+            };
+        }
+
+        private static LegacyMapNodeType ToLegacyNodeType(MapNodeType nodeType) => nodeType switch
+        {
+            MapNodeType.WorkStation => LegacyMapNodeType.Station,
+            MapNodeType.PickPoint => LegacyMapNodeType.Pickup,
+            MapNodeType.PutPoint => LegacyMapNodeType.Dropoff,
+            MapNodeType.ChargeStation => LegacyMapNodeType.Charge,
+            MapNodeType.WaitingPoint => LegacyMapNodeType.Waiting,
+            MapNodeType.Elevator => LegacyMapNodeType.Elevator,
+            MapNodeType.Door => LegacyMapNodeType.Door,
+            _ => LegacyMapNodeType.Normal
+        };
+
+        private static int TryReadInt(IReadOnlyDictionary<string, string> properties, string key, int fallback)
+        {
+            return properties.TryGetValue(key, out var raw) && int.TryParse(raw, out var value) ? value : fallback;
+        }
+
+        private static string TryReadString(IReadOnlyDictionary<string, string> properties, string key)
+        {
+            return properties.TryGetValue(key, out var value) ? value : string.Empty;
         }
 
         public Task<AgvResult<MapExportResultDto>> ExportMapAsync(

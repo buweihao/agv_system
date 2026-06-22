@@ -1,6 +1,8 @@
-using System.Collections.ObjectModel;
-using System.Collections.Specialized;
+﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
+using System.Windows.Data;
+using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
@@ -8,29 +10,31 @@ using AgvDispatcher.Core.Models;
 using Prism.Commands;
 using Prism.Events;
 using Prism.Mvvm;
-using System.ComponentModel;
-using System.Windows.Data;
 
 namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 {
     public class VehicleConfigViewModel : BindableBase
     {
+        private const string AllText = "\u5168\u90e8";
+        private const string EnabledText = "\u5df2\u542f\u7528";
+        private const string DisabledText = "\u5df2\u505c\u7528";
+
         private readonly IVehicleRepository _vehicleRepository;
         private readonly IEventAggregator _eventAggregator;
-        private readonly IMapRepository _mapRepository;
+        private readonly IMapService _mapService;
         private Vehicle? _selectedVehicle;
         private EditableVehicle _currentVehicle = new();
-        private string _statusMessage = "请选择车辆或新增车辆档案";
-        private string _filterBrand = "全部";
-        private string _filterStatus = "全部";
-        private string _filterCapability = "全部";
+        private string _statusMessage = "\u8bf7\u9009\u62e9\u8f66\u8f86\u6216\u65b0\u589e\u8f66\u8f86\u6863\u6848";
+        private string _filterBrand = AllText;
+        private string _filterStatus = AllText;
+        private string _filterCapability = AllText;
 
         public ObservableCollection<Vehicle> Vehicles { get; } = new();
         public ICollectionView VehiclesView { get; }
 
         public IReadOnlyList<VehicleType> VehicleTypes { get; } = Enum.GetValues<VehicleType>();
 
-        public IReadOnlyList<string> AdapterTypes { get; } = new[] { "MockBrandA", "MockBrandB", "MockBrandC", "MockUnstable", "MockFault", "MockOffline", "HttpAdapter", "TcpAdapter","Okapi" };
+        public IReadOnlyList<string> AdapterTypes { get; } = new[] { "MockBrandA", "MockBrandB", "MockBrandC", "MockUnstable", "MockFault", "MockOffline", "HttpAdapter", "TcpAdapter", "Okapi" };
         public IReadOnlyList<string> ProtocolTypes { get; } = new[] { "None", "HTTP", "TCP", "UDP", "Modbus", "MQTT" };
         public IReadOnlyList<string> NavigationTypes { get; } = new[] { "Laser", "QR_Code", "Magnetic", "SLAM", "Unknown" };
         public IReadOnlyList<string> LoadModes { get; } = new[] { "Lifting", "Forklift", "Roller", "Towing", "None" };
@@ -38,9 +42,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         public IReadOnlyList<VehicleCapability> CapabilityEnumValues { get; } = Enum.GetValues<VehicleCapability>().Where(e => e != VehicleCapability.None).ToList();
         public IReadOnlyList<VehicleCommandCapability> CommandEnumValues { get; } = Enum.GetValues<VehicleCommandCapability>().Where(e => e != VehicleCommandCapability.None).ToList();
 
-        public ObservableCollection<string> AvailableBrands { get; } = new() { "全部" };
-        public ObservableCollection<string> StatusOptions { get; } = new() { "全部", "已启用", "已停用" };
-        public ObservableCollection<string> CapabilityOptions { get; } = new() { "全部", "搬运", "顶升", "叉取", "牵引", "滚筒", "充电", "自动充电" };
+        public ObservableCollection<string> AvailableBrands { get; } = new() { AllText };
+        public ObservableCollection<string> StatusOptions { get; } = new() { AllText, EnabledText, DisabledText };
+        public ObservableCollection<string> CapabilityOptions { get; } = new() { AllText, "\u642c\u8fd0", "\u9876\u5347", "\u53c9\u53d6", "\u7275\u5f15", "\u6eda\u7b52", "\u5145\u7535", "\u81ea\u52a8\u5145\u7535" };
+        public ObservableCollection<MapAreaOption> AvailableAreas { get; } = new();
         public ObservableCollection<string> AvailableNodeIds { get; } = new();
         public ObservableCollection<string> AvailableChargeNodeIds { get; } = new();
 
@@ -80,7 +85,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 if (SetProperty(ref _selectedVehicle, value) && value is not null)
                 {
                     CurrentVehicle = EditableVehicle.FromVehicle(value);
-                    StatusMessage = $"正在编辑 {value.VehicleCode}";
+                    StatusMessage = $"\u6b63\u5728\u7f16\u8f91 {value.VehicleCode}";
                 }
             }
         }
@@ -101,11 +106,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         public int EnabledCount => Vehicles.Count(vehicle => vehicle.IsEnabled);
 
-        public VehicleConfigViewModel(IVehicleRepository vehicleRepository, IEventAggregator eventAggregator, IMapRepository mapRepository)
+        public VehicleConfigViewModel(IVehicleRepository vehicleRepository, IEventAggregator eventAggregator, IMapService mapService)
         {
             _vehicleRepository = vehicleRepository;
             _eventAggregator = eventAggregator;
-            _mapRepository = mapRepository;
+            _mapService = mapService;
 
             VehiclesView = CollectionViewSource.GetDefaultView(Vehicles);
             VehiclesView.Filter = FilterVehicle;
@@ -116,21 +121,35 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             DeleteCommand = new DelegateCommand(DeleteVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
             CopyCommand = new DelegateCommand(CopyVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
 
-            LoadNodesAsync();
+            LoadMapOptions();
             LoadVehicles();
         }
 
-        private async void LoadNodesAsync()
+        private void LoadMapOptions()
         {
-            var nodes = await _mapRepository.GetNodesAsync();
+            var result = _mapService.GetCurrentMap(new GetMapSnapshotRequest());
+            var snapshot = result.Success ? result.Data : null;
+
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
+                AvailableAreas.Clear();
                 AvailableNodeIds.Clear();
                 AvailableChargeNodeIds.Clear();
-                foreach (var node in nodes.Where(n => n.IsEnabled))
+
+                if (snapshot is null)
+                {
+                    return;
+                }
+
+                foreach (var area in snapshot.Areas.Where(area => area.Enabled).OrderBy(area => area.AreaId))
+                {
+                    AvailableAreas.Add(new MapAreaOption(area.AreaId, area.AreaName));
+                }
+
+                foreach (var node in snapshot.Nodes.Where(node => node.Enabled).OrderBy(node => node.NodeId))
                 {
                     AvailableNodeIds.Add(node.NodeId);
-                    if (node.NodeType == MapNodeType.Charge)
+                    if (node.NodeType == AgvDispatcher.Core.Contracts.Map.MapNodeType.ChargeStation)
                     {
                         AvailableChargeNodeIds.Add(node.NodeId);
                     }
@@ -144,27 +163,23 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             Vehicles.Clear();
 
-            var brands = _vehicleRepository.GetAllAsync().GetAwaiter().GetResult();
-            
+            var vehicles = _vehicleRepository.GetAllAsync().GetAwaiter().GetResult();
+
             AvailableBrands.Clear();
-            AvailableBrands.Add("全部");
-            foreach (var b in brands.Select(v => v.Brand).Distinct().Where(b => !string.IsNullOrEmpty(b)))
+            AvailableBrands.Add(AllText);
+            foreach (var brand in vehicles.Select(v => v.Brand).Distinct().Where(brand => !string.IsNullOrEmpty(brand)))
             {
-                if (!AvailableBrands.Contains(b))
-                    AvailableBrands.Add(b);
+                if (!AvailableBrands.Contains(brand))
+                {
+                    AvailableBrands.Add(brand);
+                }
             }
 
-            // Restore filter brand to prevent UI items from disappearing due to null filter
-            if (oldFilterBrand != null && AvailableBrands.Contains(oldFilterBrand))
-            {
-                FilterBrand = oldFilterBrand;
-            }
-            else
-            {
-                FilterBrand = "全部";
-            }
+            FilterBrand = oldFilterBrand != null && AvailableBrands.Contains(oldFilterBrand)
+                ? oldFilterBrand
+                : AllText;
 
-            foreach (var vehicle in brands)
+            foreach (var vehicle in vehicles)
             {
                 Vehicles.Add(vehicle);
             }
@@ -195,7 +210,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 Brand = "RGV-A",
                 Model = "A100",
                 Type = VehicleType.Agv,
-                AreaCode = "A",
+                AreaCode = AvailableAreas.FirstOrDefault(area => area.AreaId == "STBY-CHG")?.AreaId ?? AvailableAreas.FirstOrDefault()?.AreaId ?? string.Empty,
+                HomeNodeId = AvailableNodeIds.Contains("WAIT-01") ? "WAIT-01" : AvailableNodeIds.FirstOrDefault() ?? string.Empty,
+                ChargeNodeId = AvailableChargeNodeIds.Contains("CHG-01") ? "CHG-01" : AvailableChargeNodeIds.FirstOrDefault() ?? string.Empty,
                 MaxSpeed = 1.2,
                 RatedLoad = 500,
                 BatteryCapacityAh = 100,
@@ -203,28 +220,36 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             };
 
             SelectedVehicle = null;
-            StatusMessage = "正在新增车辆档案";
+            StatusMessage = "\u6b63\u5728\u65b0\u589e\u8f66\u8f86\u6863\u6848";
         }
 
         private void SaveVehicle()
         {
             if (string.IsNullOrWhiteSpace(CurrentVehicle.VehicleId) || string.IsNullOrWhiteSpace(CurrentVehicle.VehicleCode))
             {
-                StatusMessage = "车辆ID和车辆编号不能为空";
+                StatusMessage = "\u8f66\u8f86ID\u548c\u8f66\u8f86\u7f16\u53f7\u4e0d\u80fd\u4e3a\u7a7a";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(CurrentVehicle.AreaCode)
+                && AvailableAreas.All(area => !string.Equals(area.AreaId, CurrentVehicle.AreaCode, StringComparison.OrdinalIgnoreCase)))
+            {
+                System.Windows.MessageBox.Show($"\u533a\u57df '{CurrentVehicle.AreaCode}' \u4e0d\u5b58\u5728\u4e8e\u5f53\u524d\u5730\u56fe\u533a\u57df\u4e2d\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9", "\u9a8c\u8bc1\u5931\u8d25", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                StatusMessage = "\u4fdd\u5b58\u5931\u8d25\uff1a\u533a\u57df\u65e0\u6548";
                 return;
             }
 
             if (!string.IsNullOrWhiteSpace(CurrentVehicle.HomeNodeId) && !AvailableNodeIds.Contains(CurrentVehicle.HomeNodeId))
             {
-                System.Windows.MessageBox.Show($"待机点 '{CurrentVehicle.HomeNodeId}' 不存在于可用节点中，请重新选择", "验证失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                StatusMessage = "保存失败：待机点无效";
+                System.Windows.MessageBox.Show($"\u9ed8\u8ba4\u505c\u9760\u70b9 '{CurrentVehicle.HomeNodeId}' \u4e0d\u5b58\u5728\u4e8e\u53ef\u7528\u8282\u70b9\u4e2d\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9", "\u9a8c\u8bc1\u5931\u8d25", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                StatusMessage = "\u4fdd\u5b58\u5931\u8d25\uff1a\u9ed8\u8ba4\u505c\u9760\u70b9\u65e0\u6548";
                 return;
             }
 
             if (!string.IsNullOrWhiteSpace(CurrentVehicle.ChargeNodeId) && !AvailableChargeNodeIds.Contains(CurrentVehicle.ChargeNodeId))
             {
-                System.Windows.MessageBox.Show($"充电点 '{CurrentVehicle.ChargeNodeId}' 不存在于可用充电节点中，请重新选择", "验证失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-                StatusMessage = "保存失败：充电点无效";
+                System.Windows.MessageBox.Show($"\u9ed8\u8ba4\u5145\u7535\u70b9 '{CurrentVehicle.ChargeNodeId}' \u4e0d\u5b58\u5728\u4e8e\u53ef\u7528\u5145\u7535\u8282\u70b9\u4e2d\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9", "\u9a8c\u8bc1\u5931\u8d25", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                StatusMessage = "\u4fdd\u5b58\u5931\u8d25\uff1a\u9ed8\u8ba4\u5145\u7535\u70b9\u65e0\u6548";
                 return;
             }
 
@@ -235,7 +260,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 Vehicle = vehicle
             });
 
-            StatusMessage = $"{vehicle.VehicleCode} 已保存";
+            StatusMessage = $"{vehicle.VehicleCode} \u5df2\u4fdd\u5b58";
             LoadVehicles();
             SelectedVehicle = Vehicles.FirstOrDefault(item => item.VehicleId == vehicle.VehicleId);
         }
@@ -247,48 +272,49 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             if (SelectedVehicle is null) return;
             var vehicleCode = SelectedVehicle.VehicleCode;
             _vehicleRepository.DeleteAsync(SelectedVehicle.VehicleId).GetAwaiter().GetResult();
-            StatusMessage = $"{vehicleCode} 已删除";
+            StatusMessage = $"{vehicleCode} \u5df2\u5220\u9664";
             LoadVehicles();
         }
 
         private void CopyVehicle()
         {
             if (SelectedVehicle is null) return;
+            var copiedVehicleCode = SelectedVehicle.VehicleCode;
             var nextNumber = Vehicles.Count + 1;
-            
+
             CurrentVehicle = EditableVehicle.FromVehicle(SelectedVehicle);
             CurrentVehicle.VehicleId = $"AGV-{nextNumber:000}";
             CurrentVehicle.VehicleCode = $"AGV-{nextNumber:000}";
             CurrentVehicle.Name = $"{SelectedVehicle.Name} (Copy)";
-            
+
             SelectedVehicle = null;
-            StatusMessage = $"正在复制 {SelectedVehicle?.VehicleCode ?? "车辆"} 到 {CurrentVehicle.VehicleCode}";
+            StatusMessage = $"\u6b63\u5728\u590d\u5236 {copiedVehicleCode} \u5230 {CurrentVehicle.VehicleCode}";
         }
 
         private bool FilterVehicle(object obj)
         {
             if (obj is not Vehicle vehicle) return false;
 
-            if (FilterBrand != "全部" && vehicle.Brand != FilterBrand)
+            if (FilterBrand != AllText && vehicle.Brand != FilterBrand)
                 return false;
 
-            if (FilterStatus == "已启用" && !vehicle.IsEnabled)
-                return false;
-            
-            if (FilterStatus == "已停用" && vehicle.IsEnabled)
+            if (FilterStatus == EnabledText && !vehicle.IsEnabled)
                 return false;
 
-            if (FilterCapability != "全部")
+            if (FilterStatus == DisabledText && vehicle.IsEnabled)
+                return false;
+
+            if (FilterCapability != AllText)
             {
                 var targetCap = FilterCapability switch
                 {
-                    "搬运" => VehicleCapability.Transfer,
-                    "顶升" => VehicleCapability.Lift,
-                    "叉取" => VehicleCapability.Fork,
-                    "牵引" => VehicleCapability.Tow,
-                    "滚筒" => VehicleCapability.Roller,
-                    "充电" => VehicleCapability.Charge,
-                    "自动充电" => VehicleCapability.AutoCharge,
+                    "\u642c\u8fd0" => VehicleCapability.Transfer,
+                    "\u9876\u5347" => VehicleCapability.Lift,
+                    "\u53c9\u53d6" => VehicleCapability.Fork,
+                    "\u7275\u5f15" => VehicleCapability.Tow,
+                    "\u6eda\u7b52" => VehicleCapability.Roller,
+                    "\u5145\u7535" => VehicleCapability.Charge,
+                    "\u81ea\u52a8\u5145\u7535" => VehicleCapability.AutoCharge,
                     _ => VehicleCapability.None
                 };
 
@@ -298,6 +324,23 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             return true;
         }
+    }
+
+    public sealed class MapAreaOption
+    {
+        public MapAreaOption(string areaId, string areaName)
+        {
+            AreaId = areaId;
+            AreaName = areaName;
+        }
+
+        public string AreaId { get; }
+
+        public string AreaName { get; }
+
+        public string DisplayName => string.IsNullOrWhiteSpace(AreaName) || string.Equals(AreaId, AreaName, StringComparison.OrdinalIgnoreCase)
+            ? AreaId
+            : $"{AreaId} ({AreaName})";
     }
 
     public class EditableVehicle : BindableBase

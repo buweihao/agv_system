@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using AgvDispatcher.Core.Contracts.Common;
 using AgvDispatcher.Core.Enums;
@@ -13,16 +13,16 @@ using ContractMap = AgvDispatcher.Core.Contracts.Map;
 namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 {
     /// <summary>
-    /// 运行监控页面"地图视图"的 ViewModel。
+    /// 杩愯鐩戞帶椤甸潰"鍦板浘瑙嗗浘"鐨?ViewModel銆?
     /// <para>
-    /// 负责把地图拓扑（节点 <see cref="MapNode"/>、边 <see cref="MapEdge"/>）和车辆实时位置渲染到画布上，
-    /// 并在选中某台 AGV 时基于独立路径规划服务高亮展示路径。
-    /// 通过订阅 <see cref="SelectedVehicleChangedEvent"/> 与 <see cref="VehicleStateChangedEvent"/> 实现联动与刷新。
-    /// 地图元素被点击时在详情区展示节点/路径/车辆的详细信息。
+    /// 璐熻矗鎶婂湴鍥炬嫇鎵戯紙鑺傜偣 <see cref="MapNode"/>銆佽竟 <see cref="MapEdge"/>锛夊拰杞﹁締瀹炴椂浣嶇疆娓叉煋鍒扮敾甯冧笂锛?
+    /// 骞跺湪閫変腑鏌愬彴 AGV 鏃跺熀浜庣嫭绔嬭矾寰勮鍒掓湇鍔￠珮浜睍绀鸿矾寰勩€?
+    /// 閫氳繃璁㈤槄 <see cref="SelectedVehicleChangedEvent"/> 涓?<see cref="VehicleStateChangedEvent"/> 瀹炵幇鑱斿姩涓庡埛鏂般€?
+    /// 鍦板浘鍏冪礌琚偣鍑绘椂鍦ㄨ鎯呭尯灞曠ず鑺傜偣/璺緞/杞﹁締鐨勮缁嗕俊鎭€?
     /// </para>
     /// <para>
-    /// 位置匹配支持别名（<see cref="IMapLocationAliasRepository"/>）、节点编号/编码精确匹配，
-    /// 以及对形如 "A01" 的位置串做归一化的模糊匹配（见 <see cref="ResolveNode"/>）。
+    /// 浣嶇疆鍖归厤鏀寔鍒悕锛?see cref="IMapLocationAliasRepository"/>锛夈€佽妭鐐圭紪鍙?缂栫爜绮剧‘鍖归厤锛?
+    /// 浠ュ強瀵瑰舰濡?"A01" 鐨勪綅缃覆鍋氬綊涓€鍖栫殑妯＄硦鍖归厤锛堣 <see cref="ResolveNode"/>锛夈€?
     /// </para>
     /// </summary>
     public class MapViewModel : BindableBase
@@ -36,116 +36,177 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         private IReadOnlyList<MapLocationAlias> _aliases = new List<MapLocationAlias>();
 
         private string? _selectedVehicleId;
-        private string _pathSummary = "请选择AGV查看规划路径";
+        private string _pathSummary = "\u8bf7\u9009\u62e9 AGV \u67e5\u770b\u89c4\u5212\u8def\u5f84";
 
-        // 路径规划预览：手动选择的起点/终点与结果摘要
+        // 璺緞瑙勫垝棰勮锛氭墜鍔ㄩ€夋嫨鐨勮捣鐐?缁堢偣涓庣粨鏋滄憳瑕?
         private MapNodeViewItem? _previewStartNode;
         private MapNodeViewItem? _previewEndNode;
-        private string _previewSummary = "选择起点与终点后点击\"预览路径\"";
+        private string? _previewStartNodeId;
+        private string? _previewEndNodeId;
+        private bool _isReloadingMap;
+        private string _previewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
         private bool _isPreviewPanelExpanded = true;
 
-        /// <summary>地图全部边（普通渲染图层）。</summary>
+        /// <summary>鍦板浘鍏ㄩ儴杈癸紙鏅€氭覆鏌撳浘灞傦級銆?/summary>
         public ObservableCollection<MapEdgeViewItem> Edges { get; } = new();
 
         public ObservableCollection<MapAreaViewItem> Areas { get; } = new();
 
-        /// <summary>当前选中车辆的规划路径所经过的边（高亮图层）。</summary>
+        /// <summary>褰撳墠閫変腑杞﹁締鐨勮鍒掕矾寰勬墍缁忚繃鐨勮竟锛堥珮浜浘灞傦級銆?/summary>
         public ObservableCollection<MapEdgeViewItem> PlannedEdges { get; } = new();
 
-        /// <summary>手动预览路径所经过的边（预览高亮图层，独立于车辆路径）。</summary>
+        /// <summary>鎵嬪姩棰勮璺緞鎵€缁忚繃鐨勮竟锛堥瑙堥珮浜浘灞傦紝鐙珛浜庤溅杈嗚矾寰勶級銆?/summary>
         public ObservableCollection<MapEdgeViewItem> PreviewEdges { get; } = new();
 
-        /// <summary>各边的方向箭头（叠加在普通边图层之上，表达通行方向）。</summary>
+        /// <summary>鍚勮竟鐨勬柟鍚戠澶达紙鍙犲姞鍦ㄦ櫘閫氳竟鍥惧眰涔嬩笂锛岃〃杈鹃€氳鏂瑰悜锛夈€?/summary>
         public ObservableCollection<MapEdgeArrowViewItem> EdgeArrows { get; } = new();
 
-        /// <summary>地图全部节点。</summary>
+        /// <summary>鍦板浘鍏ㄩ儴鑺傜偣銆?/summary>
         public ObservableCollection<MapNodeViewItem> Nodes { get; } = new();
 
-        /// <summary>车辆当前位置标记。</summary>
+        /// <summary>杞﹁締褰撳墠浣嶇疆鏍囪銆?/summary>
         public ObservableCollection<VehicleMapViewItem> Vehicles { get; } = new();
 
-        /// <summary>路径摘要文本（如起止点、点数、总里程，或不可用提示）。</summary>
+        /// <summary>璺緞鎽樿鏂囨湰锛堝璧锋鐐广€佺偣鏁般€佹€婚噷绋嬶紝鎴栦笉鍙敤鎻愮ず锛夈€?/summary>
         public string PathSummary
         {
             get => _pathSummary;
             set => SetProperty(ref _pathSummary, value);
         }
 
-        private string _detailTitle = "详情";
-        /// <summary>详情区标题。</summary>
+        private string _detailTitle = "\u8be6\u60c5";
+        /// <summary>璇︽儏鍖烘爣棰樸€?/summary>
         public string DetailTitle
         {
             get => _detailTitle;
             set => SetProperty(ref _detailTitle, value);
         }
 
-        private string _detailContent = "点击地图元素查看详情";
-        /// <summary>详情区内容。</summary>
+        private string _detailContent = "\u70b9\u51fb\u5730\u56fe\u5143\u7d20\u67e5\u770b\u8be6\u60c5";
+        /// <summary>璇︽儏鍖哄唴瀹广€?/summary>
         public string DetailContent
         {
             get => _detailContent;
             set => SetProperty(ref _detailContent, value);
         }
 
-        /// <summary>地图元素点击命令，参数为被点击的节点/边/车辆视图项。</summary>
+        /// <summary>鍦板浘鍏冪礌鐐瑰嚮鍛戒护锛屽弬鏁颁负琚偣鍑荤殑鑺傜偣/杈?杞﹁締瑙嗗浘椤广€?/summary>
         public DelegateCommand<object> MapItemClickCommand { get; }
 
-        /// <summary>路径预览的起点节点（供界面下拉绑定）。</summary>
+        /// <summary>璺緞棰勮鐨勮捣鐐硅妭鐐癸紙渚涚晫闈笅鎷夌粦瀹氾級銆?/summary>
         public MapNodeViewItem? PreviewStartNode
         {
             get => _previewStartNode;
             set
             {
+                if (_isReloadingMap && value is null)
+                {
+                    return;
+                }
+
                 if (SetProperty(ref _previewStartNode, value))
                 {
+                    _previewStartNodeId = value?.NodeId;
+                    RaisePropertyChanged(nameof(PreviewStartNodeId));
                     PreviewPathCommand.RaiseCanExecuteChanged();
                     RestoreOrClearPreview();
                 }
             }
         }
 
-        /// <summary>路径预览的终点节点（供界面下拉绑定）。</summary>
+        public string? PreviewStartNodeId
+        {
+            get => _previewStartNodeId;
+            set
+            {
+                if (_isReloadingMap && string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+
+                if (SetProperty(ref _previewStartNodeId, value))
+                {
+                    _previewStartNode = string.IsNullOrWhiteSpace(value)
+                        ? null
+                        : Nodes.FirstOrDefault(node => string.Equals(node.NodeId, value, StringComparison.OrdinalIgnoreCase));
+                    RaisePropertyChanged(nameof(PreviewStartNode));
+                    PreviewPathCommand.RaiseCanExecuteChanged();
+                    RestoreOrClearPreview();
+                }
+            }
+        }
+
+        /// <summary>璺緞棰勮鐨勭粓鐐硅妭鐐癸紙渚涚晫闈笅鎷夌粦瀹氾級銆?/summary>
         public MapNodeViewItem? PreviewEndNode
         {
             get => _previewEndNode;
             set
             {
+                if (_isReloadingMap && value is null)
+                {
+                    return;
+                }
+
                 if (SetProperty(ref _previewEndNode, value))
                 {
+                    _previewEndNodeId = value?.NodeId;
+                    RaisePropertyChanged(nameof(PreviewEndNodeId));
                     PreviewPathCommand.RaiseCanExecuteChanged();
                     RestoreOrClearPreview();
                 }
             }
         }
 
-        /// <summary>路径预览结果摘要（起止点、点数、总里程或不可达提示）。</summary>
+        public string? PreviewEndNodeId
+        {
+            get => _previewEndNodeId;
+            set
+            {
+                if (_isReloadingMap && string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+
+                if (SetProperty(ref _previewEndNodeId, value))
+                {
+                    _previewEndNode = string.IsNullOrWhiteSpace(value)
+                        ? null
+                        : Nodes.FirstOrDefault(node => string.Equals(node.NodeId, value, StringComparison.OrdinalIgnoreCase));
+                    RaisePropertyChanged(nameof(PreviewEndNode));
+                    PreviewPathCommand.RaiseCanExecuteChanged();
+                    RestoreOrClearPreview();
+                }
+            }
+        }
+
+        /// <summary>璺緞棰勮缁撴灉鎽樿锛堣捣姝㈢偣銆佺偣鏁般€佹€婚噷绋嬫垨涓嶅彲杈炬彁绀猴級銆?/summary>
         public string PreviewSummary
         {
             get => _previewSummary;
             set => SetProperty(ref _previewSummary, value);
         }
 
-        /// <summary>路径预览面板是否展开。保持在 ViewModel，避免点击地图后被视图重建为折叠状态。</summary>
+        /// <summary>璺緞棰勮闈㈡澘鏄惁灞曞紑銆備繚鎸佸湪 ViewModel锛岄伩鍏嶇偣鍑诲湴鍥惧悗琚鍥鹃噸寤轰负鎶樺彔鐘舵€併€?/summary>
         public bool IsPreviewPanelExpanded
         {
             get => _isPreviewPanelExpanded;
             set => SetProperty(ref _isPreviewPanelExpanded, value);
         }
 
-        /// <summary>根据所选起点/终点计算并高亮显示预览路径。</summary>
+        /// <summary>鏍规嵁鎵€閫夎捣鐐?缁堢偣璁＄畻骞堕珮浜樉绀洪瑙堣矾寰勩€?/summary>
         public DelegateCommand PreviewPathCommand { get; }
 
-        /// <summary>清除当前预览路径与选择。</summary>
+        /// <summary>娓呴櫎褰撳墠棰勮璺緞涓庨€夋嫨銆?/summary>
         public DelegateCommand ClearPreviewCommand { get; }
 
         /// <summary>
-        /// 构造函数，注入依赖、加载别名并首次绘制地图，同时订阅选中车辆与状态变化事件。
+        /// 鏋勯€犲嚱鏁帮紝娉ㄥ叆渚濊禆銆佸姞杞藉埆鍚嶅苟棣栨缁樺埗鍦板浘锛屽悓鏃惰闃呴€変腑杞﹁締涓庣姸鎬佸彉鍖栦簨浠躲€?
         /// </summary>
-        /// <param name="eventAggregator">事件聚合器。</param>
-        /// <param name="mapService">地图服务，提供节点/边查询与路径规划。</param>
-        /// <param name="vehicleStateStore">车辆状态存储，提供车辆实时位置。</param>
-        /// <param name="taskService">任务服务，用于解析车辆当前任务的目标节点。</param>
-        /// <param name="aliasRepo">地图别名仓储，用于位置别名到节点的映射。</param>
+        /// <param name="eventAggregator">浜嬩欢鑱氬悎鍣ㄣ€?/param>
+        /// <param name="mapService">鍦板浘鏈嶅姟锛屾彁渚涜妭鐐?杈规煡璇笌璺緞瑙勫垝銆?/param>
+        /// <param name="vehicleStateStore">杞﹁締鐘舵€佸瓨鍌紝鎻愪緵杞﹁締瀹炴椂浣嶇疆銆?/param>
+        /// <param name="taskService">浠诲姟鏈嶅姟锛岀敤浜庤В鏋愯溅杈嗗綋鍓嶄换鍔＄殑鐩爣鑺傜偣銆?/param>
+        /// <param name="aliasRepo">鍦板浘鍒悕浠撳偍锛岀敤浜庝綅缃埆鍚嶅埌鑺傜偣鐨勬槧灏勩€?/param>
         public MapViewModel(
             IEventAggregator eventAggregator,
             ContractMap.IMapService mapService,
@@ -164,60 +225,58 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             PreviewPathCommand = new DelegateCommand(OnPreviewPath, CanPreviewPath);
             ClearPreviewCommand = new DelegateCommand(OnClearPreview);
 
-            // 先异步加载别名，完成后在 UI 线程首次绘制地图
+            // 鍏堝紓姝ュ姞杞藉埆鍚嶏紝瀹屾垚鍚庡湪 UI 绾跨▼棣栨缁樺埗鍦板浘
             LoadAliasesAsync().ContinueWith(_ => LoadMap(null), TaskScheduler.FromCurrentSynchronizationContext());
-            // 选中车辆变化：重绘并高亮其路径
+            // 閫変腑杞﹁締鍙樺寲锛氶噸缁樺苟楂樹寒鍏惰矾寰?
             eventAggregator.GetEvent<SelectedVehicleChangedEvent>().Subscribe(LoadMap, ThreadOption.UIThread);
-            // 车辆状态变化：保持当前选中车辆并重绘
+            // 杞﹁締鐘舵€佸彉鍖栵細淇濇寔褰撳墠閫変腑杞﹁締骞堕噸缁?
             eventAggregator.GetEvent<VehicleStateChangedEvent>().Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
             eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>().Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
         }
 
         /// <summary>
-        /// 地图元素被点击时填充详情区：分别处理节点、边、车辆三类视图项。
-        /// 节点的别名信息异步获取后回填。
+        /// 鍦板浘鍏冪礌琚偣鍑绘椂濉厖璇︽儏鍖猴細鍒嗗埆澶勭悊鑺傜偣銆佽竟銆佽溅杈嗕笁绫昏鍥鹃」銆?
+        /// 鑺傜偣鐨勫埆鍚嶄俊鎭紓姝ヨ幏鍙栧悗鍥炲～銆?
         /// </summary>
         private void OnMapItemClicked(object item)
         {
             if (item is MapNodeViewItem node)
             {
                 UseNodeForPreview(node);
-                DetailTitle = $"节点详情: {node.Name}";
-                DetailContent = $"节点ID: {node.NodeId}\n类型: {node.NodeType}\n区域: {node.AreaCode}\n" +
-                                $"启用状态: {(node.IsEnabled ? "是" : "否")}\n别名配置: 获取中...";
-                
-                // Fetch aliases asynchronously and update
-                Task.Run(() => 
+                DetailTitle = $"点位详情: {node.Name}";
+                DetailContent = $"点位ID: {node.NodeId}\n点位编码: {node.NodeCode}\n类型: {node.NodeType}\n所属区域: {node.AreaName}\n" +
+                                $"启用状态: {(node.IsEnabled ? "启用" : "禁用")}\n厂商/别名映射: 加载中...";
+
+                Task.Run(() =>
                 {
                     var nodeAliases = _aliases.Where(a => a.NodeId == node.NodeId).Select(a => a.AliasValue);
                     var aliasStr = nodeAliases.Any() ? string.Join(", ", nodeAliases) : "无";
-                    System.Windows.Application.Current.Dispatcher.Invoke(() => DetailContent = DetailContent.Replace("获取中...", aliasStr));
+                    System.Windows.Application.Current.Dispatcher.Invoke(() => DetailContent = DetailContent.Replace("加载中...", aliasStr));
                 });
             }
             else if (item is MapEdgeViewItem edge)
             {
-                DetailTitle = $"路径详情";
-                DetailContent = $"起始节点: {edge.EdgeId}\n从: {edge.FromNodeId}  到: {edge.ToNodeId}\n" +
-                                $"方向: {(edge.IsBidirectional ? "双向" : "单向")}\n限制速度: {edge.MaxSpeed} m/s";
+                DetailTitle = "路线详情";
+                DetailContent = $"路线ID: {edge.EdgeId}\n起点: {edge.FromNodeId}\n终点: {edge.ToNodeId}\n" +
+                                $"方向: {(edge.IsBidirectional ? "双向" : "单向")}\n限速: {edge.MaxSpeed} m/s\n状态: {(edge.IsEnabled ? "启用" : "禁用")}";
             }
             else if (item is VehicleMapViewItem vehicle)
             {
                 DetailTitle = $"车辆详情: {vehicle.VehicleId}";
                 var taskStr = string.IsNullOrWhiteSpace(vehicle.CurrentTaskId) ? "无任务" : vehicle.CurrentTaskId;
-                DetailContent = $"状态: {vehicle.State}\n当前位置: {vehicle.Location}\n当前任务: {taskStr}\n电量: {vehicle.BatteryLevel:F1}%";
+                DetailContent = $"状态: {vehicle.StateText}\n当前点位: {vehicle.Location}\n当前任务: {taskStr}\n电量: {vehicle.BatteryLevel:F1}%";
             }
         }
-
-        /// <summary>异步加载全部地图位置别名到内存缓存。</summary>
+        /// <summary>寮傛鍔犺浇鍏ㄩ儴鍦板浘浣嶇疆鍒悕鍒板唴瀛樼紦瀛樸€?/summary>
         private async Task LoadAliasesAsync()
         {
             _aliases = await _aliasRepo.GetAllAsync();
         }
 
         /// <summary>
-        /// 重新绘制整张地图：构建边/节点/车辆视图项，并对选中车辆的规划路径做高亮叠加。
+        /// 閲嶆柊缁樺埗鏁村紶鍦板浘锛氭瀯寤鸿竟/鑺傜偣/杞﹁締瑙嗗浘椤癸紝骞跺閫変腑杞﹁締鐨勮鍒掕矾寰勫仛楂樹寒鍙犲姞銆?
         /// </summary>
-        /// <param name="selectedVehicleId">当前选中的车辆 ID；为空表示不高亮任何路径。</param>
+        /// <param name="selectedVehicleId">褰撳墠閫変腑鐨勮溅杈?ID锛涗负绌鸿〃绀轰笉楂樹寒浠讳綍璺緞銆?/param>
         private void LoadMap(string? selectedVehicleId)
         {
             _selectedVehicleId = selectedVehicleId;
@@ -226,16 +285,17 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             var edges = GetEdges();
             var areas = GetAreas();
             var nodeMap = nodes.ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
+            var areaNameMap = areas.ToDictionary(area => area.AreaId, GetAreaDisplayName, StringComparer.OrdinalIgnoreCase);
             var selectedVehicle = string.IsNullOrWhiteSpace(selectedVehicleId)
                 ? null
                 : _vehicleStateStore.GetVehicle(selectedVehicleId);
-            // 计算选中车辆的规划路径，并取出其边集合用于高亮判定
+            // 璁＄畻閫変腑杞﹁締鐨勮鍒掕矾寰勶紝骞跺彇鍑哄叾杈归泦鍚堢敤浜庨珮浜垽瀹?
             var plannedPath = CreateSelectedVehiclePath(selectedVehicle, nodes);
             var plannedEdgeIds = plannedPath?.Edges
                 .Select(edge => edge.EdgeId)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // 普通边图层（仅渲染两端节点都存在的边）
+            // 鏅€氳竟鍥惧眰锛堜粎娓叉煋涓ょ鑺傜偣閮藉瓨鍦ㄧ殑杈癸級
             Areas.Clear();
             foreach (var area in areas)
             {
@@ -258,7 +318,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 }
             }
 
-            // 规划路径高亮图层（金色加粗）
+            // 瑙勫垝璺緞楂樹寒鍥惧眰锛堥噾鑹插姞绮楋級
             PlannedEdges.Clear();
             if (plannedPath is not null)
             {
@@ -276,15 +336,28 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 }
             }
 
-            // 节点图层（路径经过的节点描边高亮）
-            Nodes.Clear();
-            foreach (var node in nodes)
+            // 鑺傜偣鍥惧眰锛堣矾寰勭粡杩囩殑鑺傜偣鎻忚竟楂樹寒锛?            _isReloadingMap = true;
+            try
             {
-                Nodes.Add(CreateNodeItem(node, plannedPath?.Nodes.Any(pathNode =>
-                    string.Equals(pathNode.NodeId, node.NodeId, StringComparison.OrdinalIgnoreCase)) == true));
+                Nodes.Clear();
+                foreach (var node in nodes)
+                {
+                    var areaName = areaNameMap.TryGetValue(node.AreaCode, out var displayAreaName)
+                        ? displayAreaName
+                        : node.AreaCode;
+                    Nodes.Add(CreateNodeItem(node, plannedPath?.Nodes.Any(pathNode =>
+                        string.Equals(pathNode.NodeId, node.NodeId, StringComparison.OrdinalIgnoreCase)) == true, areaName));
+                }
+
+                // 閲嶅缓鑺傜偣闆嗗悎鍚庯紝閲嶆柊瑙ｆ瀽棰勮璧锋鐐瑰紩鐢ㄥ苟鍒锋柊棰勮璺緞鍥惧眰
+                RefreshPreviewAfterReload(nodes);
+            }
+            finally
+            {
+                _isReloadingMap = false;
             }
 
-            // 车辆位置标记
+            // 杞﹁締浣嶇疆鏍囪
             Vehicles.Clear();
             foreach (var vehicle in CreateVehiclePositions(nodes, selectedVehicleId))
             {
@@ -292,32 +365,33 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             }
 
             PathSummary = BuildPathSummary(selectedVehicle, plannedPath, nodes);
-
-            // 重建节点集合后，重新解析预览起止点引用并刷新预览路径图层
-            RefreshPreviewAfterReload(nodes);
         }
 
         /// <summary>
-        /// 地图重载后修复预览起止点对新节点视图项的引用，并据此重绘预览路径图层。
-        /// 若原起止点在新地图中不存在则清空预览。
+        /// 鍦板浘閲嶈浇鍚庝慨澶嶉瑙堣捣姝㈢偣瀵规柊鑺傜偣瑙嗗浘椤圭殑寮曠敤锛屽苟鎹閲嶇粯棰勮璺緞鍥惧眰銆?
+        /// 鑻ュ師璧锋鐐瑰湪鏂板湴鍥句腑涓嶅瓨鍦ㄥ垯娓呯┖棰勮銆?
         /// </summary>
         private void RefreshPreviewAfterReload(IReadOnlyList<MapNode> mapNodes)
         {
-            var startId = _previewStartNode?.NodeId;
-            var endId = _previewEndNode?.NodeId;
+            var startId = _previewStartNodeId ?? _previewStartNode?.NodeId;
+            var endId = _previewEndNodeId ?? _previewEndNode?.NodeId;
 
-            // 重新指向 Nodes 集合中的新实例（避免下拉框选中项与列表项不一致）
+            // 閲嶆柊鎸囧悜 Nodes 闆嗗悎涓殑鏂板疄渚嬶紙閬垮厤涓嬫媺妗嗛€変腑椤逛笌鍒楄〃椤逛笉涓€鑷达級
             _previewStartNode = string.IsNullOrEmpty(startId)
                 ? null
                 : Nodes.FirstOrDefault(n => string.Equals(n.NodeId, startId, StringComparison.OrdinalIgnoreCase));
             _previewEndNode = string.IsNullOrEmpty(endId)
                 ? null
                 : Nodes.FirstOrDefault(n => string.Equals(n.NodeId, endId, StringComparison.OrdinalIgnoreCase));
+            _previewStartNodeId = _previewStartNode?.NodeId;
+            _previewEndNodeId = _previewEndNode?.NodeId;
             RaisePropertyChanged(nameof(PreviewStartNode));
             RaisePropertyChanged(nameof(PreviewEndNode));
+            RaisePropertyChanged(nameof(PreviewStartNodeId));
+            RaisePropertyChanged(nameof(PreviewEndNodeId));
             PreviewPathCommand.RaiseCanExecuteChanged();
 
-            // 只要起止点仍有效，就在刷新后自动恢复预览路径，不依赖旧 PreviewEdges 是否还存在。
+            // 鍙璧锋鐐逛粛鏈夋晥锛屽氨鍦ㄥ埛鏂板悗鑷姩鎭㈠棰勮璺緞锛屼笉渚濊禆鏃?PreviewEdges 鏄惁杩樺瓨鍦ㄣ€?
             if (_previewStartNode is not null && _previewEndNode is not null)
             {
                 RenderPreviewPath(mapNodes.ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase));
@@ -325,13 +399,13 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             else if (PreviewEdges.Count > 0)
             {
                 PreviewEdges.Clear();
-                PreviewSummary = "选择起点与终点后点击\"预览路径\"";
+                PreviewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
             }
         }
 
         /// <summary>
-        /// 点击地图点位时辅助选择预览起终点：首次点选起点，第二次点选终点并自动预览。
-        /// 若已经存在完整起终点，再点其他节点则开始一条新的预览。
+        /// 鐐瑰嚮鍦板浘鐐逛綅鏃惰緟鍔╅€夋嫨棰勮璧风粓鐐癸細棣栨鐐归€夎捣鐐癸紝绗簩娆＄偣閫夌粓鐐瑰苟鑷姩棰勮銆?
+        /// 鑻ュ凡缁忓瓨鍦ㄥ畬鏁磋捣缁堢偣锛屽啀鐐瑰叾浠栬妭鐐瑰垯寮€濮嬩竴鏉℃柊鐨勯瑙堛€?
         /// </summary>
         private void UseNodeForPreview(MapNodeViewItem node)
         {
@@ -342,7 +416,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 PreviewStartNode = node;
                 PreviewEndNode = null;
                 PreviewEdges.Clear();
-                PreviewSummary = $"已选择起点 {node.NodeCode}，请点击终点或从下拉框选择。";
+                PreviewSummary = $"已选择起点 {node.LabelText} ({node.NodeId})，请点击终点或从下拉框选择。";
                 return;
             }
 
@@ -370,14 +444,14 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             }
         }
 
-        /// <summary>是否允许执行预览：已选择起点和终点，且两者不同。</summary>
+        /// <summary>鏄惁鍏佽鎵ц棰勮锛氬凡閫夋嫨璧风偣鍜岀粓鐐癸紝涓斾袱鑰呬笉鍚屻€?/summary>
         private bool CanPreviewPath()
             => _previewStartNode is not null
                && _previewEndNode is not null
                && !string.Equals(_previewStartNode.NodeId, _previewEndNode.NodeId, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
-        /// 计算所选起点到终点的规划路径，渲染预览高亮图层并更新预览摘要。
+        /// 璁＄畻鎵€閫夎捣鐐瑰埌缁堢偣鐨勮鍒掕矾寰勶紝娓叉煋棰勮楂樹寒鍥惧眰骞舵洿鏂伴瑙堟憳瑕併€?
         /// </summary>
         private void OnPreviewPath()
         {
@@ -391,7 +465,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 用当前起止点向地图服务请求规划路径，填充 <see cref="PreviewEdges"/> 高亮图层并设置 <see cref="PreviewSummary"/>。
+        /// 鐢ㄥ綋鍓嶈捣姝㈢偣鍚戝湴鍥炬湇鍔¤姹傝鍒掕矾寰勶紝濉厖 <see cref="PreviewEdges"/> 楂樹寒鍥惧眰骞惰缃?<see cref="PreviewSummary"/>銆?
         /// </summary>
         private void RenderPreviewPath(IReadOnlyDictionary<string, MapNode> nodeMap)
         {
@@ -399,7 +473,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             if (_previewStartNode is null || _previewEndNode is null)
             {
-                PreviewSummary = "选择起点与终点后点击\"预览路径\"";
+                PreviewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
                 return;
             }
 
@@ -409,7 +483,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             if (path is null || !path.IsAvailable || path.Edges.Count == 0)
             {
-                PreviewSummary = $"{startId} → {endId}："
+                PreviewSummary = $"{startId} -> {endId}: "
                     + (string.IsNullOrWhiteSpace(path?.Message) ? "暂无可用路径" : path!.Message);
                 return;
             }
@@ -420,28 +494,28 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                     && nodeMap.TryGetValue(edge.ToNodeId, out var toNode))
                 {
                     var item = CreateEdgeItem(edge, fromNode, toNode, true);
-                    item.Stroke = "#00E5FF";   // 青色，区别于车辆金色路径
+                    item.Stroke = "#00E5FF";   // 闈掕壊锛屽尯鍒簬杞﹁締閲戣壊璺緞
                     item.StrokeThickness = 4;
                     item.Opacity = 0.95;
                     PreviewEdges.Add(item);
                 }
             }
 
-            PreviewSummary = $"{path.StartNodeId} → {path.EndNodeId}，共 {path.Nodes.Count} 个点，{path.TotalLength:F0} m";
+            PreviewSummary = $"{path.StartNodeId} -> {path.EndNodeId}，共 {path.Nodes.Count} 个点，{path.TotalLength:F0} m";
         }
 
-        /// <summary>清除预览路径图层、重置起止点选择与摘要。</summary>
+        /// <summary>娓呴櫎棰勮璺緞鍥惧眰銆侀噸缃捣姝㈢偣閫夋嫨涓庢憳瑕併€?/summary>
         private void OnClearPreview()
         {
             PreviewEdges.Clear();
             PreviewStartNode = null;
             PreviewEndNode = null;
-            PreviewSummary = "选择起点与终点后点击\"预览路径\"";
+            PreviewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
         }
 
         /// <summary>
-        /// 为选中车辆计算规划路径：解析其当前位置为起点、其任务目标为终点后调用地图服务规划。
-        /// 起终点缺失或相同则返回 null。
+        /// 涓洪€変腑杞﹁締璁＄畻瑙勫垝璺緞锛氳В鏋愬叾褰撳墠浣嶇疆涓鸿捣鐐广€佸叾浠诲姟鐩爣涓虹粓鐐瑰悗璋冪敤鍦板浘鏈嶅姟瑙勫垝銆?
+        /// 璧风粓鐐圭己澶辨垨鐩稿悓鍒欒繑鍥?null銆?
         /// </summary>
         private PlannedPath? CreateSelectedVehiclePath(VehicleStatusSnapshot? vehicle, IReadOnlyList<MapNode> nodes)
         {
@@ -553,13 +627,13 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 构建路径摘要文本，覆盖：未选车、位置未匹配、无任务目标、无可用路径、正常路径等多种情形。
+        /// 鏋勫缓璺緞鎽樿鏂囨湰锛岃鐩栵細鏈€夎溅銆佷綅缃湭鍖归厤銆佹棤浠诲姟鐩爣銆佹棤鍙敤璺緞銆佹甯歌矾寰勭瓑澶氱鎯呭舰銆?
         /// </summary>
         private string BuildPathSummary(VehicleStatusSnapshot? vehicle, PlannedPath? plannedPath, IReadOnlyList<MapNode> nodes)
         {
             if (vehicle is null)
             {
-                return "请选择AGV查看规划路径";
+                return "\u8bf7\u9009\u62e9 AGV \u67e5\u770b\u89c4\u5212\u8def\u5f84";
             }
 
             var startNode = ResolveNode(vehicle.Location, nodes, _aliases);
@@ -567,7 +641,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             if (startNode is null)
             {
-                return $"{vehicle.VehicleId} 当前位置 {vehicle.Location} 未匹配到地图节点";
+                return $"{vehicle.VehicleId} \u5f53\u524d\u4f4d\u7f6e {vehicle.Location} \u672a\u5339\u914d\u5230\u5730\u56fe\u70b9\u4f4d";
             }
 
             if (string.IsNullOrWhiteSpace(targetNodeId))
@@ -577,7 +651,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             if (plannedPath is null)
             {
-                return $"{vehicle.VehicleId} {startNode.NodeId} -> {targetNodeId} 暂无可用路径";
+                return $"{vehicle.VehicleId} {startNode.NodeId} -> {targetNodeId} \u6682\u65e0\u53ef\u7528\u8def\u5f84";
             }
 
             return plannedPath.IsAvailable
@@ -586,7 +660,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 解析车辆的目标节点：优先取其当前任务的目标节点；否则查找分配给该车且处于待执行/执行中的任务目标。
+        /// 瑙ｆ瀽杞﹁締鐨勭洰鏍囪妭鐐癸細浼樺厛鍙栧叾褰撳墠浠诲姟鐨勭洰鏍囪妭鐐癸紱鍚﹀垯鏌ユ壘鍒嗛厤缁欒杞︿笖澶勪簬寰呮墽琛?鎵ц涓殑浠诲姟鐩爣銆?
         /// </summary>
         private string? ResolveTargetNodeId(VehicleStatusSnapshot vehicle)
         {
@@ -608,8 +682,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 由领域边模型构建画布边视图项：计算两端坐标，按状态区分着色
-        /// （正常=绿、锁定=橙、禁用/封闭=红），规划路径上的边加粗。
+        /// 鐢遍鍩熻竟妯″瀷鏋勫缓鐢诲竷杈硅鍥鹃」锛氳绠椾袱绔潗鏍囷紝鎸夌姸鎬佸尯鍒嗙潃鑹?
+        /// 锛堟甯?缁裤€侀攣瀹?姗欍€佺鐢?灏侀棴=绾級锛岃鍒掕矾寰勪笂鐨勮竟鍔犵矖銆?
         /// </summary>
         private static MapAreaViewItem CreateAreaItem(ContractMap.MapAreaDto area)
         {
@@ -623,8 +697,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             return new MapAreaViewItem
             {
                 AreaId = area.AreaId,
-                AreaName = string.IsNullOrWhiteSpace(area.AreaName) ? area.AreaId : area.AreaName,
-                AreaType = area.AreaType.ToString(),
+                AreaName = BuildAreaLabel(area),
+                AreaType = ToChineseAreaType(area.AreaType),
                 PointsText = string.Join(" ", points.Select(point => $"{point.X:0.##},{point.Y:0.##}")),
                 Fill = ToAlphaColor(color, "26"),
                 Stroke = color,
@@ -634,13 +708,74 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             };
         }
 
+        private static string BuildAreaLabel(ContractMap.MapAreaDto area)
+        {
+            var name = string.IsNullOrWhiteSpace(area.AreaName) ? area.AreaId : area.AreaName;
+            if (area.Properties.TryGetValue("Label", out var label) && !string.IsNullOrWhiteSpace(label))
+            {
+                return label;
+            }
+
+            if (area.Properties.TryGetValue("SpeedLimit", out var speedLimit) && !string.IsNullOrWhiteSpace(speedLimit))
+            {
+                return $"{name}\nMax {speedLimit} m/s";
+            }
+
+            if (area.Properties.TryGetValue("NavigationMedium", out var medium) && !string.IsNullOrWhiteSpace(medium))
+            {
+                return $"{name}\n{medium}";
+            }
+
+            return area.Properties.TryGetValue("Capacity", out var capacity) && !string.IsNullOrWhiteSpace(capacity)
+                ? $"{name}\n0/{capacity}"
+                : name;
+        }
+
+        private static string GetAreaDisplayName(ContractMap.MapAreaDto area)
+        {
+            return string.IsNullOrWhiteSpace(area.AreaName) ? area.AreaId : area.AreaName;
+        }
+
+        private static string ToChineseAreaType(ContractMap.MapAreaType areaType) => areaType switch
+        {
+            ContractMap.MapAreaType.WorkArea => "作业区域",
+            ContractMap.MapAreaType.ChargingArea => "充电区域",
+            ContractMap.MapAreaType.WaitingArea => "待机区域",
+            ContractMap.MapAreaType.NarrowArea => "限速/狭窄区域",
+            ContractMap.MapAreaType.IntersectionArea => "路口/互斥区域",
+            ContractMap.MapAreaType.BlockedArea => "禁行/维护区域",
+            _ => "普通区域"
+        };
+
+        private static string ToChineseNodeType(MapNodeType nodeType) => nodeType switch
+        {
+            MapNodeType.Pickup => "取货点",
+            MapNodeType.Dropoff => "放货点",
+            MapNodeType.Charge => "充电点",
+            MapNodeType.Station => "工位",
+            MapNodeType.Waiting => "待机点",
+            MapNodeType.Intersection => "路口点",
+            MapNodeType.Door => "门禁点",
+            MapNodeType.Elevator => "电梯点",
+            _ => "普通点"
+        };
+
+        private static string ToChineseRobotState(RobotState state) => state switch
+        {
+            RobotState.Running => "运行中",
+            RobotState.Idle => "空闲",
+            RobotState.Fault => "故障",
+            RobotState.Offline => "离线",
+            _ => state.ToString()
+        };
+
         private static MapEdgeViewItem CreateEdgeItem(
             MapEdge edge,
             MapNode fromNode,
             MapNode toNode,
             bool isPlanned)
         {
-            // 状态着色：禁用或封闭→红（物理阻断），锁定→橙（临时管控），正常→绿
+            // 鐘舵€佺潃鑹诧細绂佺敤鎴栧皝闂啋绾紙鐗╃悊闃绘柇锛夛紝閿佸畾鈫掓锛堜复鏃剁鎺э級锛屾甯糕啋缁?
             var isBlocked = !edge.IsEnabled || edge.Direction == EdgeDirection.Closed;
             string stroke;
             double opacity;
@@ -676,9 +811,9 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 为一条边生成方向箭头（"＞"形折线）：
-        /// 双向→在中点两侧各一个反向箭头；仅正向→一个指向终点的箭头；
-        /// 仅反向→一个指向起点的箭头；封闭→不画箭头。箭头颜色跟随边的状态色。
+        /// 涓轰竴鏉¤竟鐢熸垚鏂瑰悜绠ご锛?锛?褰㈡姌绾匡級锛?
+        /// 鍙屽悜鈫掑湪涓偣涓や晶鍚勪竴涓弽鍚戠澶达紱浠呮鍚戔啋涓€涓寚鍚戠粓鐐圭殑绠ご锛?
+        /// 浠呭弽鍚戔啋涓€涓寚鍚戣捣鐐圭殑绠ご锛涘皝闂啋涓嶇敾绠ご銆傜澶撮鑹茶窡闅忚竟鐨勭姸鎬佽壊銆?
         /// </summary>
         private static IEnumerable<MapEdgeArrowViewItem> CreateEdgeArrows(
             MapEdge edge,
@@ -697,23 +832,23 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             var len = Math.Sqrt(dx * dx + dy * dy);
             if (len < 1e-6)
             {
-                yield break; // 自环或重合点，无方向可言
+                yield break; // 鑷幆鎴栭噸鍚堢偣锛屾棤鏂瑰悜鍙█
             }
 
-            // 单位方向与单位法向
+            // 鍗曚綅鏂瑰悜涓庡崟浣嶆硶鍚?
             double ux = dx / len, uy = dy / len;
             double nx = -uy, ny = ux;
-            double mx = (ax + bx) / 2, my = (ay + by) / 2; // 边中点
+            double mx = (ax + bx) / 2, my = (ay + by) / 2; // 杈逛腑鐐?
 
-            const double wing = 7;   // 箭翼沿边方向回退长度
-            const double half = 5;   // 箭翼横向半宽
-            const double gap = 6;    // 双向箭头错开间距
+            const double wing = 7;   // 绠考娌胯竟鏂瑰悜鍥為€€闀垮害
+            const double half = 5;   // 绠考妯悜鍗婂
+            const double gap = 6;    // 鍙屽悜绠ご閿欏紑闂磋窛
 
             if (edge.Direction == EdgeDirection.Bidirectional)
             {
-                // 指向终点的箭头（略偏向终点一侧）
+                // 鎸囧悜缁堢偣鐨勭澶达紙鐣ュ亸鍚戠粓鐐逛竴渚э級
                 yield return BuildArrow(mx + ux * gap, my + uy * gap, ux, uy, nx, ny, wing, half, stroke);
-                // 指向起点的箭头（反方向，略偏向起点一侧）
+                // 鎸囧悜璧风偣鐨勭澶达紙鍙嶆柟鍚戯紝鐣ュ亸鍚戣捣鐐逛竴渚э級
                 yield return BuildArrow(mx - ux * gap, my - uy * gap, -ux, -uy, nx, ny, wing, half, stroke);
             }
             else if (edge.Direction == EdgeDirection.ReverseOnly)
@@ -727,8 +862,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 在给定箭尖位置 (tipX,tipY) 和指向 (ux,uy) 处构建一个 "＞" 形箭头：
-        /// 两翼端点 = 箭尖沿反方向回退 wing 后，分别沿法向 (nx,ny) 偏移 ±half。
+        /// 鍦ㄧ粰瀹氱灏栦綅缃?(tipX,tipY) 鍜屾寚鍚?(ux,uy) 澶勬瀯寤轰竴涓?"锛? 褰㈢澶达細
+        /// 涓ょ考绔偣 = 绠皷娌垮弽鏂瑰悜鍥為€€ wing 鍚庯紝鍒嗗埆娌挎硶鍚?(nx,ny) 鍋忕Щ 卤half銆?
         /// </summary>
         private static MapEdgeArrowViewItem BuildArrow(
             double tipX, double tipY,
@@ -751,12 +886,12 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 由领域节点模型构建画布节点视图项：计算绘制坐标与标签偏移，按节点类型填色，
-        /// 禁用节点统一灰显，规划路径上的节点描边高亮。
+        /// 鐢遍鍩熻妭鐐规ā鍨嬫瀯寤虹敾甯冭妭鐐硅鍥鹃」锛氳绠楃粯鍒跺潗鏍囦笌鏍囩鍋忕Щ锛屾寜鑺傜偣绫诲瀷濉壊锛?
+        /// 绂佺敤鑺傜偣缁熶竴鐏版樉锛岃鍒掕矾寰勪笂鐨勮妭鐐规弿杈归珮浜€?
         /// </summary>
-        private static MapNodeViewItem CreateNodeItem(MapNode node, bool isOnPlannedPath)
+        private static MapNodeViewItem CreateNodeItem(MapNode node, bool isOnPlannedPath, string areaName)
         {
-            // 禁用节点灰显，明显区别于启用节点；启用节点按类型着色
+            // 绂佺敤鑺傜偣鐏版樉锛屾槑鏄惧尯鍒簬鍚敤鑺傜偣锛涘惎鐢ㄨ妭鐐规寜绫诲瀷鐫€鑹?
             var fill = !node.IsEnabled
                 ? "#556070"
                 : node.NodeType switch
@@ -791,8 +926,13 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 NodeId = node.NodeId,
                 Name = node.Name,
                 NodeCode = string.IsNullOrWhiteSpace(node.NodeCode) ? node.NodeId : node.NodeCode,
-                NodeType = node.NodeType.ToString(),
+                LabelText = string.IsNullOrWhiteSpace(node.Name) ? node.NodeId : node.Name,
+                DisplayText = string.IsNullOrWhiteSpace(node.Name)
+                    ? node.NodeId
+                    : $"{node.NodeId} ({node.Name})",
+                NodeType = ToChineseNodeType(node.NodeType),
                 AreaCode = node.AreaCode,
+                AreaName = string.IsNullOrWhiteSpace(areaName) ? node.AreaCode : $"{areaName} ({node.AreaCode})",
                 IsEnabled = node.IsEnabled,
                 X = node.Position.X,
                 Y = node.Position.Y,
@@ -808,7 +948,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 遍历所有车辆，将能匹配到地图节点的车辆生成位置标记；选中车辆用金色突出，其余按状态着色。
+        /// 閬嶅巻鎵€鏈夎溅杈嗭紝灏嗚兘鍖归厤鍒板湴鍥捐妭鐐圭殑杞﹁締鐢熸垚浣嶇疆鏍囪锛涢€変腑杞﹁締鐢ㄩ噾鑹茬獊鍑猴紝鍏朵綑鎸夌姸鎬佺潃鑹层€?
         /// </summary>
         private IEnumerable<VehicleMapViewItem> CreateVehiclePositions(IReadOnlyList<MapNode> nodes, string? selectedVehicleId)
         {
@@ -825,14 +965,14 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 {
                     VehicleId = snapshot.VehicleId,
                     CurrentTaskId = snapshot.CurrentTaskId ?? string.Empty,
-                    State = snapshot.State.ToString(),
+                    State = ToChineseRobotState(snapshot.State),
                     Location = snapshot.Location,
                     X = node.Position.X,
                     Y = node.Position.Y,
-                    CanvasLeft = node.Position.X - 15,
-                    CanvasTop = node.Position.Y - 28,
+                    CanvasLeft = node.Position.X + 12,
+                    CanvasTop = node.Position.Y - 34,
                     BatteryLevel = snapshot.BatteryLevel,
-                    StateText = snapshot.State.ToString(),
+                    StateText = ToChineseRobotState(snapshot.State),
                     Fill = isSelected
                         ? "#FFD700"
                         : snapshot.State switch
@@ -876,10 +1016,10 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>
-        /// 将一个位置字符串解析为地图节点，按以下优先级匹配：
-        /// ① 启用的位置别名 → ② 节点 ID/编码精确匹配 → ③ 含 "Charge" 时回退到任一充电节点 →
-        /// ④ 对形如 "A01" 的串归一化后匹配（去前导零并大写）→ ⑤ 按首字母作为区域/前缀兜底匹配。
-        /// 无法解析时返回 null。
+        /// 灏嗕竴涓綅缃瓧绗︿覆瑙ｆ瀽涓哄湴鍥捐妭鐐癸紝鎸変互涓嬩紭鍏堢骇鍖归厤锛?
+        /// 鈶?鍚敤鐨勪綅缃埆鍚?鈫?鈶?鑺傜偣 ID/缂栫爜绮剧‘鍖归厤 鈫?鈶?鍚?"Charge" 鏃跺洖閫€鍒颁换涓€鍏呯數鑺傜偣 鈫?
+        /// 鈶?瀵瑰舰濡?"A01" 鐨勪覆褰掍竴鍖栧悗鍖归厤锛堝幓鍓嶅闆跺苟澶у啓锛夆啋 鈶?鎸夐瀛楁瘝浣滀负鍖哄煙/鍓嶇紑鍏滃簳鍖归厤銆?
+        /// 鏃犳硶瑙ｆ瀽鏃惰繑鍥?null銆?
         /// </summary>
         private static MapNode? ResolveNode(string? location, IReadOnlyList<MapNode> nodes, IReadOnlyList<MapLocationAlias> aliases)
         {
@@ -929,7 +1069,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
     }
 
-    /// <summary>地图边的画布渲染视图项：携带两端坐标与样式（颜色/粗细/透明度）。</summary>
+    /// <summary>鍦板浘杈圭殑鐢诲竷娓叉煋瑙嗗浘椤癸細鎼哄甫涓ょ鍧愭爣涓庢牱寮忥紙棰滆壊/绮楃粏/閫忔槑搴︼級銆?/summary>
     public class MapAreaViewItem
     {
         public string AreaId { get; set; } = string.Empty;
@@ -953,174 +1093,184 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
     public class MapEdgeViewItem
     {
-        /// <summary>边编号。</summary>
+        /// <summary>杈圭紪鍙枫€?/summary>
         public string EdgeId { get; set; } = string.Empty;
 
-        /// <summary>起始节点编号。</summary>
+        /// <summary>璧峰鑺傜偣缂栧彿銆?/summary>
         public string FromNodeId { get; set; } = string.Empty;
 
-        /// <summary>终止节点编号。</summary>
+        /// <summary>缁堟鑺傜偣缂栧彿銆?/summary>
         public string ToNodeId { get; set; } = string.Empty;
 
-        /// <summary>是否双向通行。</summary>
+        /// <summary>鏄惁鍙屽悜閫氳銆?/summary>
         public bool IsBidirectional { get; set; }
 
-        /// <summary>边方向。</summary>
+        /// <summary>杈规柟鍚戙€?/summary>
         public EdgeDirection Direction { get; set; }
 
-        /// <summary>是否启用（禁用＝物理阻断）。</summary>
+        /// <summary>鏄惁鍚敤锛堢鐢紳鐗╃悊闃绘柇锛夈€?/summary>
         public bool IsEnabled { get; set; } = true;
 
-        /// <summary>是否被锁定（临时占用/管控）。</summary>
+        /// <summary>鏄惁琚攣瀹氾紙涓存椂鍗犵敤/绠℃帶锛夈€?/summary>
         public bool IsLocked { get; set; }
 
-        /// <summary>限速（m/s）。</summary>
+        /// <summary>闄愰€燂紙m/s锛夈€?/summary>
         public double MaxSpeed { get; set; }
 
-        /// <summary>起点 X 画布坐标。</summary>
+        /// <summary>璧风偣 X 鐢诲竷鍧愭爣銆?/summary>
         public double X1 { get; set; }
 
-        /// <summary>起点 Y 画布坐标。</summary>
+        /// <summary>璧风偣 Y 鐢诲竷鍧愭爣銆?/summary>
         public double Y1 { get; set; }
 
-        /// <summary>终点 X 画布坐标。</summary>
+        /// <summary>缁堢偣 X 鐢诲竷鍧愭爣銆?/summary>
         public double X2 { get; set; }
 
-        /// <summary>终点 Y 画布坐标。</summary>
+        /// <summary>缁堢偣 Y 鐢诲竷鍧愭爣銆?/summary>
         public double Y2 { get; set; }
 
-        /// <summary>线条颜色（十六进制色值）。</summary>
+        /// <summary>绾挎潯棰滆壊锛堝崄鍏繘鍒惰壊鍊硷級銆?/summary>
         public string Stroke { get; set; } = "#00FF7F";
 
-        /// <summary>线条粗细。</summary>
+        /// <summary>绾挎潯绮楃粏銆?/summary>
         public double StrokeThickness { get; set; } = 2;
 
-        /// <summary>线条透明度。</summary>
+        /// <summary>绾挎潯閫忔槑搴︺€?/summary>
         public double Opacity { get; set; } = 0.6;
     }
 
     /// <summary>
-    /// 边方向箭头的画布渲染项：用一段三点折线（"＞"形）表示通行方向，置于边中点附近。
+    /// 杈规柟鍚戠澶寸殑鐢诲竷娓叉煋椤癸細鐢ㄤ竴娈典笁鐐规姌绾匡紙"锛?褰級琛ㄧず閫氳鏂瑰悜锛岀疆浜庤竟涓偣闄勮繎銆?
     /// </summary>
     public class MapEdgeArrowViewItem
     {
-        /// <summary>箭头一翼端点 X。</summary>
+        /// <summary>绠ご涓€缈肩鐐?X銆?/summary>
         public double X1 { get; set; }
 
-        /// <summary>箭头一翼端点 Y。</summary>
+        /// <summary>绠ご涓€缈肩鐐?Y銆?/summary>
         public double Y1 { get; set; }
 
-        /// <summary>箭尖 X（指向通行方向）。</summary>
+        /// <summary>绠皷 X锛堟寚鍚戦€氳鏂瑰悜锛夈€?/summary>
         public double Xc { get; set; }
 
-        /// <summary>箭尖 Y（指向通行方向）。</summary>
+        /// <summary>绠皷 Y锛堟寚鍚戦€氳鏂瑰悜锛夈€?/summary>
         public double Yc { get; set; }
 
-        /// <summary>箭头另一翼端点 X。</summary>
+        /// <summary>绠ご鍙︿竴缈肩鐐?X銆?/summary>
         public double X2 { get; set; }
 
-        /// <summary>箭头另一翼端点 Y。</summary>
+        /// <summary>绠ご鍙︿竴缈肩鐐?Y銆?/summary>
         public double Y2 { get; set; }
 
-        /// <summary>箭头颜色（跟随所属边的状态色）。</summary>
+        /// <summary>绠ご棰滆壊锛堣窡闅忔墍灞炶竟鐨勭姸鎬佽壊锛夈€?/summary>
         public string Stroke { get; set; } = "#00FF7F";
 
-        /// <summary>箭头线宽。</summary>
+        /// <summary>绠ご绾垮銆?/summary>
         public double StrokeThickness { get; set; } = 2;
 
-        /// <summary>箭头透明度。</summary>
+        /// <summary>绠ご閫忔槑搴︺€?/summary>
         public double Opacity { get; set; } = 0.85;
 
-        /// <summary>供 Polyline.Points 绑定的三点字符串。</summary>
+        /// <summary>渚?Polyline.Points 缁戝畾鐨勪笁鐐瑰瓧绗︿覆銆?/summary>
         public string PointsText => $"{X1},{Y1} {Xc},{Yc} {X2},{Y2}";
     }
 
-    /// <summary>地图节点的画布渲染视图项：携带绘制坐标、标签偏移与样式。</summary>
+    /// <summary>鍦板浘鑺傜偣鐨勭敾甯冩覆鏌撹鍥鹃」锛氭惡甯︾粯鍒跺潗鏍囥€佹爣绛惧亸绉讳笌鏍峰紡銆?/summary>
     public class MapNodeViewItem
     {
-        /// <summary>节点编号。</summary>
+        /// <summary>鑺傜偣缂栧彿銆?/summary>
         public string NodeId { get; set; } = string.Empty;
 
-        /// <summary>节点名称。</summary>
+        /// <summary>鑺傜偣鍚嶇О銆?/summary>
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>节点编码（缺省时回退为节点编号）。</summary>
+        /// <summary>鑺傜偣缂栫爜锛堢己鐪佹椂鍥為€€涓鸿妭鐐圭紪鍙凤級銆?/summary>
         public string NodeCode { get; set; } = string.Empty;
 
-        /// <summary>节点类型文本（取自 <c>MapNodeType</c>）。</summary>
+        /// <summary>地图标签显示文本，优先展示中文名称。</summary>
+        public string LabelText { get; set; } = string.Empty;
+
+        /// <summary>点位选择控件显示文本：节点ID（中文名称）。</summary>
+        public string DisplayText { get; set; } = string.Empty;
+
+        /// <summary>鑺傜偣绫诲瀷鏂囨湰锛堝彇鑷?<c>MapNodeType</c>锛夈€?/summary>
         public string NodeType { get; set; } = string.Empty;
 
-        /// <summary>所属区域编码。</summary>
+        /// <summary>鎵€灞炲尯鍩熺紪鐮併€?/summary>
         public string AreaCode { get; set; } = string.Empty;
 
-        /// <summary>是否启用。</summary>
+        /// <summary>区域中文名称和区域编号。</summary>
+        public string AreaName { get; set; } = string.Empty;
+
+        /// <summary>鏄惁鍚敤銆?/summary>
         public bool IsEnabled { get; set; }
 
-        /// <summary>节点逻辑 X 坐标。</summary>
+        /// <summary>鑺傜偣閫昏緫 X 鍧愭爣銆?/summary>
         public double X { get; set; }
 
-        /// <summary>节点逻辑 Y 坐标。</summary>
+        /// <summary>鑺傜偣閫昏緫 Y 鍧愭爣銆?/summary>
         public double Y { get; set; }
 
-        /// <summary>圆点绘制左上角 X（已按半径偏移）。</summary>
+        /// <summary>鍦嗙偣缁樺埗宸︿笂瑙?X锛堝凡鎸夊崐寰勫亸绉伙級銆?/summary>
         public double CanvasLeft { get; set; }
 
-        /// <summary>圆点绘制左上角 Y（已按半径偏移）。</summary>
+        /// <summary>鍦嗙偣缁樺埗宸︿笂瑙?Y锛堝凡鎸夊崐寰勫亸绉伙級銆?/summary>
         public double CanvasTop { get; set; }
 
-        /// <summary>标签左侧 X 偏移。</summary>
+        /// <summary>鏍囩宸︿晶 X 鍋忕Щ銆?/summary>
         public double LabelLeft { get; set; }
 
-        /// <summary>标签顶部 Y 偏移。</summary>
+        /// <summary>鏍囩椤堕儴 Y 鍋忕Щ銆?/summary>
         public double LabelTop { get; set; }
 
-        /// <summary>填充颜色（按节点类型区分）。</summary>
+        /// <summary>濉厖棰滆壊锛堟寜鑺傜偣绫诲瀷鍖哄垎锛夈€?/summary>
         public string Fill { get; set; } = "#00BFFF";
 
-        /// <summary>描边颜色（路径上节点高亮为金色）。</summary>
+        /// <summary>鎻忚竟棰滆壊锛堣矾寰勪笂鑺傜偣楂樹寒涓洪噾鑹诧級銆?/summary>
         public string Stroke { get; set; } = "#D8F3FF";
 
-        /// <summary>描边粗细。</summary>
+        /// <summary>鎻忚竟绮楃粏銆?/summary>
         public double StrokeThickness { get; set; } = 1;
 
-        /// <summary>整体透明度（禁用节点半透明）。</summary>
+        /// <summary>鏁翠綋閫忔槑搴︼紙绂佺敤鑺傜偣鍗婇€忔槑锛夈€?/summary>
         public double Opacity { get; set; } = 1.0;
     }
 
-    /// <summary>车辆在地图上的位置标记视图项：携带坐标、状态与样式。</summary>
+    /// <summary>杞﹁締鍦ㄥ湴鍥句笂鐨勪綅缃爣璁拌鍥鹃」锛氭惡甯﹀潗鏍囥€佺姸鎬佷笌鏍峰紡銆?/summary>
     public class VehicleMapViewItem
     {
-        /// <summary>车辆编号。</summary>
+        /// <summary>杞﹁締缂栧彿銆?/summary>
         public string VehicleId { get; set; } = string.Empty;
 
-        /// <summary>当前任务编号。</summary>
+        /// <summary>褰撳墠浠诲姟缂栧彿銆?/summary>
         public string CurrentTaskId { get; set; } = string.Empty;
 
-        /// <summary>状态文本。</summary>
+        /// <summary>鐘舵€佹枃鏈€?/summary>
         public string State { get; set; } = string.Empty;
 
-        /// <summary>当前位置（原始位置串）。</summary>
+        /// <summary>褰撳墠浣嶇疆锛堝師濮嬩綅缃覆锛夈€?/summary>
         public string Location { get; set; } = string.Empty;
 
-        /// <summary>车辆逻辑 X 坐标。</summary>
+        /// <summary>杞﹁締閫昏緫 X 鍧愭爣銆?/summary>
         public double X { get; set; }
 
-        /// <summary>车辆逻辑 Y 坐标。</summary>
+        /// <summary>杞﹁締閫昏緫 Y 鍧愭爣銆?/summary>
         public double Y { get; set; }
 
-        /// <summary>标记绘制左上角 X（已偏移）。</summary>
+        /// <summary>鏍囪缁樺埗宸︿笂瑙?X锛堝凡鍋忕Щ锛夈€?/summary>
         public double CanvasLeft { get; set; }
 
-        /// <summary>标记绘制左上角 Y（已偏移）。</summary>
+        /// <summary>鏍囪缁樺埗宸︿笂瑙?Y锛堝凡鍋忕Щ锛夈€?/summary>
         public double CanvasTop { get; set; }
 
-        /// <summary>电量百分比。</summary>
+        /// <summary>鐢甸噺鐧惧垎姣斻€?/summary>
         public double BatteryLevel { get; set; }
 
-        /// <summary>状态显示文本。</summary>
+        /// <summary>鐘舵€佹樉绀烘枃鏈€?/summary>
         public string StateText { get; set; } = string.Empty;
 
-        /// <summary>填充颜色（选中为金色，否则按状态着色）。</summary>
+        /// <summary>濉厖棰滆壊锛堥€変腑涓洪噾鑹诧紝鍚﹀垯鎸夌姸鎬佺潃鑹诧級銆?/summary>
         public string Fill { get; set; } = "#00BFFF";
     }
 }
+

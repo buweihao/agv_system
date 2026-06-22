@@ -27,7 +27,7 @@ namespace AgvDispatcher.Modules.MapModule
         {
             containerRegistry.RegisterSingleton<MockMapStore>();
             containerRegistry.RegisterSingleton<MapStaticValidator>();
-            containerRegistry.RegisterSingleton<IMapService, MockMapService>();
+            containerRegistry.RegisterSingleton<MockMapService>();
             containerRegistry.RegisterSingleton<IMapManagementService, MockMapManagementService>();
         }
     }

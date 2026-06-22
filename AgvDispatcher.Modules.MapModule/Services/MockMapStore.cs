@@ -206,76 +206,168 @@ namespace AgvDispatcher.Modules.MapModule.Services
 
         private void Seed()
         {
-            var now = DateTimeOffset.Now;
-            var snapshot = new MapSnapshotDto
-            {
-                MapId = "MAIN",
-                MapName = "AGV 主地图",
-                Version = "1.0.0",
-                UpdatedAt = now,
-                Areas =
-                [
-                    new MapAreaDto
-                    {
-                        AreaId = "A",
-                        AreaName = "作业区 A",
-                        AreaType = MapAreaType.WorkArea,
-                        BoundaryPoints =
-                        [
-                            new MapPointDto { X = 0, Y = 0 },
-                            new MapPointDto { X = 500, Y = 0 },
-                            new MapPointDto { X = 500, Y = 500 },
-                            new MapPointDto { X = 0, Y = 500 }
-                        ],
-                        Properties = new Dictionary<string, string> { ["Capacity"] = "4" }
-                    },
-                    new MapAreaDto
-                    {
-                        AreaId = "B",
-                        AreaName = "缓存区 B",
-                        AreaType = MapAreaType.WaitingArea,
-                        BoundaryPoints =
-                        [
-                            new MapPointDto { X = 500, Y = 0 },
-                            new MapPointDto { X = 850, Y = 0 },
-                            new MapPointDto { X = 850, Y = 500 },
-                            new MapPointDto { X = 500, Y = 500 }
-                        ],
-                        Properties = new Dictionary<string, string> { ["Capacity"] = "3" }
-                    }
-                ],
-                Nodes =
-                [
-                    new MapNodeDto { NodeId = "P1", NodeCode = "P1", NodeName = "P1取货点", NodeType = MapNodeType.PickPoint, X = 80, Y = 80, AreaId = "A", Enabled = true, Properties = new Dictionary<string, string> { ["Capacity"] = "1" } },
-                    new MapNodeDto { NodeId = "P2", NodeCode = "P2", NodeName = "P2取货点", NodeType = MapNodeType.PickPoint, X = 80, Y = 300, AreaId = "A", Enabled = true, Properties = new Dictionary<string, string> { ["Capacity"] = "1" } },
-                    new MapNodeDto { NodeId = "X1", NodeCode = "X1", NodeName = "中央路口", NodeType = MapNodeType.Normal, X = 400, Y = 200, AreaId = "A", Enabled = true, Properties = new Dictionary<string, string> { ["Capacity"] = "1" } },
-                    new MapNodeDto { NodeId = "W1", NodeCode = "W1", NodeName = "等待点", NodeType = MapNodeType.WaitingPoint, X = 400, Y = 420, AreaId = "A", Enabled = true, Properties = new Dictionary<string, string> { ["Capacity"] = "2" } },
-                    new MapNodeDto { NodeId = "D1", NodeCode = "D1", NodeName = "D1放货点", NodeType = MapNodeType.PutPoint, X = 720, Y = 80, AreaId = "B", Enabled = true, Properties = new Dictionary<string, string> { ["Capacity"] = "1", ["AllowedBrands"] = "RGV-A" } },
-                    new MapNodeDto { NodeId = "Charge-1", NodeCode = "Charge-1", NodeName = "1号充电位", NodeType = MapNodeType.ChargeStation, X = 720, Y = 480, AreaId = "B", Enabled = true, Properties = new Dictionary<string, string> { ["Capacity"] = "1" } }
-                ],
-                Edges =
-                [
-                    new MapEdgeDto { EdgeId = "E-P1-X1", FromNodeId = "P1", ToNodeId = "X1", Direction = MapEdgeDirection.Bidirectional, Distance = 360, Enabled = true, AreaId = "A", SpeedLimit = 1.5, Properties = new Dictionary<string, string> { ["MaxVehicleFlow"] = "1" } },
-                    new MapEdgeDto { EdgeId = "E-P2-X1", FromNodeId = "P2", ToNodeId = "X1", Direction = MapEdgeDirection.Bidirectional, Distance = 340, Enabled = true, AreaId = "A", SpeedLimit = 1.5, Properties = new Dictionary<string, string> { ["MaxVehicleFlow"] = "1" } },
-                    new MapEdgeDto { EdgeId = "E-X1-D1", FromNodeId = "X1", ToNodeId = "D1", Direction = MapEdgeDirection.OneWay, Distance = 360, Enabled = true, AreaId = "B", SpeedLimit = 1.5, Properties = new Dictionary<string, string> { ["MaxVehicleFlow"] = "1" } },
-                    new MapEdgeDto { EdgeId = "E-X1-W1", FromNodeId = "X1", ToNodeId = "W1", Direction = MapEdgeDirection.Bidirectional, Distance = 220, Enabled = true, AreaId = "A", SpeedLimit = 1.0, Properties = new Dictionary<string, string> { ["MaxVehicleFlow"] = "1" } }
-                ],
-                VendorNodeMappings =
-                [
-                    new VendorNodeMappingDto { VendorCode = "GLOBAL", SystemNodeId = "P1", VendorNodeCode = "STATION-01" },
-                    new VendorNodeMappingDto { VendorCode = "RGV-A", SystemNodeId = "D1", VendorNodeCode = "DOCK-A" }
-                ]
-            };
+            static MapPointDto P(double x, double y) => new() { X = x, Y = y };
+                static Dictionary<string, string> Props(params (string Key, string Value)[] values)
+                    => values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
+                static MapAreaDto Area(string id, string name, MapAreaType type, string color, IReadOnlyList<MapPointDto> points, params (string Key, string Value)[] properties) => new()
+                {
+                    AreaId = id,
+                    AreaName = name,
+                    AreaType = type,
+                    BoundaryPoints = points,
+                    Enabled = true,
+                    Properties = Props(properties.Prepend(("Color", color)).ToArray())
+                };
+                static MapNodeDto Node(string id, string name, MapNodeType type, double x, double y, string areaId, params (string Key, string Value)[] properties) => new()
+                {
+                    NodeId = id,
+                    NodeCode = id,
+                    NodeName = name,
+                    NodeType = type,
+                    X = x,
+                    Y = y,
+                    AreaId = areaId,
+                    Enabled = true,
+                    Properties = Props(properties)
+                };
+                static MapEdgeDto Edge(string from, string to, double distance, string areaId, MapEdgeType edgeType, double speedLimit, MapEdgeDirection direction = MapEdgeDirection.Bidirectional, bool enabled = true, params (string Key, string Value)[] properties) => new()
+                {
+                    EdgeId = $"E-{from}-{to}",
+                    FromNodeId = from,
+                    ToNodeId = to,
+                    Direction = direction,
+                    Distance = distance,
+                    EdgeType = edgeType,
+                    SpeedLimit = speedLimit,
+                    Enabled = enabled,
+                    AreaId = areaId,
+                    Properties = Props(properties)
+                };
 
-            SetCurrentVersion(snapshot, new MapVersionDto
-            {
-                MapId = snapshot.MapId,
-                MapName = snapshot.MapName,
-                Version = snapshot.Version,
-                IsCurrent = true,
-                PublishedAt = now,
-                OperatorId = "system"
-            });
+                var now = DateTimeOffset.Now;
+                var snapshot = new MapSnapshotDto
+                {
+                    MapId = "MAIN",
+                    MapName = "AGV 主地图",
+                    Version = "1.0.0",
+                    UpdatedAt = now,
+                    Areas =
+                    [
+                        Area("CAP-A", "成品库A 限流 0/3", MapAreaType.WorkArea, "#00BFA6",
+                            [P(40, 40), P(300, 40), P(300, 210), P(40, 210)],
+                            ("ZoneKind", "CapacityLimited"), ("Legend", "避流/限流控制区域"), ("Capacity", "3"), ("Label", "库区A: 0/3")),
+                        Area("RAW-B", "原料库B 限流 0/4", MapAreaType.WorkArea, "#32D583",
+                            [P(40, 440), P(300, 440), P(300, 545), P(40, 545)],
+                            ("ZoneKind", "CapacityLimited"), ("Legend", "避流/限流控制区域"), ("Capacity", "4"), ("Label", "原料库B: 0/4")),
+                        Area("QR-A", "二维码导航区", MapAreaType.Normal, "#8EA8C3",
+                            [P(40, 230), P(300, 230), P(300, 420), P(40, 420)],
+                            ("ZoneKind", "NavigationMedium"), ("Legend", "物理介质/导航模式区域"), ("NavigationMedium", "QRCode"), ("LayerHint", "GridDots")),
+                        Area("SLAM-B", "激光SLAM/CAD区", MapAreaType.Normal, "#5A7FA6",
+                            [P(320, 40), P(570, 40), P(570, 150), P(320, 150)],
+                            ("ZoneKind", "NavigationMedium"), ("Legend", "物理介质/导航模式区域"), ("NavigationMedium", "LaserSLAM"), ("LayerHint", "PgmCad")),
+                        Area("INT-01", "互斥路口区 0/1", MapAreaType.IntersectionArea, "#FFB020",
+                            [P(330, 170), P(500, 170), P(535, 260), P(455, 325), P(330, 300)],
+                            ("ZoneKind", "Interlocking"), ("Legend", "交通互斥/管制区域"), ("Capacity", "1"), ("Label", "互斥区: 0/1")),
+                        Area("FIRE-01", "消防门安全联动区", MapAreaType.BlockedArea, "#FF4D4F",
+                            [P(610, 40), P(830, 40), P(830, 180), P(610, 180)],
+                            ("ZoneKind", "FireSafety"), ("Legend", "消防/安全联动报警区域"), ("AlarmSource", "PLC-FIRE-01"), ("VisualHint", "RedDashedIdle")),
+                        Area("SPD-01", "地磅/湿滑限速区 Max 300mm/s", MapAreaType.NarrowArea, "#9B6DFF",
+                            [P(515, 220), P(830, 220), P(830, 340), P(515, 340)],
+                            ("ZoneKind", "SpeedRestricted"), ("Legend", "物理限速/特殊工艺操作区域"), ("SpeedLimit", "0.3"), ("Process", "Weighing")),
+                        Area("STBY-CHG", "待机/充电保障区", MapAreaType.ChargingArea, "#FFD700",
+                            [P(560, 380), P(830, 380), P(830, 540), P(560, 540)],
+                            ("ZoneKind", "StandbyCharging"), ("Legend", "车辆待机排队与能量保障区域"), ("Capacity", "5")),
+                        Area("MAINT-01", "静态禁行/维护候选区", MapAreaType.BlockedArea, "#777777",
+                            [P(335, 390), P(520, 390), P(520, 535), P(335, 535)],
+                            ("ZoneKind", "StaticRestricted"), ("Legend", "静态禁行/维护候选区域"), ("VisualHint", "NoEntryHatch"))
+                    ],
+                    Nodes =
+                    [
+                        Node("PICK-A1", "库区A取货口1", MapNodeType.PickPoint, 80, 80, "CAP-A", ("Capacity", "1"), ("AllowedBrands", "HIK,HANGCHA")),
+                        Node("PICK-A2", "库区A取货口2", MapNodeType.PickPoint, 170, 80, "CAP-A", ("Capacity", "1"), ("AllowedBrands", "HIK")),
+                        Node("PUT-A1", "库区A放货口", MapNodeType.PutPoint, 250, 160, "CAP-A", ("Capacity", "1")),
+                        Node("RAW-IN-01", "原料入库口1", MapNodeType.PickPoint, 70, 485, "RAW-B", ("Capacity", "1"), ("AllowedBrands", "HANGCHA")),
+                        Node("RAW-IN-02", "原料入库口2", MapNodeType.PickPoint, 145, 485, "RAW-B", ("Capacity", "1"), ("AllowedBrands", "HANGCHA")),
+                        Node("RAW-OUT-01", "原料出库口", MapNodeType.PutPoint, 245, 505, "RAW-B", ("Capacity", "1")),
+                        Node("QR-01", "二维码入口", MapNodeType.Normal, 80, 280, "QR-A", ("NavigationMedium", "QRCode")),
+                        Node("QR-02", "二维码中继", MapNodeType.Normal, 175, 330, "QR-A", ("NavigationMedium", "QRCode")),
+                        Node("QR-03", "二维码出口", MapNodeType.Normal, 270, 385, "QR-A", ("NavigationMedium", "QRCode")),
+                        Node("SLAM-01", "SLAM入口", MapNodeType.Normal, 350, 90, "SLAM-B", ("NavigationMedium", "LaserSLAM")),
+                        Node("SLAM-02", "SLAM墙边点", MapNodeType.Normal, 520, 90, "SLAM-B", ("NavigationMedium", "LaserSLAM")),
+                        Node("INT-N", "互斥北口", MapNodeType.Normal, 410, 175, "INT-01", ("Capacity", "1")),
+                        Node("INT-C", "互斥中心", MapNodeType.Normal, 430, 250, "INT-01", ("Capacity", "1")),
+                        Node("INT-S", "互斥南口", MapNodeType.Normal, 420, 315, "INT-01", ("Capacity", "1")),
+                        Node("FIRE-G1", "消防门前", MapNodeType.Door, 650, 95, "FIRE-01", ("PlcPoint", "FIRE-DOOR-01")),
+                        Node("FIRE-G2", "消防门后", MapNodeType.Door, 790, 95, "FIRE-01", ("PlcPoint", "FIRE-DOOR-02")),
+                        Node("SPEED-IN", "限速入口", MapNodeType.Normal, 550, 270, "SPD-01", ("SpeedLimit", "0.3")),
+                        Node("WEIGH-01", "自动称重点", MapNodeType.WorkStation, 665, 270, "SPD-01", ("SpeedLimit", "0.3"), ("Process", "Weighing")),
+                        Node("WASH-01", "清洗/喷淋工艺点", MapNodeType.WorkStation, 735, 315, "SPD-01", ("SpeedLimit", "0.3"), ("Process", "Wash")),
+                        Node("SPEED-OUT", "限速出口", MapNodeType.Normal, 790, 270, "SPD-01", ("SpeedLimit", "0.3")),
+                        Node("WAIT-01", "待机位01", MapNodeType.WaitingPoint, 595, 430, "STBY-CHG", ("Capacity", "1")),
+                        Node("WAIT-02", "待机位02", MapNodeType.WaitingPoint, 645, 430, "STBY-CHG", ("Capacity", "1")),
+                        Node("WAIT-03", "待机位03", MapNodeType.WaitingPoint, 595, 500, "STBY-CHG", ("Capacity", "1")),
+                        Node("PARK-01", "停车位01", MapNodeType.ParkingPoint, 700, 430, "STBY-CHG", ("Capacity", "1")),
+                        Node("CHG-01", "充电桩01", MapNodeType.ChargeStation, 760, 455, "STBY-CHG", ("Capacity", "1"), ("RatedPowerKw", "3.3")),
+                        Node("CHG-02", "充电桩02", MapNodeType.ChargeStation, 810, 455, "STBY-CHG", ("Capacity", "1"), ("RatedPowerKw", "6.6")),
+                        Node("CHG-03", "快充桩03", MapNodeType.ChargeStation, 760, 510, "STBY-CHG", ("Capacity", "1"), ("RatedPowerKw", "12.0")),
+                        Node("MAINT-IN", "维护区入口", MapNodeType.Normal, 360, 450, "MAINT-01", ("MaintenanceCandidate", "true")),
+                        Node("MAINT-OUT", "维护区出口", MapNodeType.Normal, 500, 500, "MAINT-01", ("MaintenanceCandidate", "true"))
+                    ],
+                    Edges =
+                    [
+                        Edge("PICK-A1", "PICK-A2", 90, "CAP-A", MapEdgeType.WorkRoad, 1.2, MapEdgeDirection.Bidirectional, true, ("MaxVehicleFlow", "2")),
+                        Edge("PICK-A2", "PUT-A1", 120, "CAP-A", MapEdgeType.WorkRoad, 1.2, MapEdgeDirection.Bidirectional, true, ("MaxVehicleFlow", "2")),
+                        Edge("PUT-A1", "INT-N", 210, "INT-01", MapEdgeType.MainRoad, 1.5, MapEdgeDirection.Bidirectional, true, ("ControlZone", "INT-01")),
+                        Edge("RAW-IN-01", "RAW-IN-02", 75, "RAW-B", MapEdgeType.WorkRoad, 1.0, MapEdgeDirection.Bidirectional, true, ("MaxVehicleFlow", "2")),
+                        Edge("RAW-IN-02", "RAW-OUT-01", 105, "RAW-B", MapEdgeType.WorkRoad, 1.0, MapEdgeDirection.Bidirectional, true, ("MaxVehicleFlow", "2")),
+                        Edge("RAW-OUT-01", "QR-03", 95, "QR-A", MapEdgeType.MainRoad, 1.0, MapEdgeDirection.Bidirectional, true, ("NavigationMedium", "QRCode")),
+                        Edge("QR-01", "QR-02", 110, "QR-A", MapEdgeType.Normal, 1.0, MapEdgeDirection.Bidirectional, true, ("NavigationMedium", "QRCode")),
+                        Edge("QR-02", "QR-03", 110, "QR-A", MapEdgeType.Normal, 1.0, MapEdgeDirection.Bidirectional, true, ("NavigationMedium", "QRCode")),
+                        Edge("QR-03", "INT-S", 170, "INT-01", MapEdgeType.MainRoad, 1.2, MapEdgeDirection.Bidirectional, true, ("ControlZone", "INT-01")),
+                        Edge("SLAM-01", "SLAM-02", 170, "SLAM-B", MapEdgeType.MainRoad, 1.5, MapEdgeDirection.Bidirectional, true, ("NavigationMedium", "LaserSLAM")),
+                        Edge("SLAM-02", "INT-N", 170, "INT-01", MapEdgeType.MainRoad, 1.2, MapEdgeDirection.Bidirectional, true, ("ControlZone", "INT-01")),
+                        Edge("INT-N", "INT-C", 75, "INT-01", MapEdgeType.Intersection, 0.8, MapEdgeDirection.Bidirectional, true, ("ZoneKind", "Interlocking")),
+                        Edge("INT-C", "INT-S", 70, "INT-01", MapEdgeType.Intersection, 0.8, MapEdgeDirection.Bidirectional, true, ("ZoneKind", "Interlocking")),
+                        Edge("INT-C", "FIRE-G1", 230, "FIRE-01", MapEdgeType.NarrowRoad, 1.0, MapEdgeDirection.OneWay, true, ("SafetyZone", "FIRE-01")),
+                        Edge("FIRE-G1", "FIRE-G2", 140, "FIRE-01", MapEdgeType.NarrowRoad, 0.8, MapEdgeDirection.OneWay, true, ("PlcPoint", "FIRE-DOOR-01")),
+                        Edge("FIRE-G2", "SPEED-IN", 190, "SPD-01", MapEdgeType.MainRoad, 1.2),
+                        Edge("SPEED-IN", "WEIGH-01", 115, "SPD-01", MapEdgeType.NarrowRoad, 0.3, MapEdgeDirection.Bidirectional, true, ("Process", "Weighing")),
+                        Edge("WEIGH-01", "WASH-01", 80, "SPD-01", MapEdgeType.NarrowRoad, 0.3, MapEdgeDirection.Bidirectional, true, ("Process", "WeighingWash")),
+                        Edge("WASH-01", "SPEED-OUT", 65, "SPD-01", MapEdgeType.NarrowRoad, 0.3, MapEdgeDirection.Bidirectional, true, ("Process", "Wash")),
+                        Edge("SPEED-OUT", "CHG-02", 200, "STBY-CHG", MapEdgeType.ChargingRoad, 0.8),
+                        Edge("WAIT-01", "WAIT-02", 50, "STBY-CHG", MapEdgeType.ChargingRoad, 0.6),
+                        Edge("WAIT-01", "WAIT-03", 70, "STBY-CHG", MapEdgeType.ChargingRoad, 0.6),
+                        Edge("WAIT-02", "PARK-01", 55, "STBY-CHG", MapEdgeType.ChargingRoad, 0.6),
+                        Edge("PARK-01", "CHG-01", 70, "STBY-CHG", MapEdgeType.ChargingRoad, 0.5),
+                        Edge("CHG-01", "CHG-02", 50, "STBY-CHG", MapEdgeType.ChargingRoad, 0.5),
+                        Edge("WAIT-03", "CHG-03", 165, "STBY-CHG", MapEdgeType.ChargingRoad, 0.5),
+                        Edge("CHG-03", "CHG-01", 70, "STBY-CHG", MapEdgeType.ChargingRoad, 0.5),
+                        Edge("INT-S", "MAINT-IN", 145, "MAINT-01", MapEdgeType.NarrowRoad, 0.8, MapEdgeDirection.Bidirectional, true, ("MaintenanceCandidate", "true")),
+                        Edge("MAINT-IN", "MAINT-OUT", 150, "MAINT-01", MapEdgeType.NarrowRoad, 0.5, MapEdgeDirection.Bidirectional, false, ("StaticBlockedDemo", "true")),
+                        Edge("MAINT-OUT", "WAIT-01", 140, "STBY-CHG", MapEdgeType.ChargingRoad, 0.6)
+                    ],
+                    VendorNodeMappings =
+                    [
+                        new VendorNodeMappingDto { VendorCode = "GLOBAL", SystemNodeId = "PICK-A1", VendorNodeCode = "STATION-01" },
+                        new VendorNodeMappingDto { VendorCode = "GLOBAL", SystemNodeId = "RAW-IN-01", VendorNodeCode = "RAW-IN-01" },
+                        new VendorNodeMappingDto { VendorCode = "HIK", SystemNodeId = "QR-02", VendorNodeCode = "HK_QR_002" },
+                        new VendorNodeMappingDto { VendorCode = "HIK", SystemNodeId = "INT-C", VendorNodeCode = "HK_CROSS_01" },
+                        new VendorNodeMappingDto { VendorCode = "HANGCHA", SystemNodeId = "WEIGH-01", VendorNodeCode = "HC_WEIGHT_01" },
+                        new VendorNodeMappingDto { VendorCode = "HANGCHA", SystemNodeId = "CHG-01", VendorNodeCode = "HC_CHARGE_01" },
+                        new VendorNodeMappingDto { VendorCode = "HANGCHA", SystemNodeId = "CHG-03", VendorNodeCode = "HC_FAST_CHARGE_03" },
+                        new VendorNodeMappingDto { VendorCode = "RGV-A", SystemNodeId = "FIRE-G1", VendorNodeCode = "DOOR_SAFE_A" }
+                    ]
+                };
+
+                SetCurrentVersion(snapshot, new MapVersionDto
+                {
+                    MapId = snapshot.MapId,
+                    MapName = snapshot.MapName,
+                    Version = snapshot.Version,
+                    IsCurrent = true,
+                    PublishedAt = now,
+                    OperatorId = "system"
+                });
         }
 
         private static string VersionKey(string mapId, string version) => $"{mapId}:{version}";

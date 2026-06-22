@@ -68,7 +68,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<ITaskRecoveryService, PersistentTaskRecoveryService>();
             containerRegistry.RegisterSingleton<IAlarmService, PersistentAlarmService>();
             // 真实只读静态地图查询实现已就绪；当前界面阶段仍由 MapModule 的 Mock 闭环接管注册。
-            // containerRegistry.RegisterSingleton<IMapService, PersistentMapService>();
+            containerRegistry.RegisterSingleton<IMapService, PersistentMapService>();
             containerRegistry.RegisterSingleton<ITaskConfigService, PersistentTaskConfigService>();
             containerRegistry.RegisterSingleton<IOperationLogService, PersistentOperationLogService>();
             containerRegistry.RegisterSingleton<IAuditTrailService, PersistentAuditTrailService>();

@@ -154,7 +154,7 @@
                     <DataGridTemplateColumn Header="状态" Width="1.2*">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding State}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding StateDisplay}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Foreground" Value="White" />
@@ -177,8 +177,8 @@
                     </DataGridTemplateColumn>
 
                     <DataGridTextColumn Header="任务ID" Binding="{Binding TaskId}" Width="1.5*" />
-                    <DataGridTextColumn Header="当前位置" Binding="{Binding CurrentPosition}" Width="1.2*" />
-                    <DataGridTextColumn Header="目标位置" Binding="{Binding TargetPosition}" Width="1.2*" />
+                    <DataGridTextColumn Header="当前位置" Binding="{Binding CurrentPosition}" Width="1.8*" />
+                    <DataGridTextColumn Header="目标位置" Binding="{Binding TargetPosition}" Width="1.8*" />
 
                     <DataGridTemplateColumn Header="电量" Width="1.5*">
                         <DataGridTemplateColumn.CellTemplate>

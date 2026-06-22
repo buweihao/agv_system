@@ -92,6 +92,31 @@ public sealed class DispatchOrchestrationServiceSmokeTests
     }
 
     [Fact]
+    public async Task StartTaskAsync_CommandSendFailed_ShouldReleaseReservationAndKeepTaskPending()
+    {
+        var fixture = CreateFixture();
+        fixture.Adapter.ShouldFailSendCommand = true;
+
+        var result = await fixture.Service.StartTaskAsync(StartRequest(rollingWindowSize: 2));
+
+        Assert.False(result.Success);
+        Assert.Equal(DispatchOrchestrationFailureCode.VehicleCommandFailed.ToString(), result.Error!.Code);
+        Assert.Equal(TaskState.Pending, fixture.Tasks.Task.State);
+        Assert.Null(fixture.Tasks.Task.AssignedVehicleId);
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E1"));
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E2"));
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E3"));
+        var execution = await fixture.Service.GetExecutionAsync(new GetDispatchExecutionRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001"
+        });
+        Assert.True(execution.Success);
+        Assert.Equal(DispatchExecutionState.Failed, execution.Data!.State);
+        Assert.Equal(DispatchOrchestrationFailureCode.VehicleCommandFailed.ToString(), execution.Data.LastFailureCode);
+    }
+
+    [Fact]
     public async Task AdvanceRouteAsync_ShouldReleasePassedResourcesAndAcquireNextWindow()
     {
         var fixture = CreateFixture();
@@ -220,10 +245,8 @@ public sealed class DispatchOrchestrationServiceSmokeTests
     }
 
     [Fact]
-    public async Task CancelTaskAsync_WithoutExecution_ShouldFailBecauseExecutionIsRequired()
+    public async Task CancelTaskAsync_WithoutExecution_ShouldCancelPendingTask()
     {
-        // The first implementation requires execution context so it can safely release the
-        // correct reservation and address the selected vehicle.
         var fixture = CreateFixture();
 
         var result = await fixture.Service.CancelTaskAsync(new CancelDispatchTaskRequest
@@ -233,9 +256,101 @@ public sealed class DispatchOrchestrationServiceSmokeTests
             Reason = "test cancel"
         });
 
-        Assert.False(result.Success);
-        Assert.Equal(TaskState.Pending, fixture.Tasks.Task.State);
+        Assert.True(result.Success);
+        Assert.Equal(TaskState.Cancelled, fixture.Tasks.Task.State);
         Assert.Empty(fixture.Adapter.Commands);
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E1"));
+        var execution = await fixture.Service.GetExecutionAsync(new GetDispatchExecutionRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001"
+        });
+        Assert.False(execution.Success);
+    }
+
+    [Fact]
+    public async Task RetryWaitingTaskAsync_WhenResourceStillBusy_ShouldRemainWaitingAndNotSendCommand()
+    {
+        var (fixture, waiting) = await CreateWaitingFixtureAsync();
+
+        var result = await fixture.Service.RetryWaitingTaskAsync(new RetryWaitingDispatchRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001"
+        });
+
+        Assert.True(result.Success);
+        Assert.True(result.Data!.ShouldWait);
+        Assert.False(result.Data.FirstWindowLocked);
+        Assert.False(result.Data.VehicleCommandSent);
+        Assert.Equal(DispatchExecutionState.WaitingForTraffic, result.Data.Execution.State);
+        Assert.Equal(waiting.Data!.Execution.ExecutionId, result.Data.Execution.ExecutionId);
+        Assert.Equal(waiting.Data.ReservationId, result.Data.ReservationId);
+        Assert.Empty(fixture.Adapter.Commands);
+    }
+
+    [Fact]
+    public async Task RetryWaitingTaskAsync_WhenResourceReleased_ShouldLockAndSendCommand()
+    {
+        var (fixture, waiting) = await CreateWaitingFixtureAsync();
+        var release = await fixture.Traffic.ReleaseAsync(new TrafficReleaseRequest
+        {
+            Context = Context,
+            AgvId = "AGV-OTHER",
+            TaskId = "TASK-OTHER",
+            Reason = "Allow waiting dispatch to retry"
+        });
+        Assert.True(release.Success);
+
+        var result = await fixture.Service.RetryWaitingTaskAsync(new RetryWaitingDispatchRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001"
+        });
+
+        Assert.True(result.Success);
+        Assert.True(result.Data!.FirstWindowLocked);
+        Assert.True(result.Data.VehicleCommandSent);
+        Assert.False(result.Data.ShouldWait);
+        Assert.Equal(DispatchExecutionState.Running, result.Data.Execution.State);
+        Assert.Equal(TaskState.Running, fixture.Tasks.Task.State);
+        Assert.Equal(waiting.Data!.Execution.ExecutionId, result.Data.Execution.ExecutionId);
+        Assert.Equal(waiting.Data.ReservationId, result.Data.ReservationId);
+        Assert.Single(fixture.Adapter.Commands);
+        Assert.Equal(DispatchCommandType.AssignTask, fixture.Adapter.Commands[0].CommandType);
+    }
+
+    [Fact]
+    public async Task RetryWaitingTaskAsync_UnknownExecution_ShouldFail()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Service.RetryWaitingTaskAsync(new RetryWaitingDispatchRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal(DispatchOrchestrationFailureCode.TaskNotFound.ToString(), result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task RetryWaitingTaskAsync_NotWaitingState_ShouldFail()
+    {
+        var fixture = CreateFixture();
+        var started = await fixture.Service.StartTaskAsync(StartRequest());
+        Assert.True(started.Success);
+
+        var result = await fixture.Service.RetryWaitingTaskAsync(new RetryWaitingDispatchRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal(DispatchOrchestrationFailureCode.TaskNotDispatchable.ToString(), result.Error!.Code);
+        Assert.Single(fixture.Adapter.Commands);
     }
 
     private static StartDispatchTaskRequest StartRequest(int rollingWindowSize = 1) => new()
@@ -317,6 +432,19 @@ public sealed class DispatchOrchestrationServiceSmokeTests
             reservations,
             adapter);
         return new Fixture(service, tasks, vehicles, traffic, reservations, adapter);
+    }
+
+    private static async Task<(Fixture Fixture, AgvResult<AgvDispatcher.Core.Contracts.Dispatching.Results.StartDispatchTaskResultDto> Waiting)>
+        CreateWaitingFixtureAsync()
+    {
+        var traffic = new MockTrafficControlService();
+        var fixture = CreateFixture(
+            traffic: traffic,
+            planner: new LockAfterPlanningPathPlanner(new DijkstraPathPlanner(), traffic));
+        var waiting = await fixture.Service.StartTaskAsync(StartRequest());
+        Assert.True(waiting.Success);
+        Assert.Equal(DispatchExecutionState.WaitingForTraffic, waiting.Data!.Execution.State);
+        return (fixture, waiting);
     }
 
     private static async Task<TrafficResourceState> GetEdgeStateAsync(
@@ -424,11 +552,21 @@ public sealed class DispatchOrchestrationServiceSmokeTests
     private sealed class FakeVehicleAdapterManager : IVehicleAdapterManager
     {
         internal List<DispatchCommand> Commands { get; } = new();
+        internal bool ShouldFailSendCommand { get; set; }
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<DispatchResult> SendCommandAsync(DispatchCommand command, CancellationToken cancellationToken)
         {
             Commands.Add(command);
+            if (ShouldFailSendCommand)
+            {
+                return Task.FromResult(DispatchResult.Failure(
+                    "CommandRejected",
+                    "Vehicle adapter rejected the command.",
+                    command.TaskId,
+                    command.VehicleId));
+            }
+
             return Task.FromResult(DispatchResult.Success(
                 "Accepted",
                 command.TaskId,

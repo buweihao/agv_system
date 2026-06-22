@@ -21,9 +21,11 @@ public sealed class DispatchOrchestrationCoreContractTests
             typeof(AdvanceDispatchRouteRequest),
             typeof(CancelDispatchTaskRequest),
             typeof(GetDispatchExecutionRequest),
+            typeof(RetryWaitingDispatchRequest),
             typeof(DispatchExecutionDto),
             typeof(StartDispatchTaskResultDto),
             typeof(AdvanceDispatchRouteResultDto),
+            typeof(RetryWaitingDispatchResultDto),
             typeof(DispatchExecutionState),
             typeof(DispatchOrchestrationFailureCode),
             typeof(DispatchOrchestrationEventType),
@@ -41,7 +43,8 @@ public sealed class DispatchOrchestrationCoreContractTests
             typeof(StartDispatchTaskRequest),
             typeof(AdvanceDispatchRouteRequest),
             typeof(CancelDispatchTaskRequest),
-            typeof(GetDispatchExecutionRequest)
+            typeof(GetDispatchExecutionRequest),
+            typeof(RetryWaitingDispatchRequest)
         };
 
         Assert.All(requestTypes, type => Assert.True(typeof(IAgvRequest).IsAssignableFrom(type)));
@@ -60,6 +63,7 @@ public sealed class DispatchOrchestrationCoreContractTests
         Assert.True(advance.AcquireNextWindow);
         Assert.True(cancel.ReleaseReservation);
         Assert.True(cancel.SendCancelCommand);
+        Assert.True(new RetryWaitingDispatchRequest().SendVehicleCommand);
     }
 
     [Fact]

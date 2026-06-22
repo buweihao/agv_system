@@ -416,6 +416,162 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         }
 
         /// <inheritdoc />
+        public async Task<AgvResult<RetryWaitingDispatchResultDto>> RetryWaitingTaskAsync(
+            RetryWaitingDispatchRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.TaskId))
+            {
+                return Fail<RetryWaitingDispatchResultDto>(
+                    DispatchOrchestrationFailureCode.InvalidRequest,
+                    "A task id is required.");
+            }
+
+            if (!_executions.TryGetValue(request.TaskId, out var execution))
+            {
+                return Fail<RetryWaitingDispatchResultDto>(
+                    DispatchOrchestrationFailureCode.TaskNotFound,
+                    "The dispatch execution was not found.");
+            }
+
+            if (execution.State != DispatchExecutionState.WaitingForTraffic)
+            {
+                return Fail<RetryWaitingDispatchResultDto>(
+                    DispatchOrchestrationFailureCode.TaskNotDispatchable,
+                    $"Execution '{execution.ExecutionId}' is {execution.State}, not WaitingForTraffic.");
+            }
+
+            if (string.IsNullOrWhiteSpace(execution.ReservationId) ||
+                string.IsNullOrWhiteSpace(execution.VehicleId) ||
+                string.IsNullOrWhiteSpace(execution.PlanId))
+            {
+                return Fail<RetryWaitingDispatchResultDto>(
+                    DispatchOrchestrationFailureCode.InvalidRequest,
+                    "The waiting execution is missing its vehicle, plan, or reservation identifier.");
+            }
+
+            var reservationId = execution.ReservationId!;
+            var vehicleId = execution.VehicleId!;
+            var planId = execution.PlanId!;
+
+            var task = _taskService.GetTask(request.TaskId);
+            if (task is null)
+            {
+                return Fail<RetryWaitingDispatchResultDto>(
+                    DispatchOrchestrationFailureCode.TaskNotFound,
+                    $"Task '{request.TaskId}' was not found.");
+            }
+
+            // Retry only the existing rolling-window reservation. Replanning and reservation
+            // creation deliberately remain outside this explicit waiting-state entry point.
+            var acquireResult = await _routeReservationService.AcquireNextWindowAsync(
+                new AcquireNextRouteWindowRequest
+                {
+                    Context = request.Context,
+                    ReservationId = reservationId,
+                    CurrentNodeId = FirstNonEmpty(execution.CurrentNodeId, task.SourceNodeId),
+                    CurrentSegmentSequence = execution.CurrentSegmentSequence,
+                    RollingWindowSize = execution.RollingWindowSize
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            if (acquireResult.Data?.ShouldWait == true)
+            {
+                execution = CopyExecution(execution, state: DispatchExecutionState.WaitingForTraffic);
+                SaveExecution(execution, DispatchOrchestrationEventType.WaitingForTraffic, acquireResult.Data.Message);
+                return AgvResult<RetryWaitingDispatchResultDto>.Ok(new RetryWaitingDispatchResultDto
+                {
+                    Execution = execution,
+                    TaskId = execution.TaskId,
+                    VehicleId = vehicleId,
+                    PlanId = planId,
+                    ReservationId = reservationId,
+                    ShouldWait = true,
+                    Message = acquireResult.Data.Message
+                });
+            }
+
+            if (acquireResult.Data?.RequiresReplan == true)
+            {
+                execution = CopyExecution(execution, state: DispatchExecutionState.Replanning);
+                SaveExecution(execution, DispatchOrchestrationEventType.ReplanRequired, acquireResult.Data.Message);
+                return AgvResult<RetryWaitingDispatchResultDto>.Ok(new RetryWaitingDispatchResultDto
+                {
+                    Execution = execution,
+                    TaskId = execution.TaskId,
+                    VehicleId = vehicleId,
+                    PlanId = planId,
+                    ReservationId = reservationId,
+                    RequiresReplan = true,
+                    Message = acquireResult.Data.Message
+                });
+            }
+
+            if (!acquireResult.Success || acquireResult.Data?.Acquired != true)
+            {
+                return Fail<RetryWaitingDispatchResultDto>(
+                    DispatchOrchestrationFailureCode.FirstWindowAcquireFailed,
+                    acquireResult.Message);
+            }
+
+            var reservationResult = await _routeReservationService.GetReservationAsync(
+                new GetRouteReservationRequest
+                {
+                    Context = request.Context,
+                    ReservationId = reservationId
+                },
+                cancellationToken).ConfigureAwait(false);
+            if (!reservationResult.Success || reservationResult.Data is null)
+            {
+                return Fail<RetryWaitingDispatchResultDto>(
+                    DispatchOrchestrationFailureCode.RouteReservationFailed,
+                    reservationResult.Message);
+            }
+
+            var startResult = await CompleteDispatchStartAsync(
+                new StartDispatchTaskRequest
+                {
+                    Context = request.Context,
+                    TaskId = request.TaskId,
+                    RollingWindowSize = execution.RollingWindowSize,
+                    SendVehicleCommand = request.SendVehicleCommand
+                },
+                task,
+                new MapSnapshotDto
+                {
+                    MapId = execution.MapId ?? reservationResult.Data.MapId,
+                    Version = execution.MapVersion ?? reservationResult.Data.MapVersion
+                },
+                new PathPlanResult
+                {
+                    PlanId = planId,
+                    IsReachable = true,
+                    Segments = reservationResult.Data.Segments.Select(segment => segment.Segment).ToArray()
+                },
+                execution,
+                reservationId,
+                cancellationToken).ConfigureAwait(false);
+            if (!startResult.Success || startResult.Data is null)
+            {
+                return AgvResult<RetryWaitingDispatchResultDto>.Fail(
+                    startResult.Error ?? new AgvError(startResult.Code.ToString(), startResult.Message));
+            }
+
+            return AgvResult<RetryWaitingDispatchResultDto>.Ok(new RetryWaitingDispatchResultDto
+            {
+                Execution = startResult.Data.Execution,
+                TaskId = startResult.Data.TaskId,
+                VehicleId = startResult.Data.VehicleId,
+                PlanId = startResult.Data.PlanId,
+                ReservationId = startResult.Data.ReservationId,
+                FirstWindowLocked = startResult.Data.FirstWindowLocked,
+                VehicleCommandSent = startResult.Data.VehicleCommandSent,
+                CommandId = startResult.Data.CommandId,
+                Message = startResult.Data.Message
+            });
+        }
+
+        /// <inheritdoc />
         public async Task<AgvResult> CancelTaskAsync(
             CancelDispatchTaskRequest request,
             CancellationToken cancellationToken = default)
@@ -433,7 +589,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             if (!_executions.TryGetValue(request.TaskId, out var execution))
             {
-                return Fail(DispatchOrchestrationFailureCode.TaskNotFound, "The dispatch execution was not found.");
+                _taskService.CancelTask(request.TaskId, request.Reason);
+                return AgvResult.Ok($"Task '{request.TaskId}' was canceled without dispatch execution.");
             }
 
             execution = CopyExecution(execution, state: DispatchExecutionState.Canceling);
@@ -554,10 +711,25 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 }, cancellationToken).ConfigureAwait(false);
                 if (!commandResult.Succeeded)
                 {
+                    var failureMessage = commandResult.Message;
+                    var releaseResult = await _routeReservationService.ReleaseReservationAsync(
+                        new ReleaseRouteReservationRequest
+                        {
+                            Context = request.Context,
+                            ReservationId = reservationId,
+                            Reason = "Release reservation because vehicle command failed"
+                        },
+                        cancellationToken).ConfigureAwait(false);
+                    if (!releaseResult.Success)
+                    {
+                        failureMessage = $"Vehicle command failed: {commandResult.Message}; " +
+                            $"reservation release failed: {releaseResult.Message}";
+                    }
+
                     return FailExecution<StartDispatchTaskResultDto>(
                         execution,
                         DispatchOrchestrationFailureCode.VehicleCommandFailed,
-                        commandResult.Message);
+                        failureMessage);
                 }
 
                 execution = CopyExecution(execution, state: DispatchExecutionState.CommandSent);

@@ -24,6 +24,13 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Interfaces
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Retries the first rolling-window lock for an existing execution that is waiting for traffic.
+        /// </summary>
+        Task<AgvResult<RetryWaitingDispatchResultDto>> RetryWaitingTaskAsync(
+            RetryWaitingDispatchRequest request,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Advances a running route by releasing passed resources and optionally acquiring the next window.
         /// </summary>
         Task<AgvResult<AdvanceDispatchRouteResultDto>> AdvanceRouteAsync(

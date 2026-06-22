@@ -1,4 +1,7 @@
 using System.Collections.Concurrent;
+using AgvDispatcher.Core.Contracts.Common;
+using AgvDispatcher.Core.Contracts.Dispatching.Interfaces;
+using AgvDispatcher.Core.Contracts.Dispatching.Requests;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
@@ -16,6 +19,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly IAuditTrailService _auditTrail;
         private readonly IChargeStationRepository _chargeStationRepository;
         private readonly IVehicleStateStore _vehicleStateStore;
+        private readonly IDispatchOrchestrationService _dispatchOrchestrationService;
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _runningTasks = new(StringComparer.OrdinalIgnoreCase);
 
         public MockTaskExecutionSimulator(
@@ -24,7 +28,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             IVehicleAdapterManager vehicleAdapterManager,
             IAuditTrailService auditTrail,
             IChargeStationRepository chargeStationRepository,
-            IVehicleStateStore vehicleStateStore)
+            IVehicleStateStore vehicleStateStore,
+            IDispatchOrchestrationService dispatchOrchestrationService)
         {
             _taskService = taskService;
             // _mapService = mapService;
@@ -32,6 +37,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             _auditTrail = auditTrail;
             _chargeStationRepository = chargeStationRepository;
             _vehicleStateStore = vehicleStateStore;
+            _dispatchOrchestrationService = dispatchOrchestrationService;
         }
 
         public void Start(TaskOrder task, string vehicleId)
@@ -144,14 +150,33 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     IssuedBy = nameof(MockTaskExecutionSimulator)
                 }, cancellationToken);
 
-                _taskService.UpdateTaskProgress(taskId, 100, task.TargetNodeId);
-
                 if (task.TaskType == "Charge")
                 {
                     await SimulateChargingAsync(task, vehicleId, cancellationToken);
                 }
 
-                _taskService.UpdateTaskState(taskId, TaskState.Completed);
+                var completion = await _dispatchOrchestrationService.CompleteTaskAsync(
+                    new CompleteDispatchTaskRequest
+                    {
+                        Context = new RequestContext { SourceModule = nameof(MockTaskExecutionSimulator) },
+                        TaskId = taskId,
+                        VehicleId = vehicleId,
+                        CurrentNodeId = task.TargetNodeId
+                    },
+                    cancellationToken);
+                if (!completion.Success)
+                {
+                    _auditTrail.Record(new OperationLog
+                    {
+                        Category = "Task",
+                        Action = "SimulationCompletionFailed",
+                        Message = $"Task {taskId} reached its target but completion cleanup failed: {completion.Message}",
+                        TaskId = taskId,
+                        VehicleId = vehicleId,
+                        Operator = nameof(MockTaskExecutionSimulator)
+                    });
+                    return;
+                }
 
                 _auditTrail.Record(new OperationLog
                 {

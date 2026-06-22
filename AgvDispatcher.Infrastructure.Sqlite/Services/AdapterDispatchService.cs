@@ -71,6 +71,15 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     taskId), "AssignTask");
             }
 
+            if (!result.Data.FirstWindowLocked || !result.Data.VehicleCommandSent)
+            {
+                return AuditAndReturn(DispatchResult.Failure(
+                    "WaitingForTraffic",
+                    result.Data.Message ?? "The task is waiting for traffic resources; no vehicle command was sent.",
+                    taskId,
+                    result.Data.VehicleId), "AssignTask");
+            }
+
             var task = _taskService.GetTask(taskId);
             var vehicle = _vehicleService.GetVehicle(result.Data.VehicleId);
             if (task is not null && vehicle?.AdapterType.StartsWith("Mock", StringComparison.OrdinalIgnoreCase) == true &&

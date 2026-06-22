@@ -75,6 +75,27 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Requests
     }
 
     /// <summary>
+    /// Requests completion of a dispatch execution after the vehicle reaches its destination.
+    /// </summary>
+    public sealed class CompleteDispatchTaskRequest : IAgvRequest
+    {
+        /// <summary>Gets the request context.</summary>
+        public RequestContext Context { get; init; } = new();
+
+        /// <summary>Gets the completed task identifier.</summary>
+        public string TaskId { get; init; } = string.Empty;
+
+        /// <summary>Gets the vehicle identifier reporting completion.</summary>
+        public string VehicleId { get; init; } = string.Empty;
+
+        /// <summary>Gets the final node reported by the vehicle.</summary>
+        public string? CurrentNodeId { get; init; }
+
+        /// <summary>Gets a value indicating whether the route reservation should be released.</summary>
+        public bool ReleaseReservation { get; init; } = true;
+    }
+
+    /// <summary>
     /// Requests the current dispatch execution for a task.
     /// </summary>
     public sealed class GetDispatchExecutionRequest : IAgvRequest

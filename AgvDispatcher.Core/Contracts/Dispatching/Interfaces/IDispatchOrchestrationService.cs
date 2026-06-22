@@ -38,6 +38,13 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Interfaces
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Completes a running dispatch execution and releases its remaining route reservation.
+        /// </summary>
+        Task<AgvResult> CompleteTaskAsync(
+            CompleteDispatchTaskRequest request,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Cancels a dispatch execution and optionally releases its reservation and sends a vehicle command.
         /// </summary>
         Task<AgvResult> CancelTaskAsync(

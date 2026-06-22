@@ -19,6 +19,7 @@ public sealed class DispatchOrchestrationCoreContractTests
             typeof(IDispatchOrchestrationService),
             typeof(StartDispatchTaskRequest),
             typeof(AdvanceDispatchRouteRequest),
+            typeof(CompleteDispatchTaskRequest),
             typeof(CancelDispatchTaskRequest),
             typeof(GetDispatchExecutionRequest),
             typeof(RetryWaitingDispatchRequest),

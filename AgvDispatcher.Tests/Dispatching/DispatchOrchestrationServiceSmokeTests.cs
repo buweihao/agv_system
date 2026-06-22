@@ -172,6 +172,49 @@ public sealed class DispatchOrchestrationServiceSmokeTests
     }
 
     [Fact]
+    public async Task CompleteTaskAsync_ShouldReleaseReservationAndAllowSameVehicleToRunNextTask()
+    {
+        var fixture = CreateFixture();
+        var first = await fixture.Service.StartTaskAsync(StartRequest(rollingWindowSize: 2));
+        Assert.True(first.Success);
+
+        var completed = await fixture.Service.CompleteTaskAsync(new CompleteDispatchTaskRequest
+        {
+            Context = Context,
+            TaskId = fixture.Tasks.Task.TaskId,
+            VehicleId = "AGV-001",
+            CurrentNodeId = "N4"
+        });
+
+        Assert.True(completed.Success);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.Task.State);
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E1"));
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E2"));
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E3"));
+
+        var firstExecution = await fixture.Service.GetExecutionAsync(new GetDispatchExecutionRequest
+        {
+            Context = Context,
+            TaskId = fixture.Tasks.Task.TaskId
+        });
+        Assert.Equal(DispatchExecutionState.Completed, firstExecution.Data!.State);
+
+        var secondTask = fixture.Tasks.AddTask("TASK-002");
+        var second = await fixture.Service.StartTaskAsync(new StartDispatchTaskRequest
+        {
+            Context = Context,
+            TaskId = secondTask.TaskId,
+            PreferredVehicleId = "AGV-001",
+            RollingWindowSize = 2
+        });
+
+        Assert.True(second.Success);
+        Assert.True(second.Data!.FirstWindowLocked);
+        Assert.True(second.Data.VehicleCommandSent);
+        Assert.Equal(TaskState.Running, secondTask.State);
+    }
+
+    [Fact]
     public async Task GetExecutionAsync_ShouldReturnCurrentExecution()
     {
         var fixture = CreateFixture();
@@ -485,6 +528,20 @@ public sealed class DispatchOrchestrationServiceSmokeTests
             {
                 _tasks[Task.TaskId] = Task;
             }
+        }
+
+        internal TaskOrder AddTask(string taskId)
+        {
+            var task = new TaskOrder
+            {
+                TaskId = taskId,
+                State = TaskState.Pending,
+                SourceNodeId = "N1",
+                TargetNodeId = "N4",
+                Priority = TaskPriority.Normal
+            };
+            _tasks[task.TaskId] = task;
+            return task;
         }
 
         public IReadOnlyList<TaskOrder> GetTasks() => _tasks.Values.ToArray();

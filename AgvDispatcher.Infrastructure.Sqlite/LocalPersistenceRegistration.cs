@@ -12,6 +12,7 @@ using AgvDispatcher.Core.Contracts.Dispatching.Interfaces;
 using AgvDispatcher.Core.Contracts.Planning.Interfaces;
 using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
 using AgvDispatcher.Core.Contracts.Traffic.Interfaces;
+using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Infrastructure.Mock.Planning;
 using AgvDispatcher.Infrastructure.Mock.Reservations;
 using AgvDispatcher.Infrastructure.Mock.Traffic;
@@ -77,7 +78,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IChargeService, PersistentChargeService>();
             containerRegistry.RegisterSingleton<ITaskRecoveryService, PersistentTaskRecoveryService>();
             containerRegistry.RegisterSingleton<IAlarmService, PersistentAlarmService>();
-            // containerRegistry.RegisterSingleton<IMapService, PersistentMapService>();
+            containerRegistry.RegisterSingleton<IMapService, PersistentMapService>();
             containerRegistry.RegisterSingleton<ITaskConfigService, PersistentTaskConfigService>();
             containerRegistry.RegisterSingleton<IOperationLogService, PersistentOperationLogService>();
             containerRegistry.RegisterSingleton<IAuditTrailService, PersistentAuditTrailService>();

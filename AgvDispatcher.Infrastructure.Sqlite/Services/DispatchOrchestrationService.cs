@@ -636,6 +636,72 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         }
 
         /// <inheritdoc />
+        public async Task<AgvResult> CompleteTaskAsync(
+            CompleteDispatchTaskRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.TaskId) ||
+                string.IsNullOrWhiteSpace(request.VehicleId))
+            {
+                return Fail(
+                    DispatchOrchestrationFailureCode.InvalidRequest,
+                    "A task id and vehicle id are required.");
+            }
+
+            var task = _taskService.GetTask(request.TaskId);
+            if (task is null)
+            {
+                return Fail(
+                    DispatchOrchestrationFailureCode.TaskNotFound,
+                    $"Task '{request.TaskId}' was not found.");
+            }
+
+            if (!_executions.TryGetValue(request.TaskId, out var execution))
+            {
+                return Fail(
+                    DispatchOrchestrationFailureCode.TaskNotFound,
+                    $"Dispatch execution for task '{request.TaskId}' was not found.");
+            }
+
+            if (!string.Equals(execution.VehicleId, request.VehicleId, StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail(
+                    DispatchOrchestrationFailureCode.VehicleNotFound,
+                    "The vehicle does not own this dispatch execution.");
+            }
+
+            // Completion closes the rolling-window lifecycle. Any segments not explicitly
+            // released by progress reports are released here so they cannot block the next task.
+            if (request.ReleaseReservation && !string.IsNullOrWhiteSpace(execution.ReservationId))
+            {
+                var releaseResult = await _routeReservationService.ReleaseReservationAsync(
+                    new ReleaseRouteReservationRequest
+                    {
+                        Context = request.Context,
+                        ReservationId = execution.ReservationId,
+                        Reason = "Task completed"
+                    },
+                    cancellationToken).ConfigureAwait(false);
+                if (!releaseResult.Success)
+                {
+                    return Fail(
+                        DispatchOrchestrationFailureCode.RouteReservationFailed,
+                        releaseResult.Message);
+                }
+            }
+
+            var finalNodeId = FirstNonEmpty(request.CurrentNodeId, task.TargetNodeId);
+            _taskService.UpdateTaskProgress(request.TaskId, 100, finalNodeId);
+            _taskService.UpdateTaskState(request.TaskId, TaskState.Completed);
+            execution = CopyExecution(
+                execution,
+                state: DispatchExecutionState.Completed,
+                currentNodeId: finalNodeId);
+            SaveExecution(execution, DispatchOrchestrationEventType.TaskCompleted, "Task execution completed.");
+            return AgvResult.Ok($"Task '{request.TaskId}' was completed.");
+        }
+
+        /// <inheritdoc />
         public Task<AgvResult<DispatchExecutionDto>> GetExecutionAsync(
             GetDispatchExecutionRequest request,
             CancellationToken cancellationToken = default)

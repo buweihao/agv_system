@@ -24,11 +24,11 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0" Background="#1A2B3C" Margin="0,0,0,10">
-                <local:TaskMainPanelView />
+                <local:TaskMainPanelView x:Name="mainPanelView" />
             </Grid>
 
             <Grid Grid.Row="1" Background="#0F1A24">
-                <local:TaskDetailView />
+                <local:TaskDetailView DataContext="{Binding DataContext.SelectedTask, ElementName=mainPanelView}" />
             </Grid>
         </Grid>
     </Grid>

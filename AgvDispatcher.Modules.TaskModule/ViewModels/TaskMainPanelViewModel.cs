@@ -47,6 +47,13 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             set => SetProperty(ref _taskList, value);
         }
 
+        private TaskModel? _selectedTask;
+        public TaskModel? SelectedTask
+        {
+            get => _selectedTask;
+            set => SetProperty(ref _selectedTask, value);
+        }
+
         private ObservableCollection<TaskModel> _pagedTaskList = new();
         public ObservableCollection<TaskModel> PagedTaskList
         {

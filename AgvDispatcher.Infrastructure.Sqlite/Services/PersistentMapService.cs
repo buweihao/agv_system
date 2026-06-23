@@ -205,7 +205,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public double GetPathDistance(string startNodeId, string endNodeId)
         {
-            return FindPlannedPath(startNodeId, endNodeId).Distance;
+            return FindPlannedPath(startNodeId, endNodeId).TotalLength;
         }
 
         public IReadOnlyList<MapNode> FindReachableNodes(string startNodeId) =>

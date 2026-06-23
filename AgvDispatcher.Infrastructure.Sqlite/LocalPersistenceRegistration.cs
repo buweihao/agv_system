@@ -52,6 +52,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             // Okapi Registration
             containerRegistry.RegisterInstance(new HttpClient());
             containerRegistry.RegisterInstance(new OkapiOptions());
+            containerRegistry.RegisterSingleton<IOkapiProtocolTraceStore, InMemoryOkapiProtocolTraceStore>();
             containerRegistry.RegisterSingleton<OkapiProtocolLogger>();
             containerRegistry.RegisterSingleton<OkapiClient>();
             containerRegistry.RegisterSingleton<OkapiCallbackServer>();
@@ -98,6 +99,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite
 
         private static string GetDatabasePath()
         {
+            var configuredPath = Environment.GetEnvironmentVariable("AGV_DISPATCHER_DB_PATH");
+            if (!string.IsNullOrWhiteSpace(configuredPath))
+            {
+                return Path.GetFullPath(configuredPath);
+            }
+
             var directory = AppDomain.CurrentDomain.BaseDirectory;
             return Path.Combine(directory, "agv_dispatcher.db");
         }

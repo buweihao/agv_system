@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
+    <ProjectReference Include="..\AgvDispatcher.DebugDashboard\AgvDispatcher.DebugDashboard.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Infrastructure.Sqlite\AgvDispatcher.Infrastructure.Sqlite.csproj" />
     

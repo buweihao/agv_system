@@ -1,0 +1,351 @@
+<Window x:Class="AgvDispatcher.DebugDashboard.Views.DebugDashboardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:converters="clr-namespace:AgvDispatcher.DebugDashboard.Converters"
+        Title="AGV 调试数据大面板"
+        Width="1440"
+        Height="900"
+        MinWidth="1180"
+        MinHeight="720"
+        Background="#050B14">
+    <Window.Resources>
+        <converters:TrafficStateBrushConverter x:Key="TrafficStateBrushConverter"/>
+        <Style x:Key="PanelBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#0A111E"/>
+            <Setter Property="BorderBrush" Value="#1A2B3C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+        <Style x:Key="DashboardDataGridStyle" TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="CanUserDeleteRows" Value="False"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="Background" Value="#08111E"/>
+            <Setter Property="Foreground" Value="#D8E8F8"/>
+            <Setter Property="RowBackground" Value="#0A1422"/>
+            <Setter Property="AlternatingRowBackground" Value="#0D1A2A"/>
+            <Setter Property="BorderBrush" Value="#1A2B3C"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#1A2B3C"/>
+            <Setter Property="VerticalGridLinesBrush" Value="#1A2B3C"/>
+            <Setter Property="ColumnHeaderStyle">
+                <Setter.Value>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Foreground" Value="Black"/>
+                        <Setter Property="Background" Value="#D8E8F8"/>
+                        <Setter Property="BorderBrush" Value="#1A2B3C"/>
+                        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="Padding" Value="8,6"/>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="SelectionUnit" Value="FullRow"/>
+        </Style>
+        <Style x:Key="CellTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#D8E8F8"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="StateCellTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CellTextStyle}">
+            <Setter Property="Foreground" Value="{Binding State, Converter={StaticResource TrafficStateBrushConverter}}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="SummaryValueStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontSize" Value="28"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="SummaryLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8FA8BF"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,6,0,0"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Height="64" Background="#050B14" Margin="16,10,16,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="AGV 调试数据大面板"
+                           Foreground="White"
+                           FontSize="24"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding LastRefreshTime, StringFormat=刷新：{0:yyyy-MM-dd HH:mm:ss}}"
+                           Foreground="#8FA8BF"
+                           FontSize="14"
+                           Margin="20,4,0,0"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <CheckBox Content="自动刷新"
+                          IsChecked="{Binding IsAutoRefreshEnabled}"
+                          Foreground="#D8E8F8"
+                          VerticalAlignment="Center"
+                          Margin="0,0,14,0"/>
+                <ComboBox Width="72"
+                          ItemsSource="{Binding RefreshIntervals}"
+                          SelectedItem="{Binding SelectedRefreshIntervalSeconds}"
+                          Margin="0,0,14,0"/>
+                <TextBlock Text="秒"
+                           Foreground="#8FA8BF"
+                           VerticalAlignment="Center"
+                           Margin="-10,0,14,0"/>
+                <Button Content="刷新"
+                        Command="{Binding RefreshCommand}"
+                        Width="72"
+                        Height="32"
+                        Margin="0,0,14,0"/>
+                <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         Width="260"
+                         Height="32"
+                         VerticalContentAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <StatusBar DockPanel.Dock="Bottom" Background="#07101B" Foreground="#B8C7D9">
+            <StatusBarItem Content="{Binding StatusMessage}"/>
+            <Separator/>
+            <StatusBarItem Content="{Binding IsRefreshing, StringFormat=刷新中：{0}}"/>
+        </StatusBar>
+
+        <TabControl Margin="16,0,16,16"
+                    Background="#050B14"
+                    BorderBrush="#1A2B3C">
+            <TabItem Header="总览">
+                <Grid Margin="8">
+                    <UniformGrid Columns="4" Rows="2">
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding TaskCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="当前任务" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding RunningTaskCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="Running 任务" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding WaitingForTrafficTaskCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="WaitingForTraffic" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding FaultVehicleCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="Fault 车辆" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding LockedResourceCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="Locked 资源" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding OccupiedResourceCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="Occupied 资源" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding BlockedResourceCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="Blocked 资源" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorderStyle}" Margin="6">
+                            <StackPanel>
+                                <TextBlock Text="{Binding RecentOkapiErrorCount}" Style="{StaticResource SummaryValueStyle}"/>
+                                <TextBlock Text="Okapi 错误" Style="{StaticResource SummaryLabelStyle}"/>
+                            </StackPanel>
+                        </Border>
+                    </UniformGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="任务与执行">
+                <Grid Margin="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <DataGrid Grid.Column="0"
+                              Style="{StaticResource DashboardDataGridStyle}"
+                              ItemsSource="{Binding Tasks}"
+                              SelectedItem="{Binding SelectedTask}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                            <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
+                            <DataGridTextColumn Header="Vehicle" Binding="{Binding AssignedVehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
+                            <DataGridTextColumn Header="Source" Binding="{Binding SourceNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                            <DataGridTextColumn Header="Target" Binding="{Binding TargetNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                            <DataGridTextColumn Header="Current" Binding="{Binding CurrentNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                            <DataGridTextColumn Header="Progress" Binding="{Binding ProgressPercent}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                            <DataGridTextColumn Header="Priority" Binding="{Binding Priority}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                            <DataGridTextColumn Header="CreatedAt" Binding="{Binding CreatedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                            <DataGridTextColumn Header="Reason" Binding="{Binding FailureReason}" ElementStyle="{StaticResource CellTextStyle}" Width="180"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Grid Grid.Column="1" Margin="10,0,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <DataGrid Grid.Row="0" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding SelectedTaskExecutions}" Margin="0,0,0,6">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ExecutionId" Binding="{Binding ExecutionId}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                                <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                                <DataGridTextColumn Header="PlanId" Binding="{Binding PlanId}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
+                                <DataGridTextColumn Header="ReservationId" Binding="{Binding ReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <DataGrid Grid.Row="1" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding SelectedTaskReservations}" Margin="0,6,0,0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="ReservationId" Binding="{Binding ReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                                <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                                <DataGridTextColumn Header="Window" Binding="{Binding CurrentWindow}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                                <DataGridTextColumn Header="UpdatedAt" Binding="{Binding UpdatedAt, StringFormat=HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="车辆">
+                <DataGrid Margin="8" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding Vehicles}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="VehicleId" Binding="{Binding VehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                        <DataGridTextColumn Header="Code" Binding="{Binding VehicleCode}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                        <DataGridTextColumn Header="Brand" Binding="{Binding Brand}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                        <DataGridTextColumn Header="Adapter" Binding="{Binding AdapterType}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
+                        <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                        <DataGridCheckBoxColumn Header="Online" Binding="{Binding IsOnline}" Width="80"/>
+                        <DataGridTextColumn Header="Battery" Binding="{Binding BatteryLevel}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                        <DataGridTextColumn Header="Location" Binding="{Binding Location}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
+                        <DataGridTextColumn Header="Task" Binding="{Binding CurrentTaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                        <DataGridCheckBoxColumn Header="Alarm" Binding="{Binding HasAlarm}" Width="80"/>
+                        <DataGridTextColumn Header="AlarmCode" Binding="{Binding ActiveAlarmCode}" ElementStyle="{StaticResource StateCellTextStyle}" Width="110"/>
+                        <DataGridTextColumn Header="AlarmMessage" Binding="{Binding ActiveAlarmMessage}" ElementStyle="{StaticResource StateCellTextStyle}" Width="220"/>
+                        <DataGridTextColumn Header="ReportedAt" Binding="{Binding ReportedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <TabItem Header="交通资源">
+                <DataGrid Margin="8" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding TrafficResources}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Type" Binding="{Binding ResourceType}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                        <DataGridTextColumn Header="ResourceId" Binding="{Binding ResourceId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                        <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource StateCellTextStyle}" Width="100"/>
+                        <DataGridTextColumn Header="OccupiedBy" Binding="{Binding OccupiedByAgvId}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                        <DataGridTextColumn Header="ReservedBy" Binding="{Binding ReservedByAgvId}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                        <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
+                        <DataGridTextColumn Header="ReservationId" Binding="{Binding ReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="170"/>
+                        <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" ElementStyle="{StaticResource CellTextStyle}" Width="220"/>
+                        <DataGridTextColumn Header="ExpireAt" Binding="{Binding ExpireAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                        <DataGridTextColumn Header="UpdatedAt" Binding="{Binding UpdatedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <TabItem Header="路线预约">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="2*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <DataGrid Grid.Row="0" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding RouteReservations}" SelectedItem="{Binding SelectedRouteReservation}" Margin="0,0,0,8">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="ReservationId" Binding="{Binding ReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="170"/>
+                            <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
+                            <DataGridTextColumn Header="VehicleId" Binding="{Binding VehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                            <DataGridTextColumn Header="PlanId" Binding="{Binding PlanId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="MapId" Binding="{Binding MapId}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                            <DataGridTextColumn Header="MapVersion" Binding="{Binding MapVersion}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                            <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                            <DataGridTextColumn Header="WindowSize" Binding="{Binding RollingWindowSize}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                            <DataGridTextColumn Header="Window" Binding="{Binding CurrentWindow}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                            <DataGridTextColumn Header="UpdatedAt" Binding="{Binding UpdatedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <DataGrid Grid.Row="1" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding SelectedReservationSegments}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Sequence" Binding="{Binding Sequence}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                            <DataGridTextColumn Header="FromNode" Binding="{Binding FromNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="ToNode" Binding="{Binding ToNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="EdgeId" Binding="{Binding EdgeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridCheckBoxColumn Header="Locked" Binding="{Binding IsLocked}" Width="90"/>
+                            <DataGridCheckBoxColumn Header="Released" Binding="{Binding IsReleased}" Width="90"/>
+                            <DataGridTextColumn Header="TrafficReservationIds" Binding="{Binding TrafficReservationIds}" ElementStyle="{StaticResource CellTextStyle}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Okapi 协议">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="2*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <DataGrid Grid.Row="0" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding OkapiProtocolRecords}" SelectedItem="{Binding SelectedOkapiRecord}" Margin="0,0,0,8">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Time" Binding="{Binding Time, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                            <DataGridTextColumn Header="Direction" Binding="{Binding Direction}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
+                            <DataGridTextColumn Header="VehicleId" Binding="{Binding VehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                            <DataGridTextColumn Header="CommandType" Binding="{Binding CommandType}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
+                            <DataGridTextColumn Header="Url" Binding="{Binding Url}" ElementStyle="{StaticResource CellTextStyle}" Width="220"/>
+                            <DataGridTextColumn Header="Error" Binding="{Binding ErrorMessage}" ElementStyle="{StaticResource StateCellTextStyle}" Width="220"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding SelectedOkapiRecord.RequestBody}"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Background="#08111E"
+                                 Foreground="#D8E8F8"
+                                 BorderBrush="#1A2B3C"
+                                 Margin="0,0,6,0"/>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding SelectedOkapiRecord.ResponseBody}"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Background="#08111E"
+                                 Foreground="#D8E8F8"
+                                 BorderBrush="#1A2B3C"
+                                 Margin="6,0,0,0"/>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

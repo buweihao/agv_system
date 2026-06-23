@@ -2,7 +2,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
 {
     public class OkapiOptions
     {
-        public string BaseUrl { get; set; } = "https://m1.apifoxmock.com/m1/6824505-6538483-default/api/agv";
+        public string BaseUrl { get; set; } = "https://13bc2660-732d-4d30-9b21-03d09ed66e8a.mock.pstmn.io/api/agv";
         public string ListenUrl { get; set; } = "http://127.0.0.1:8080/api/";
         
         public string ApiGetAgvInfos { get; set; } = "GetAgvInfos";
@@ -14,7 +14,7 @@ namespace AgvDispatcher.Infrastructure.Okapi
         public int TimeoutSeconds { get; set; } = 10;
         
         public bool EnableCallbackServer { get; set; } = true;
-        public bool EnableStatusPolling { get; set; } = false;
+        public bool EnableStatusPolling { get; set; } = true;
         public int StatusPollingIntervalSeconds { get; set; } = 2;
     }
 }

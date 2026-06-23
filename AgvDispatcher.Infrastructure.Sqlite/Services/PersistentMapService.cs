@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
@@ -304,7 +304,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     Area("MAINT-01", "维护阻断预留区", MapAreaType.BlockedArea, "#777777", new[] { P(335, 425), P(540, 425), P(540, 535), P(335, 535) }, ("ZoneKind", "StaticRestricted"), ("Label", "维护预留区"))
                 };
             }
-            // 旧库没有独立区域表，过渡期从点位/路线 AreaCode 派生静态区域快照。
+
             return nodes.Select(node => node.AreaCode)
                 .Concat(edges.Select(edge => edge.AreaCode))
                 .Where(area => !string.IsNullOrWhiteSpace(area))
@@ -318,7 +318,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 })
                 .ToList();
         }
-
         private static MapNodeDto ToContractNode(MapNode node)
         {
             var properties = new Dictionary<string, string>(node.Tags, StringComparer.OrdinalIgnoreCase);
@@ -404,3 +403,4 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         }
     }
 }
+

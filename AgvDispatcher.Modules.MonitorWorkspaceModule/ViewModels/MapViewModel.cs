@@ -44,6 +44,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         private string? _previewStartNodeId;
         private string? _previewEndNodeId;
         private bool _isReloadingMap;
+        private bool _isUpdatingPreviewSelection;
         private string _previewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
         private bool _isPreviewPanelExpanded = true;
 
@@ -108,8 +109,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 {
                     _previewStartNodeId = value?.NodeId;
                     RaisePropertyChanged(nameof(PreviewStartNodeId));
-                    PreviewPathCommand.RaiseCanExecuteChanged();
-                    RestoreOrClearPreview();
+                    OnPreviewSelectionChanged();
                 }
             }
         }
@@ -130,8 +130,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                         ? null
                         : Nodes.FirstOrDefault(node => string.Equals(node.NodeId, value, StringComparison.OrdinalIgnoreCase));
                     RaisePropertyChanged(nameof(PreviewStartNode));
-                    PreviewPathCommand.RaiseCanExecuteChanged();
-                    RestoreOrClearPreview();
+                    OnPreviewSelectionChanged();
                 }
             }
         }
@@ -151,8 +150,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 {
                     _previewEndNodeId = value?.NodeId;
                     RaisePropertyChanged(nameof(PreviewEndNodeId));
-                    PreviewPathCommand.RaiseCanExecuteChanged();
-                    RestoreOrClearPreview();
+                    OnPreviewSelectionChanged();
                 }
             }
         }
@@ -173,8 +171,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                         ? null
                         : Nodes.FirstOrDefault(node => string.Equals(node.NodeId, value, StringComparison.OrdinalIgnoreCase));
                     RaisePropertyChanged(nameof(PreviewEndNode));
-                    PreviewPathCommand.RaiseCanExecuteChanged();
-                    RestoreOrClearPreview();
+                    OnPreviewSelectionChanged();
                 }
             }
         }
@@ -336,7 +333,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 }
             }
 
-            // 鑺傜偣鍥惧眰锛堣矾寰勭粡杩囩殑鑺傜偣鎻忚竟楂樹寒锛?            _isReloadingMap = true;
+            // 鑺傜偣鍥惧眰锛堣矾寰勭粡杩囩殑鑺傜偣鎻忚竟楂樹寒锛?
+            _isReloadingMap = true;
             try
             {
                 Nodes.Clear();
@@ -396,11 +394,6 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             {
                 RenderPreviewPath(mapNodes.ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase));
             }
-            else if (PreviewEdges.Count > 0)
-            {
-                PreviewEdges.Clear();
-                PreviewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
-            }
         }
 
         /// <summary>
@@ -411,36 +404,100 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         {
             IsPreviewPanelExpanded = true;
 
-            if (PreviewStartNode is null || (PreviewStartNode is not null && PreviewEndNode is not null))
+            if (PreviewStartNode is null)
             {
-                PreviewStartNode = node;
-                PreviewEndNode = null;
-                PreviewEdges.Clear();
-                PreviewSummary = $"已选择起点 {node.LabelText} ({node.NodeId})，请点击终点或从下拉框选择。";
+                SetPreviewSelection(
+                    startNode: node,
+                    endNode: null,
+                    clearEdges: false,
+                    summary: $"已选择起点 {node.LabelText} ({node.NodeId})，请点击终点或从下拉框选择。",
+                    renderIfComplete: false);
+                return;
+            }
+
+            if (PreviewEndNode is not null)
+            {
+                PreviewSummary = $"当前起点 {PreviewStartNode.LabelText} ({PreviewStartNode.NodeId})，终点 {PreviewEndNode.LabelText} ({PreviewEndNode.NodeId})。如需重新选择，请先点击“清除”。";
                 return;
             }
 
             if (PreviewStartNode is { } startNode &&
                 !string.Equals(startNode.NodeId, node.NodeId, StringComparison.OrdinalIgnoreCase))
             {
-                PreviewEndNode = node;
-                if (CanPreviewPath())
-                {
-                    OnPreviewPath();
-                }
+                SetPreviewSelection(
+                    startNode,
+                    node,
+                    clearEdges: false,
+                    summary: null,
+                    renderIfComplete: true);
+            }
+            else
+            {
+                PreviewSummary = $"已选择起点 {node.LabelText} ({node.NodeId})，请点击不同点位作为终点。";
             }
         }
 
-        private void RestoreOrClearPreview()
+        private void OnPreviewSelectionChanged()
         {
-            if (_previewStartNode is not null && _previewEndNode is not null && CanPreviewPath())
+            PreviewPathCommand.RaiseCanExecuteChanged();
+            if (_isUpdatingPreviewSelection)
+            {
+                return;
+            }
+
+            if (CanPreviewPath())
             {
                 var nodeMap = GetNodes().ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
                 RenderPreviewPath(nodeMap);
             }
-            else if (_previewStartNode is null || _previewEndNode is null)
+            else if (_previewStartNode is not null && _previewEndNode is null)
+            {
+                PreviewSummary = $"已选择起点 {_previewStartNode.LabelText} ({_previewStartNode.NodeId})，请点击终点或从下拉框选择。";
+            }
+            else if (_previewStartNode is null && _previewEndNode is not null)
+            {
+                PreviewSummary = $"已选择终点 {_previewEndNode.LabelText} ({_previewEndNode.NodeId})，请继续选择起点。";
+            }
+        }
+
+        private void SetPreviewSelection(
+            MapNodeViewItem? startNode,
+            MapNodeViewItem? endNode,
+            bool clearEdges,
+            string? summary,
+            bool renderIfComplete)
+        {
+            _isUpdatingPreviewSelection = true;
+            try
+            {
+                _previewStartNode = startNode;
+                _previewEndNode = endNode;
+                _previewStartNodeId = startNode?.NodeId;
+                _previewEndNodeId = endNode?.NodeId;
+                RaisePropertyChanged(nameof(PreviewStartNode));
+                RaisePropertyChanged(nameof(PreviewEndNode));
+                RaisePropertyChanged(nameof(PreviewStartNodeId));
+                RaisePropertyChanged(nameof(PreviewEndNodeId));
+                PreviewPathCommand.RaiseCanExecuteChanged();
+            }
+            finally
+            {
+                _isUpdatingPreviewSelection = false;
+            }
+
+            if (clearEdges)
             {
                 PreviewEdges.Clear();
+            }
+
+            if (!string.IsNullOrWhiteSpace(summary))
+            {
+                PreviewSummary = summary;
+            }
+
+            if (renderIfComplete && CanPreviewPath())
+            {
+                OnPreviewPath();
             }
         }
 
@@ -469,8 +526,6 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// </summary>
         private void RenderPreviewPath(IReadOnlyDictionary<string, MapNode> nodeMap)
         {
-            PreviewEdges.Clear();
-
             if (_previewStartNode is null || _previewEndNode is null)
             {
                 PreviewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
@@ -488,6 +543,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 return;
             }
 
+            var previewItems = new List<MapEdgeViewItem>();
             foreach (var edge in path.Edges)
             {
                 if (nodeMap.TryGetValue(edge.FromNodeId, out var fromNode)
@@ -497,8 +553,20 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                     item.Stroke = "#00E5FF";   // 闈掕壊锛屽尯鍒簬杞﹁締閲戣壊璺緞
                     item.StrokeThickness = 4;
                     item.Opacity = 0.95;
-                    PreviewEdges.Add(item);
+                    previewItems.Add(item);
                 }
+            }
+
+            if (previewItems.Count == 0)
+            {
+                PreviewSummary = $"{startId} -> {endId}: 暂无可显示路径";
+                return;
+            }
+
+            PreviewEdges.Clear();
+            foreach (var item in previewItems)
+            {
+                PreviewEdges.Add(item);
             }
 
             PreviewSummary = $"{path.StartNodeId} -> {path.EndNodeId}，共 {path.Nodes.Count} 个点，{path.TotalLength:F0} m";
@@ -507,10 +575,12 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// <summary>娓呴櫎棰勮璺緞鍥惧眰銆侀噸缃捣姝㈢偣閫夋嫨涓庢憳瑕併€?/summary>
         private void OnClearPreview()
         {
-            PreviewEdges.Clear();
-            PreviewStartNode = null;
-            PreviewEndNode = null;
-            PreviewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
+            SetPreviewSelection(
+                startNode: null,
+                endNode: null,
+                clearEdges: true,
+                summary: "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d",
+                renderIfComplete: false);
         }
 
         /// <summary>

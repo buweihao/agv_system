@@ -78,6 +78,13 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 return;
             }
 
+            if (Vm.IsAddNodeMode)
+            {
+                Vm.AddNodeAt(e.GetPosition(_canvas).X, e.GetPosition(_canvas).Y);
+                e.Handled = true;
+                return;
+            }
+
             if (Vm.AreaDrawMode == AreaDrawMode.Polygon)
             {
                 var point = e.GetPosition(_canvas);
@@ -96,7 +103,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 return;
             }
 
-            if (Vm.AreaDrawMode is AreaDrawMode.Rectangle or AreaDrawMode.EncloseElements)
+            if (Vm.AreaDrawMode is AreaDrawMode.Rectangle or AreaDrawMode.EncloseElements or AreaDrawMode.DeleteElements)
             {
                 Vm.SelectedEditorNode = null;
                 Vm.SelectedEditorEdge = null;
@@ -153,6 +160,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 {
                     Vm.PreviewEnclosedElements(_boxStart.X, _boxStart.Y, p.X, p.Y);
                 }
+                else if (Vm.AreaDrawMode == AreaDrawMode.DeleteElements)
+                {
+                    Vm.PreviewDeleteElements(_boxStart.X, _boxStart.Y, p.X, p.Y);
+                }
             }
 
             if (Vm.AreaDrawMode == AreaDrawMode.Polygon && _polygonPoints.Count > 0)
@@ -191,6 +202,14 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 if (Vm.AreaDrawMode == AreaDrawMode.EncloseElements)
                 {
                     Vm.AssignEnclosedElementsToArea(_boxStart.X, _boxStart.Y, end.X, end.Y);
+                    Vm.AreaDrawMode = AreaDrawMode.None;
+                    e.Handled = true;
+                    return;
+                }
+
+                if (Vm.AreaDrawMode == AreaDrawMode.DeleteElements)
+                {
+                    Vm.DeleteElementsInRectangle(_boxStart.X, _boxStart.Y, end.X, end.Y);
                     Vm.AreaDrawMode = AreaDrawMode.None;
                     e.Handled = true;
                     return;

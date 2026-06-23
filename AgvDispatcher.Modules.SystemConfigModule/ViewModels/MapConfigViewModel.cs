@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Linq;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
@@ -596,10 +596,25 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         private void CreateNewDraft()
         {
+            var confirm = System.Windows.MessageBox.Show(
+                "新建草稿会先保存当前草稿内容，然后清空画布生成一个新的空白草稿。当前运行地图不会被切换，确认继续吗？",
+                "新建空白草稿",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(CurrentDraftId))
+            {
+                SaveCurrentDraft(showMessage: false);
+            }
+
             var result = _mapManagementService.CreateDraftAsync(new CreateMapDraftRequest
             {
                 Context = new RequestContext(),
-                MapName = string.IsNullOrWhiteSpace(CurrentMapName) ? "AGV 主地图" : CurrentMapName
+                MapName = string.IsNullOrWhiteSpace(CurrentMapName) ? "AGV 空白草稿地图" : $"{CurrentMapName}-新草稿"
             }).GetAwaiter().GetResult();
 
             if (!result.Success || result.Data is null)
@@ -609,9 +624,21 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             }
 
             ApplyDraft(result.Data);
-            System.Windows.MessageBox.Show("已创建地图草稿。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+            ClearEditorForBlankDraft();
+            SaveCurrentDraft(showMessage: false);
+            System.Windows.MessageBox.Show("已创建空白地图草稿。当前运行地图未切换，原地图已保留，后续发布才会切换运行地图。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+        private void ClearEditorForBlankDraft()
+        {
+            Nodes.Clear();
+            Edges.Clear();
+            Aliases.Clear();
+            Stations.Clear();
+            ApplyAreas(Array.Empty<ContractMap.MapAreaDto>());
+            RaiseEditorCounts();
+            RebuildEditorProjections();
+        }
         private void SaveCurrentDraft()
         {
             SaveCurrentDraft(showMessage: true);

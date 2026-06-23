@@ -18,8 +18,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         /// <summary>被包裹的领域边模型（保存时直接落库此对象）。</summary>
         public MapEdge Model { get; }
 
-        private readonly EditorNodeVm _from;
-        private readonly EditorNodeVm _to;
+        private EditorNodeVm _from;
+        private EditorNodeVm _to;
 
         /// <summary>构造画布边项并订阅两端节点坐标变化以联动重绘。</summary>
         /// <param name="model">底层领域边。</param>
@@ -52,6 +52,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         /// <summary>边编号（只读展示）。</summary>
         public string EdgeId => Model.EdgeId;
 
+        public string FromNodeId => Model.FromNodeId;
+
+        public string ToNodeId => Model.ToNodeId;
+
         /// <summary>起点 X 画布坐标。</summary>
         public double X1 => _from.X;
         /// <summary>起点 Y 画布坐标。</summary>
@@ -60,6 +64,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         public double X2 => _to.X;
         /// <summary>终点 Y 画布坐标。</summary>
         public double Y2 => _to.Y;
+
+        public void ReverseEndpoints()
+        {
+            _from.PropertyChanged -= OnEndpointChanged;
+            _to.PropertyChanged -= OnEndpointChanged;
+            (_from, _to) = (_to, _from);
+            (Model.FromNodeId, Model.ToNodeId) = (Model.ToNodeId, Model.FromNodeId);
+            _from.PropertyChanged += OnEndpointChanged;
+            _to.PropertyChanged += OnEndpointChanged;
+            RaisePropertyChanged(nameof(FromNodeId));
+            RaisePropertyChanged(nameof(ToNodeId));
+            RaiseGeometryChanged();
+        }
 
         /// <summary>边方向（修改即写回模型并刷新配色/箭头）。</summary>
         public EdgeDirection Direction

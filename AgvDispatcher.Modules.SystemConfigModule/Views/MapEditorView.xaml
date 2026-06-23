@@ -84,9 +84,10 @@
                 <Border BorderBrush="#1F3A60" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="编辑" Style="{StaticResource ToolGroupLabel}"/>
-                        <Button Content="新增节点" Style="{StaticResource ToolButton}" Command="{Binding AddNodeAtCenterCommand}"/>
+                        <Button Content="放置节点" Style="{StaticResource ToggleToolButton}" Tag="{Binding IsAddNodeMode}" Command="{Binding AddNodeAtCenterCommand}"/>
                         <Button Content="连线模式" Style="{StaticResource ToggleToolButton}" Tag="{Binding IsConnectMode}" Command="{Binding ToggleConnectModeCommand}"/>
                         <Button Content="设置充电桩" Style="{StaticResource ToggleToolButton}" Tag="{Binding IsPlaceStationMode}" Command="{Binding TogglePlaceStationModeCommand}"/>
+                        <Button Content="框选删除" Style="{StaticResource ToggleToolButton}" Tag="{Binding IsDeleteElementsMode}" Command="{Binding DeleteRectangleCommand}"/>
                         <Button Content="删除选中" Style="{StaticResource ToolButton}" Background="#FF4500" Foreground="White" BorderThickness="0" Command="{Binding DeleteSelectionCommand}"/>
                     </StackPanel>
                 </Border>
@@ -345,8 +346,20 @@
                         </StackPanel.Style>
                         <TextBlock Text="边编号" Style="{StaticResource PropLabel}"/>
                         <TextBox Text="{Binding EdgeId, Mode=OneWay}" IsReadOnly="True" Background="#11243A" Foreground="#8EA8C3" BorderThickness="0" Padding="6,4"/>
+                        <TextBlock Text="起点 / 终点" Style="{StaticResource PropLabel}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding FromNodeId, Mode=OneWay}" IsReadOnly="True" Background="#11243A" Foreground="#8EA8C3" BorderThickness="0" Padding="6,4"/>
+                            <TextBlock Grid.Column="1" Text="→" Foreground="#8EA8C3" Margin="8,0" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="2" Text="{Binding ToNodeId, Mode=OneWay}" IsReadOnly="True" Background="#11243A" Foreground="#8EA8C3" BorderThickness="0" Padding="6,4"/>
+                        </Grid>
                         <TextBlock Text="方向" Style="{StaticResource PropLabel}"/>
                         <ComboBox SelectedValue="{Binding Direction, Mode=TwoWay}" SelectedValuePath="Value" DisplayMemberPath="DisplayName" ItemsSource="{Binding DataContext.EdgeDirectionOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                        <Button Content="交换起点和终点" Style="{StaticResource ToolButton}" Margin="0,10,0,0" Command="{Binding DataContext.ReverseSelectedEdgeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                         <CheckBox Content="启用" IsChecked="{Binding IsEnabled, Mode=TwoWay}" Foreground="#DCEFFF" Margin="0,12,0,0"/>
                         <TextBlock Text="静态封闭请使用禁用或方向配置。" Foreground="#8EA8C3" Margin="0,8,0,0"/>
                     </StackPanel>

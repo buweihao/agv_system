@@ -6,6 +6,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
 {
     internal static class LocalPersistenceSeeder
     {
+        private const string ReferenceSeedInitializedKey = "Map.ReferenceSeedInitialized";
+
         public static void EnsureSeedData(AgvDispatcherDbContext db)
         {
             db.Database.EnsureCreated();
@@ -37,7 +39,9 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
                 );
             ");
 
+            NormalizeStaticMapTables(db);
             EnsureReferenceMapSeed(db);
+            var referenceSeedInitialized = IsReferenceSeedInitialized(db);
 
             if (!db.Vehicles.Any())
             {
@@ -48,17 +52,17 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
                 EnsureReferenceVehicleSeed(db);
             }
 
-            if (!db.ChargeStations.Any() && !db.ChangeTracker.Entries<ChargeStation>().Any())
+            if (!referenceSeedInitialized && !db.ChargeStations.Any() && !db.ChangeTracker.Entries<ChargeStation>().Any())
             {
                 db.ChargeStations.AddRange(CreateChargeStations());
             }
 
-            if (!db.MapNodes.Any() && !db.ChangeTracker.Entries<MapNode>().Any())
+            if (!referenceSeedInitialized && !db.MapNodes.Any() && !db.ChangeTracker.Entries<MapNode>().Any())
             {
                 db.MapNodes.AddRange(CreateMapNodes());
             }
 
-            if (!db.MapEdges.Any() && !db.ChangeTracker.Entries<MapEdge>().Any())
+            if (!referenceSeedInitialized && !db.MapEdges.Any() && !db.ChangeTracker.Entries<MapEdge>().Any())
             {
                 db.MapEdges.AddRange(CreateMapEdges());
             }
@@ -68,7 +72,7 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
                 db.TaskTemplates.AddRange(CreateTaskTemplates());
             }
 
-            if (!db.SystemParameters.Any())
+            if (!db.SystemParameters.Any(parameter => parameter.ParamKey != ReferenceSeedInitializedKey))
             {
                 db.SystemParameters.AddRange(CreateSystemParameters());
             }
@@ -100,6 +104,77 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
             db.SaveChanges();
         }
 
+        private static void NormalizeStaticMapTables(AgvDispatcherDbContext db)
+        {
+            // Older local databases may still contain runtime columns on static map tables
+            // (for example IsOccupied/IsLocked). Rebuild the tables with static fields only
+            // so map publishing can stay aligned with the DTO boundary rules.
+            db.Database.ExecuteSqlRaw(@"
+PRAGMA foreign_keys=OFF;
+DROP TABLE IF EXISTS __MapNodes_Static;
+CREATE TABLE __MapNodes_Static (
+    NodeId TEXT NOT NULL CONSTRAINT PK_MapNodes PRIMARY KEY,
+    MapId TEXT NOT NULL,
+    NodeCode TEXT NOT NULL,
+    Name TEXT NOT NULL,
+    NodeType INTEGER NOT NULL,
+    Position_MapId TEXT NOT NULL,
+    Position_X REAL NOT NULL,
+    Position_Y REAL NOT NULL,
+    Position_Z REAL NOT NULL,
+    Position_Heading REAL NOT NULL,
+    Position_NodeId TEXT NULL,
+    Position_AreaCode TEXT NULL,
+    Heading REAL NOT NULL,
+    AreaCode TEXT NOT NULL,
+    IsEnabled INTEGER NOT NULL,
+    ParkingCapacity INTEGER NOT NULL,
+    AllowedBrands TEXT NOT NULL,
+    RequiredCapabilities INTEGER NOT NULL,
+    Tags TEXT NOT NULL
+);
+INSERT OR IGNORE INTO __MapNodes_Static (
+    NodeId, MapId, NodeCode, Name, NodeType, Position_MapId, Position_X, Position_Y,
+    Position_Z, Position_Heading, Position_NodeId, Position_AreaCode, Heading,
+    AreaCode, IsEnabled, ParkingCapacity, AllowedBrands, RequiredCapabilities, Tags)
+SELECT
+    NodeId, MapId, NodeCode, Name, NodeType, Position_MapId, Position_X, Position_Y,
+    Position_Z, Position_Heading, Position_NodeId, Position_AreaCode, Heading,
+    AreaCode, IsEnabled, ParkingCapacity, AllowedBrands, RequiredCapabilities, Tags
+FROM MapNodes;
+DROP TABLE MapNodes;
+ALTER TABLE __MapNodes_Static RENAME TO MapNodes;
+
+DROP TABLE IF EXISTS __MapEdges_Static;
+CREATE TABLE __MapEdges_Static (
+    EdgeId TEXT NOT NULL CONSTRAINT PK_MapEdges PRIMARY KEY,
+    MapId TEXT NOT NULL,
+    FromNodeId TEXT NOT NULL,
+    ToNodeId TEXT NOT NULL,
+    Direction INTEGER NOT NULL,
+    Length REAL NOT NULL,
+    MaxSpeed REAL NOT NULL,
+    TurnAngle REAL NOT NULL,
+    Cost INTEGER NOT NULL,
+    IsEnabled INTEGER NOT NULL,
+    AreaCode TEXT NOT NULL,
+    AllowedBrands TEXT NOT NULL,
+    MaxVehicleFlow INTEGER NOT NULL,
+    Remark TEXT NOT NULL
+);
+INSERT OR IGNORE INTO __MapEdges_Static (
+    EdgeId, MapId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
+    Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, Remark)
+SELECT
+    EdgeId, MapId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
+    Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, Remark
+FROM MapEdges;
+DROP TABLE MapEdges;
+ALTER TABLE __MapEdges_Static RENAME TO MapEdges;
+CREATE INDEX IF NOT EXISTS IX_MapEdges_FromNodeId_ToNodeId ON MapEdges(FromNodeId, ToNodeId);
+PRAGMA foreign_keys=ON;");
+        }
+
         private static void EnsureReferenceMapSeed(AgvDispatcherDbContext db)
         {
             var hasReferenceMap = db.MapNodes.Any(node => node.NodeId == "PICK-A1")
@@ -109,6 +184,24 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
             if (hasReferenceMap)
             {
                 EnsureReferenceMapDisplayNames(db);
+                MarkReferenceSeedInitialized(db);
+                return;
+            }
+
+            var hasCurrentMapContent = db.MapNodes.Any(node => node.MapId == "MAIN")
+                || db.MapEdges.Any(edge => edge.MapId == "MAIN")
+                || db.ChargeStations.Any();
+            var hasLegacyDemoMap = HasLegacyDemoMap(db);
+
+            if (IsReferenceSeedInitialized(db) && !hasLegacyDemoMap)
+            {
+                RemoveOrphanMainMapContentWhenNodesAreEmpty(db);
+                return;
+            }
+
+            if (hasCurrentMapContent && !hasLegacyDemoMap)
+            {
+                MarkReferenceSeedInitialized(db);
                 return;
             }
 
@@ -126,6 +219,65 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
             db.MapEdges.AddRange(CreateMapEdges());
             db.MapLocationAliases.AddRange(CreateMapLocationAliases());
             db.ChargeStations.AddRange(CreateChargeStations());
+            MarkReferenceSeedInitialized(db);
+        }
+
+        private static void RemoveOrphanMainMapContentWhenNodesAreEmpty(AgvDispatcherDbContext db)
+        {
+            if (db.MapNodes.Any(node => node.MapId == "MAIN"))
+            {
+                return;
+            }
+
+            db.MapEdges.RemoveRange(db.MapEdges.Where(edge => edge.MapId == "MAIN"));
+            db.MapLocationAliases.RemoveRange(db.MapLocationAliases.Where(alias => alias.MapId == "MAIN"));
+            db.ChargeStations.RemoveRange(db.ChargeStations.Where(station =>
+                station.NodeId == "CHG-01"
+                || station.NodeId == "CHG-02"
+                || station.NodeId == "CHG-03"
+                || station.NodeId.StartsWith("Charge-")
+                || station.StationId.StartsWith("CHG-")
+                || station.StationId.StartsWith("C-")));
+        }
+
+        private static bool HasLegacyDemoMap(AgvDispatcherDbContext db)
+        {
+            var legacyNodeIds = new[] { "A1", "A2", "B2", "B3", "Charge-1", "P1", "P2", "X1", "W1", "D1" };
+            return db.MapNodes.Any(node => legacyNodeIds.Contains(node.NodeId))
+                || db.MapEdges.Any(edge => edge.EdgeId == "E1" || edge.EdgeId == "E2");
+        }
+
+        private static bool IsReferenceSeedInitialized(AgvDispatcherDbContext db)
+        {
+            return db.SystemParameters.Any(parameter =>
+                    parameter.ParamKey == ReferenceSeedInitializedKey && parameter.ParamValue == "true")
+                || db.ChangeTracker.Entries<ParameterConfig>().Any(entry =>
+                    entry.Entity.ParamKey == ReferenceSeedInitializedKey && entry.Entity.ParamValue == "true");
+        }
+
+        private static void MarkReferenceSeedInitialized(AgvDispatcherDbContext db)
+        {
+            var existing = db.SystemParameters.FirstOrDefault(parameter =>
+                    parameter.ParamKey == ReferenceSeedInitializedKey)
+                ?? db.ChangeTracker.Entries<ParameterConfig>()
+                    .Select(entry => entry.Entity)
+                    .FirstOrDefault(parameter => parameter.ParamKey == ReferenceSeedInitializedKey);
+
+            if (existing is null)
+            {
+                db.SystemParameters.Add(new ParameterConfig
+                {
+                    ParamKey = ReferenceSeedInitializedKey,
+                    ParamName = "参考地图初始化标记",
+                    ParamValue = "true",
+                    DataType = "Boolean",
+                    Description = "本地 SQLite 是否已经完成静态参考地图初始化。发布空地图或自定义地图后，不再自动回填参考地图。",
+                    RequiresRestart = false
+                });
+                return;
+            }
+
+            existing.ParamValue = "true";
         }
 
         private static void EnsureReferenceMapDisplayNames(AgvDispatcherDbContext db)
@@ -201,9 +353,9 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
         {
             return new[]
             {
-                CreateStation("CHG-01", "1鍙峰厖鐢垫々", ChargeStationState.Available, null, 3.3, 0, 760, 455, "HANGCHA,RGV-A", "TCP", "192.168.1.100", 502),
-                CreateStation("CHG-02", "2鍙峰厖鐢垫々", ChargeStationState.Available, null, 6.6, 0, 810, 455, "RGV-A,RGV-B", "TCP", "192.168.1.101", 502),
-                CreateStation("CHG-03", "3鍙峰揩鍏呮々", ChargeStationState.Available, null, 12.0, 0, 760, 510, "HANGCHA,RGV-C", "TCP", "192.168.1.102", 502)
+                CreateStation("CHG-01", "1号充电桩", ChargeStationState.Available, null, 3.3, 0, 760, 455, "HANGCHA,RGV-A", "TCP", "192.168.1.100", 502),
+                CreateStation("CHG-02", "2号充电桩", ChargeStationState.Available, null, 6.6, 0, 810, 455, "RGV-A,RGV-B", "TCP", "192.168.1.101", 502),
+                CreateStation("CHG-03", "3号快充桩", ChargeStationState.Available, null, 12.0, 0, 760, 510, "HANGCHA,RGV-C", "TCP", "192.168.1.102", 502)
             };
         }
 

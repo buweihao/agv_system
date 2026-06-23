@@ -386,23 +386,27 @@
 
                         <StackPanel Margin="0,10,0,0"
                                     Visibility="{Binding IsChecked, ElementName=PreviewToggle, Converter={StaticResource BoolToVis}}">
-                                                        <TextBlock Text="起点" Foreground="#8EA8C3" FontSize="12" Margin="0,0,0,3"/>
+                            <TextBlock Text="起点" Foreground="#8EA8C3" FontSize="12" Margin="0,0,0,3"/>
                             <ComboBox ItemsSource="{Binding Nodes}"
                                       SelectedValue="{Binding PreviewStartNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       SelectedValuePath="NodeId"
                                       DisplayMemberPath="DisplayText"
                                       IsSynchronizedWithCurrentItem="False"
                                       TextSearch.TextPath="DisplayText"
+                                      Height="34"
+                                      FontSize="12"
                                       MaxDropDownHeight="240"
                                       Margin="0,0,0,8"/>
 
-                                                        <TextBlock Text="终点" Foreground="#8EA8C3" FontSize="12" Margin="0,0,0,3"/>
+                            <TextBlock Text="终点" Foreground="#8EA8C3" FontSize="12" Margin="0,0,0,3"/>
                             <ComboBox ItemsSource="{Binding Nodes}"
                                       SelectedValue="{Binding PreviewEndNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       SelectedValuePath="NodeId"
                                       DisplayMemberPath="DisplayText"
                                       IsSynchronizedWithCurrentItem="False"
                                       TextSearch.TextPath="DisplayText"
+                                      Height="34"
+                                      FontSize="12"
                                       MaxDropDownHeight="240"
                                       Margin="0,0,0,10"/>
 

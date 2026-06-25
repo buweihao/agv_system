@@ -7,15 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.6" />
     <PackageReference Include="Prism.Core" Version="9.0.537" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\AgvDispatcher.Application\AgvDispatcher.Application.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
-    <ProjectReference Include="..\AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
-    <ProjectReference Include="..\AgvDispatcher.Infrastructure.Okapi\AgvDispatcher.Infrastructure.Okapi.csproj" />
   </ItemGroup>
 
 </Project>

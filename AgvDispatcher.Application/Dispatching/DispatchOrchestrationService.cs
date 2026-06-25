@@ -20,7 +20,7 @@ using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 using Prism.Events;
 
-namespace AgvDispatcher.Infrastructure.Sqlite.Services
+namespace AgvDispatcher.Application.Dispatching
 {
     /// <summary>
     /// Coordinates the first version of the end-to-end dispatch workflow without owning

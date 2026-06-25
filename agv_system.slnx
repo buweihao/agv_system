@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="agv_system.csproj" />
   <Project Path="AgvDispatcher.Shell\AgvDispatcher.Shell.csproj" />
+  <Project Path="AgvDispatcher.Application\AgvDispatcher.Application.csproj" />
   <Project Path="AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
   <Project Path="AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
   <Project Path="AgvDispatcher.DebugDashboard\AgvDispatcher.DebugDashboard.csproj" />

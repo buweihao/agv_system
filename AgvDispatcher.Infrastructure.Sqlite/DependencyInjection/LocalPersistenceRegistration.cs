@@ -1,3 +1,4 @@
+using AgvDispatcher.Application.DependencyInjection;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Infrastructure.Mock;
 using AgvDispatcher.Infrastructure.Sqlite.Persistence;
@@ -17,7 +18,7 @@ using AgvDispatcher.Infrastructure.Mock.Planning;
 using AgvDispatcher.Infrastructure.Mock.Reservations;
 using AgvDispatcher.Infrastructure.Mock.Traffic;
 
-namespace AgvDispatcher.Infrastructure.Sqlite
+namespace AgvDispatcher.Infrastructure.Sqlite.DependencyInjection
 {
     public static class LocalPersistenceRegistration
     {
@@ -68,7 +69,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IVehicleAdapterFactory, CompositeVehicleAdapterFactory>();
             containerRegistry.RegisterSingleton<IVehicleAdapterManager, VehicleAdapterManager>();
             containerRegistry.RegisterSingleton<ITaskExecutionSimulator, MockTaskExecutionSimulator>();
-            containerRegistry.RegisterSingleton<IDispatchScoringService, DispatchScoringService>();
             containerRegistry.RegisterSingleton<IPathPlanner, DijkstraPathPlanner>();
             // This is a startup-time composition choice. Read it directly from the system
             // parameter table because repositories are not registered/resolvable yet.
@@ -83,8 +83,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
                 containerRegistry.RegisterSingleton<ITrafficControlService, MockTrafficControlService>();
                 containerRegistry.RegisterSingleton<IRouteReservationService, MockRouteReservationService>();
             }
-            containerRegistry.RegisterSingleton<IDispatchOrchestrationService, DispatchOrchestrationService>();
-            containerRegistry.RegisterSingleton<IDispatchService, AdapterDispatchService>();
+            ApplicationRegistration.RegisterApplicationServices(containerRegistry);
 
             containerRegistry.RegisterSingleton<IVehicleService, PersistentVehicleService>();
             containerRegistry.RegisterSingleton<IChargeService, PersistentChargeService>();

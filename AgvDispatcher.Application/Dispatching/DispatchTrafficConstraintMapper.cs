@@ -2,7 +2,7 @@ using AgvDispatcher.Core.Contracts.Planning.Constraints;
 using AgvDispatcher.Core.Contracts.Traffic.Enums;
 using AgvDispatcher.Core.Contracts.Traffic.Models;
 
-namespace AgvDispatcher.Infrastructure.Sqlite.Services
+namespace AgvDispatcher.Application.Dispatching
 {
     /// <summary>
     /// Maps a runtime traffic snapshot into the dynamic constraints consumed by the path planner.

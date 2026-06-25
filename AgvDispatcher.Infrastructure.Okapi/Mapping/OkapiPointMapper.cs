@@ -1,51 +1,52 @@
-using AgvDispatcher.Core.Interfaces;
-using AgvDispatcher.Core.Models;
+using AgvDispatcher.Core.Contracts.Map;
 
 namespace AgvDispatcher.Infrastructure.Okapi
 {
     public class OkapiPointMapper
     {
-        private readonly IMapLocationAliasRepository _aliasRepository;
+        private readonly IMapService _mapService;
         private readonly OkapiProtocolLogger _logger;
 
-        public OkapiPointMapper(IMapLocationAliasRepository aliasRepository, OkapiProtocolLogger logger)
+        public OkapiPointMapper(IMapService mapService, OkapiProtocolLogger logger)
         {
-            _aliasRepository = aliasRepository;
+            _mapService = mapService;
             _logger = logger;
         }
 
-        public async Task<string?> NodeIdToOkapiPointAsync(string nodeId, string? brand, CancellationToken token = default)
+        public Task<string?> NodeIdToOkapiPointAsync(string nodeId, string? brand, CancellationToken token = default)
         {
-            var aliases = await _aliasRepository.GetAllAsync();
-            var alias = aliases.FirstOrDefault(a => 
-                a.NodeId == nodeId && 
-                a.IsEnabled && 
-                (string.IsNullOrWhiteSpace(a.Brand) || string.IsNullOrWhiteSpace(brand) || string.Equals(a.Brand, brand, StringComparison.OrdinalIgnoreCase)));
+            var map = _mapService.GetCurrentMap(new GetMapSnapshotRequest());
+            var alias = map.Data?.VendorNodeMappings.FirstOrDefault(a =>
+                string.Equals(a.SystemNodeId, nodeId, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(a.VendorCode) ||
+                 string.IsNullOrWhiteSpace(brand) ||
+                 string.Equals(a.VendorCode, brand, StringComparison.OrdinalIgnoreCase)));
 
             if (alias != null)
             {
-                return alias.AliasValue;
+                return Task.FromResult<string?>(alias.VendorNodeCode);
             }
 
             _logger.LogError("System", "PointMapper", $"Failed to map NodeId '{nodeId}' to Okapi point (Brand: {brand})");
-            return null;
+            return Task.FromResult<string?>(null);
         }
 
-        public async Task<string> OkapiPointToNodeIdAsync(string okapiPoint, string? brand, CancellationToken token = default)
+        public Task<string> OkapiPointToNodeIdAsync(string okapiPoint, string? brand, CancellationToken token = default)
         {
-            var aliases = await _aliasRepository.GetAllAsync();
-            var alias = aliases.FirstOrDefault(a => 
-                a.AliasValue == okapiPoint && 
-                a.IsEnabled && 
-                (string.IsNullOrWhiteSpace(a.Brand) || string.IsNullOrWhiteSpace(brand) || string.Equals(a.Brand, brand, StringComparison.OrdinalIgnoreCase)));
+            var map = _mapService.GetCurrentMap(new GetMapSnapshotRequest());
+            var alias = map.Data?.VendorNodeMappings.FirstOrDefault(a =>
+                string.Equals(a.VendorNodeCode, okapiPoint, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(a.VendorCode) ||
+                 string.IsNullOrWhiteSpace(brand) ||
+                 string.Equals(a.VendorCode, brand, StringComparison.OrdinalIgnoreCase)));
 
             if (alias != null)
             {
-                return alias.NodeId;
+                return Task.FromResult(alias.SystemNodeId);
             }
 
             _logger.LogError("System", "PointMapper", $"Failed to map Okapi point '{okapiPoint}' to NodeId (Brand: {brand}). Falling back to original value.");
-            return okapiPoint;
+            return Task.FromResult(okapiPoint);
         }
     }
 }

@@ -34,7 +34,11 @@ namespace AgvDispatcher.Core.Interfaces
     {
         Task<IReadOnlyList<MapNode>> GetNodesAsync();
 
+        Task<IReadOnlyList<MapNode>> GetNodesAsync(string mapId, string mapVersion);
+
         Task<IReadOnlyList<MapEdge>> GetEdgesAsync();
+
+        Task<IReadOnlyList<MapEdge>> GetEdgesAsync(string mapId, string mapVersion);
 
         Task SaveNodeAsync(MapNode node);
 
@@ -45,9 +49,26 @@ namespace AgvDispatcher.Core.Interfaces
         Task DeleteEdgeAsync(string edgeId);
     }
 
+    public interface IMapVersionRepository
+    {
+        Task<MapVersionEntity?> GetActiveAsync();
+
+        Task<MapVersionEntity?> GetAsync(string mapId, string mapVersion);
+
+        Task<IReadOnlyList<MapVersionEntity>> GetAllAsync(string? mapId = null);
+
+        Task SaveAsync(MapVersionEntity version);
+
+        Task SetActiveAsync(string mapId, string mapVersion);
+
+        Task DeleteAsync(string mapId, string mapVersion);
+    }
+
     public interface IMapLocationAliasRepository
     {
         Task<IReadOnlyList<MapLocationAlias>> GetAllAsync();
+
+        Task<IReadOnlyList<MapLocationAlias>> GetAllAsync(string mapId, string mapVersion);
 
         Task SaveAsync(MapLocationAlias alias);
 

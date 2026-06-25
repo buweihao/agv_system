@@ -15,6 +15,8 @@ namespace AgvDispatcher.Core.Models
 
         public string MapId { get; set; } = string.Empty;
 
+        public string MapVersion { get; set; } = "v1";
+
         public string NodeCode { get; set; } = string.Empty;
 
         public string Name { get; set; } = string.Empty;

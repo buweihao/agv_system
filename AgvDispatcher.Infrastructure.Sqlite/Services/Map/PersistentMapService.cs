@@ -15,20 +15,41 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
     public sealed class PersistentMapService : IMapService
     {
         private readonly IMapRepository _maps;
+        private readonly IMapVersionRepository _mapVersions;
         private readonly IMapLocationAliasRepository _aliases;
         private readonly IPathPlanningService _pathPlanningService;
+        private readonly object _cacheLock = new();
+        private MapSnapshotDto? _activeSnapshot;
 
         /// <summary>
         /// Initializes the persistent runtime map service.
         /// </summary>
         public PersistentMapService(
             IMapRepository maps,
+            IMapVersionRepository mapVersions,
             IMapLocationAliasRepository aliases,
             IPathPlanningService pathPlanningService)
         {
             _maps = maps;
+            _mapVersions = mapVersions;
             _aliases = aliases;
             _pathPlanningService = pathPlanningService;
+        }
+
+        public PersistentMapService(
+            IMapRepository maps,
+            IMapLocationAliasRepository aliases,
+            IPathPlanningService pathPlanningService)
+            : this(maps, new EmptyMapVersionRepository(), aliases, pathPlanningService)
+        {
+        }
+
+        public void RefreshActiveMapCache()
+        {
+            lock (_cacheLock)
+            {
+                _activeSnapshot = null;
+            }
         }
 
         /// <inheritdoc />
@@ -36,7 +57,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         {
             var snapshot = LoadSnapshot();
             return snapshot.Success && snapshot.Data is not null
-                ? ValidateVersion(snapshot.Data, request.ExpectedMapVersion)
+                ? ValidateVersion(CloneSnapshot(snapshot.Data), request.ExpectedMapVersion)
                 : snapshot;
         }
 
@@ -45,7 +66,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         {
             var snapshot = GetCurrentMap(request);
             return snapshot.Success && snapshot.Data is not null
-                ? AgvResult<IReadOnlyList<MapNodeDto>>.Ok(snapshot.Data.Nodes)
+                ? AgvResult<IReadOnlyList<MapNodeDto>>.Ok(snapshot.Data.Nodes.Select(CloneNode).ToArray())
                 : AgvResult<IReadOnlyList<MapNodeDto>>.Fail(snapshot.Code, snapshot.Message);
         }
 
@@ -54,7 +75,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         {
             var snapshot = GetCurrentMap(request);
             return snapshot.Success && snapshot.Data is not null
-                ? AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(snapshot.Data.Edges)
+                ? AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(snapshot.Data.Edges.Select(CloneEdge).ToArray())
                 : AgvResult<IReadOnlyList<MapEdgeDto>>.Fail(snapshot.Code, snapshot.Message);
         }
 
@@ -71,7 +92,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 string.Equals(item.NodeId, request.NodeId, StringComparison.OrdinalIgnoreCase));
             return node is null
                 ? AgvResult<MapNodeDto>.Fail(FailureCode.MapNodeNotFound, $"Node '{request.NodeId}' was not found.")
-                : AgvResult<MapNodeDto>.Ok(node);
+                : AgvResult<MapNodeDto>.Ok(CloneNode(node));
         }
 
         /// <inheritdoc />
@@ -87,7 +108,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 string.Equals(item.EdgeId, request.EdgeId, StringComparison.OrdinalIgnoreCase));
             return edge is null
                 ? AgvResult<MapEdgeDto>.Fail(FailureCode.MapEdgeNotFound, $"Edge '{request.EdgeId}' was not found.")
-                : AgvResult<MapEdgeDto>.Ok(edge);
+                : AgvResult<MapEdgeDto>.Ok(CloneEdge(edge));
         }
 
         /// <inheritdoc />
@@ -125,7 +146,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 string.Equals(edge.FromNodeId, request.NodeId, StringComparison.OrdinalIgnoreCase) ||
                 edge.Direction == MapEdgeDirection.Bidirectional &&
                 string.Equals(edge.ToNodeId, request.NodeId, StringComparison.OrdinalIgnoreCase)).ToArray();
-            return AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(edges);
+            return AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(edges.Select(CloneEdge).ToArray());
         }
 
         /// <inheritdoc />
@@ -140,7 +161,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             IReadOnlyList<MapNodeDto> nodes = snapshot.Data.Nodes
                 .Where(node => node.NodeType == request.NodeType)
                 .ToArray();
-            return AgvResult<IReadOnlyList<MapNodeDto>>.Ok(nodes);
+            return AgvResult<IReadOnlyList<MapNodeDto>>.Ok(nodes.Select(CloneNode).ToArray());
         }
 
         /// <inheritdoc />
@@ -178,9 +199,21 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         }
 
         // Legacy in-process API retained while older callers migrate to IMapService.
-        public IReadOnlyList<MapNode> GetNodes() => _maps.GetNodesAsync().GetAwaiter().GetResult();
+        public IReadOnlyList<MapNode> GetNodes()
+        {
+            var current = LoadActiveVersion();
+            return current is null
+                ? _maps.GetNodesAsync().GetAwaiter().GetResult()
+                : _maps.GetNodesAsync(current.MapId, current.MapVersion).GetAwaiter().GetResult();
+        }
 
-        public IReadOnlyList<MapEdge> GetEdges() => _maps.GetEdgesAsync().GetAwaiter().GetResult();
+        public IReadOnlyList<MapEdge> GetEdges()
+        {
+            var current = LoadActiveVersion();
+            return current is null
+                ? _maps.GetEdgesAsync().GetAwaiter().GetResult()
+                : _maps.GetEdgesAsync(current.MapId, current.MapVersion).GetAwaiter().GetResult();
+        }
 
         public MapNode? GetNode(string nodeId) => GetNodes().FirstOrDefault(node =>
             string.Equals(node.NodeId, nodeId, StringComparison.OrdinalIgnoreCase));
@@ -215,26 +248,65 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         {
             try
             {
-                var allNodes = _maps.GetNodesAsync().GetAwaiter().GetResult();
-                var allEdges = _maps.GetEdgesAsync().GetAwaiter().GetResult();
-                var allAliases = _aliases.GetAllAsync().GetAwaiter().GetResult();
-                var mapId = allNodes.Select(node => node.MapId)
-                    .Concat(allEdges.Select(edge => edge.MapId))
-                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-                if (string.IsNullOrWhiteSpace(mapId))
+                var active = LoadActiveVersion();
+                lock (_cacheLock)
                 {
-                    return AgvResult<MapSnapshotDto>.Fail(FailureCode.MapNotLoaded, "No runtime map is stored.");
+                    if (_activeSnapshot is not null &&
+                        (active is null ||
+                         string.Equals(_activeSnapshot.MapId, active.MapId, StringComparison.OrdinalIgnoreCase) &&
+                         string.Equals(_activeSnapshot.Version, active.MapVersion, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return AgvResult<MapSnapshotDto>.Ok(_activeSnapshot);
+                    }
+                }
+                IReadOnlyList<MapNode> sourceNodes;
+                IReadOnlyList<MapEdge> sourceEdges;
+                IReadOnlyList<MapLocationAlias> sourceAliases;
+                string mapId;
+                string mapVersion;
+                string mapName;
+
+                if (active is null)
+                {
+                    var allNodes = _maps.GetNodesAsync().GetAwaiter().GetResult();
+                    var allEdges = _maps.GetEdgesAsync().GetAwaiter().GetResult();
+                    var allAliases = _aliases.GetAllAsync().GetAwaiter().GetResult();
+                    mapId = allNodes.Select(node => node.MapId)
+                        .Concat(allEdges.Select(edge => edge.MapId))
+                        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+                    mapVersion = allNodes.Select(node => node.MapVersion)
+                        .Concat(allEdges.Select(edge => edge.MapVersion))
+                        .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "v1";
+                    if (string.IsNullOrWhiteSpace(mapId))
+                    {
+                        return AgvResult<MapSnapshotDto>.Fail(FailureCode.MapNotLoaded, "No active runtime map is stored.");
+                    }
+
+                    sourceNodes = allNodes.Where(node =>
+                        string.Equals(node.MapId, mapId, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(node.MapVersion, mapVersion, StringComparison.OrdinalIgnoreCase)).ToArray();
+                    sourceEdges = allEdges.Where(edge =>
+                        string.Equals(edge.MapId, mapId, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(edge.MapVersion, mapVersion, StringComparison.OrdinalIgnoreCase)).ToArray();
+                    sourceAliases = allAliases.Where(alias =>
+                        string.Equals(alias.MapId, mapId, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(alias.MapVersion, mapVersion, StringComparison.OrdinalIgnoreCase)).ToArray();
+                    mapName = mapId;
+                }
+                else
+                {
+                    mapId = active.MapId;
+                    mapVersion = active.MapVersion;
+                    mapName = string.IsNullOrWhiteSpace(active.Name) ? active.MapId : active.Name;
+                    sourceNodes = _maps.GetNodesAsync(mapId, mapVersion).GetAwaiter().GetResult();
+                    sourceEdges = _maps.GetEdgesAsync(mapId, mapVersion).GetAwaiter().GetResult();
+                    sourceAliases = _aliases.GetAllAsync(mapId, mapVersion).GetAwaiter().GetResult();
                 }
 
-                var sourceNodes = allNodes.Where(node =>
-                    string.Equals(node.MapId, mapId, StringComparison.OrdinalIgnoreCase)).ToArray();
-                var sourceEdges = allEdges.Where(edge =>
-                    string.Equals(edge.MapId, mapId, StringComparison.OrdinalIgnoreCase)).ToArray();
                 var nodes = sourceNodes.Select(ToContractNode).ToArray();
                 var edges = sourceEdges.Select(ToContractEdge).ToArray();
-                var mappings = allAliases.Where(alias =>
+                var mappings = sourceAliases.Where(alias =>
                         alias.IsEnabled &&
-                        string.Equals(alias.MapId, mapId, StringComparison.OrdinalIgnoreCase) &&
                         !string.IsNullOrWhiteSpace(alias.AliasValue))
                     .Select(alias => new VendorNodeMappingDto
                     {
@@ -245,16 +317,23 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     .Where(mapping => !string.IsNullOrWhiteSpace(mapping.VendorCode))
                     .ToArray();
 
-                return AgvResult<MapSnapshotDto>.Ok(new MapSnapshotDto
+                var snapshot = new MapSnapshotDto
                 {
                     MapId = mapId,
-                    MapName = mapId,
-                    Version = ComputeVersion(sourceNodes, sourceEdges, mappings),
+                    MapName = mapName,
+                    Version = active?.MapVersion ?? ComputeVersion(sourceNodes, sourceEdges, mappings),
                     Nodes = nodes,
                     Edges = edges,
                     VendorNodeMappings = mappings,
                     UpdatedAt = DateTimeOffset.Now
-                });
+                };
+
+                lock (_cacheLock)
+                {
+                    _activeSnapshot = snapshot;
+                }
+
+                return AgvResult<MapSnapshotDto>.Ok(snapshot);
             }
             catch (Exception exception)
             {
@@ -269,6 +348,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             !string.Equals(snapshot.Version, expectedVersion, StringComparison.Ordinal)
                 ? AgvResult<MapSnapshotDto>.Fail(FailureCode.MapVersionMismatch, "Map version mismatch.")
                 : AgvResult<MapSnapshotDto>.Ok(snapshot);
+
+        private MapVersionEntity? LoadActiveVersion() => _mapVersions.GetActiveAsync().GetAwaiter().GetResult();
 
         private static MapNodeDto ToContractNode(MapNode node)
         {
@@ -349,6 +430,70 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             {
                 properties[key] = value;
             }
+        }
+
+        private static MapSnapshotDto CloneSnapshot(MapSnapshotDto snapshot) => new()
+        {
+            MapId = snapshot.MapId,
+            MapName = snapshot.MapName,
+            Version = snapshot.Version,
+            Nodes = snapshot.Nodes.Select(CloneNode).ToArray(),
+            Edges = snapshot.Edges.Select(CloneEdge).ToArray(),
+            Areas = snapshot.Areas.Select(area => new MapAreaDto
+            {
+                AreaId = area.AreaId,
+                AreaName = area.AreaName,
+                AreaType = area.AreaType,
+                BoundaryPoints = area.BoundaryPoints.Select(point => new MapPointDto { X = point.X, Y = point.Y }).ToArray(),
+                Enabled = area.Enabled,
+                Properties = new Dictionary<string, string>(area.Properties, StringComparer.OrdinalIgnoreCase)
+            }).ToArray(),
+            VendorNodeMappings = snapshot.VendorNodeMappings.Select(mapping => new VendorNodeMappingDto
+            {
+                VendorCode = mapping.VendorCode,
+                SystemNodeId = mapping.SystemNodeId,
+                VendorNodeCode = mapping.VendorNodeCode
+            }).ToArray(),
+            UpdatedAt = snapshot.UpdatedAt
+        };
+
+        private static MapNodeDto CloneNode(MapNodeDto node) => new()
+        {
+            NodeId = node.NodeId,
+            NodeCode = node.NodeCode,
+            NodeName = node.NodeName,
+            NodeType = node.NodeType,
+            X = node.X,
+            Y = node.Y,
+            Angle = node.Angle,
+            AreaId = node.AreaId,
+            Enabled = node.Enabled,
+            Properties = new Dictionary<string, string>(node.Properties, StringComparer.OrdinalIgnoreCase)
+        };
+
+        private static MapEdgeDto CloneEdge(MapEdgeDto edge) => new()
+        {
+            EdgeId = edge.EdgeId,
+            FromNodeId = edge.FromNodeId,
+            ToNodeId = edge.ToNodeId,
+            Distance = edge.Distance,
+            Direction = edge.Direction,
+            EdgeType = edge.EdgeType,
+            Cost = edge.Cost,
+            SpeedLimit = edge.SpeedLimit,
+            AreaId = edge.AreaId,
+            Enabled = edge.Enabled,
+            Properties = new Dictionary<string, string>(edge.Properties, StringComparer.OrdinalIgnoreCase)
+        };
+
+        private sealed class EmptyMapVersionRepository : IMapVersionRepository
+        {
+            public Task<MapVersionEntity?> GetActiveAsync() => Task.FromResult<MapVersionEntity?>(null);
+            public Task<MapVersionEntity?> GetAsync(string mapId, string mapVersion) => Task.FromResult<MapVersionEntity?>(null);
+            public Task<IReadOnlyList<MapVersionEntity>> GetAllAsync(string? mapId = null) => Task.FromResult<IReadOnlyList<MapVersionEntity>>(Array.Empty<MapVersionEntity>());
+            public Task SaveAsync(MapVersionEntity version) => Task.CompletedTask;
+            public Task SetActiveAsync(string mapId, string mapVersion) => Task.CompletedTask;
+            public Task DeleteAsync(string mapId, string mapVersion) => Task.CompletedTask;
         }
     }
 }

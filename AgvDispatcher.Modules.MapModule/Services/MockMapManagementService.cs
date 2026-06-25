@@ -9,6 +9,7 @@ using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
 using AgvDispatcher.Core.Contracts.MapManagement.Requests;
 using AgvDispatcher.Core.Contracts.MapManagement.Results;
+using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using Prism.Events;
 
@@ -49,7 +50,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 },
                 CreatedAt = now,
                 UpdatedAt = now,
-                OperatorId = request.Context.OperatorId
+                OperatorId = request.Context.OperatorId,
+                State = MapState.Draft
             };
 
             _drafts[draft.DraftId] = draft;
@@ -78,7 +80,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 Map = request.Map,
                 CreatedAt = _drafts.TryGetValue(request.DraftId, out var existing) ? existing.CreatedAt : now,
                 UpdatedAt = now,
-                OperatorId = request.Context.OperatorId
+                OperatorId = request.Context.OperatorId,
+                State = MapState.Draft
             };
 
             _drafts[request.DraftId] = draft;
@@ -153,7 +156,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 Version = version,
                 IsCurrent = true,
                 PublishedAt = now,
-                OperatorId = request.Context.OperatorId
+                OperatorId = request.Context.OperatorId,
+                State = MapState.Published
             });
 
             var result = new MapPublishResultDto
@@ -173,6 +177,48 @@ namespace AgvDispatcher.Modules.MapModule.Services
             });
 
             return AgvResult<MapPublishResultDto>.Ok(result);
+        }
+
+        /// <inheritdoc />
+        public Task<AgvResult<MapActivationResultDto>> ActivateMapAsync(
+            ActivateMapRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var version = _versions.FirstOrDefault(item =>
+                string.Equals(item.MapId, request.MapId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item.Version, request.Version, StringComparison.OrdinalIgnoreCase));
+            if (version is null)
+            {
+                return Task.FromResult(AgvResult<MapActivationResultDto>.Fail(
+                    FailureCode.InvalidRequest,
+                    $"Map version '{request.MapId}/{request.Version}' was not found."));
+            }
+
+            var old = _versions.FirstOrDefault(item => item.IsCurrent);
+            MarkCurrentVersion(request.MapId, request.Version);
+            var now = DateTimeOffset.Now;
+            var result = new MapActivationResultDto
+            {
+                OldMapId = old?.MapId,
+                OldVersion = old?.Version,
+                MapId = request.MapId,
+                Version = request.Version,
+                ActivatedAt = now,
+                OperatorId = request.Context.OperatorId
+            };
+
+            _eventAggregator.GetEvent<PubSubEvent<ActiveMapChangedEvent>>().Publish(new ActiveMapChangedEvent
+            {
+                OldMapId = result.OldMapId,
+                OldMapVersion = result.OldVersion,
+                NewMapId = result.MapId,
+                NewMapVersion = result.Version,
+                ChangedAt = now.DateTime,
+                OperatorId = request.Context.OperatorId,
+                Reason = request.Reason
+            });
+
+            return Task.FromResult(AgvResult<MapActivationResultDto>.Ok(result));
         }
 
         /// <inheritdoc />
@@ -260,7 +306,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 Map = map,
                 CreatedAt = now,
                 UpdatedAt = now,
-                OperatorId = request.Context.OperatorId
+                OperatorId = request.Context.OperatorId,
+                State = MapState.Draft
             };
 
             _drafts[draft.DraftId] = draft;
@@ -283,10 +330,63 @@ namespace AgvDispatcher.Modules.MapModule.Services
                     MapName = item.MapName,
                     Version = item.Version,
                     IsCurrent = string.Equals(item.Version, version, StringComparison.OrdinalIgnoreCase),
+                    State = string.Equals(item.Version, version, StringComparison.OrdinalIgnoreCase)
+                        ? MapState.Active
+                        : item.State == MapState.Active
+                            ? MapState.Archived
+                            : item.State,
                     PublishedAt = item.PublishedAt,
                     OperatorId = item.OperatorId
                 };
             }
+        }
+
+        /// <inheritdoc />
+        public Task<AgvResult> DeleteDraftAsync(
+            DeleteMapDraftRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            _drafts.Remove(request.DraftId);
+            return Task.FromResult(AgvResult.Ok());
+        }
+
+        /// <inheritdoc />
+        public Task<AgvResult> ArchiveMapAsync(
+            ArchiveMapVersionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            for (var i = 0; i < _versions.Count; i++)
+            {
+                var item = _versions[i];
+                if (!string.Equals(item.MapId, request.MapId, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(item.Version, request.Version, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (item.IsCurrent)
+                {
+                    return Task.FromResult(AgvResult.Fail(
+                        FailureCode.InvalidState,
+                        "Cannot archive the active map."));
+                }
+
+                _versions[i] = new MapVersionDto
+                {
+                    MapId = item.MapId,
+                    MapName = item.MapName,
+                    Version = item.Version,
+                    IsCurrent = false,
+                    State = MapState.Archived,
+                    PublishedAt = item.PublishedAt,
+                    OperatorId = item.OperatorId
+                };
+                return Task.FromResult(AgvResult.Ok());
+            }
+
+            return Task.FromResult(AgvResult.Fail(
+                FailureCode.InvalidRequest,
+                $"Map version '{request.MapId}/{request.Version}' was not found."));
         }
     }
 }

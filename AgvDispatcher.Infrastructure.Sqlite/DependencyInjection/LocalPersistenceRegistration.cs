@@ -14,6 +14,7 @@ using AgvDispatcher.Core.Contracts.Planning.Interfaces;
 using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
 using AgvDispatcher.Core.Contracts.Traffic.Interfaces;
 using AgvDispatcher.Core.Contracts.Map;
+using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
 using AgvDispatcher.Infrastructure.Mock.Planning;
 using AgvDispatcher.Infrastructure.Mock.Reservations;
 using AgvDispatcher.Infrastructure.Mock.Traffic;
@@ -40,6 +41,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.DependencyInjection
             containerRegistry.RegisterSingleton<IVehicleRepository, VehicleRepository>();
             containerRegistry.RegisterSingleton<IChargeStationRepository, ChargeStationRepository>();
             containerRegistry.RegisterSingleton<IMapRepository, MapRepository>();
+            containerRegistry.RegisterSingleton<IMapVersionRepository, MapVersionRepository>();
             containerRegistry.RegisterSingleton<IMapLocationAliasRepository, MapLocationAliasRepository>();
             containerRegistry.RegisterSingleton<IMapValidationService, PersistentMapValidationService>();
             containerRegistry.RegisterSingleton<ITaskTemplateRepository, TaskTemplateRepository>();
@@ -90,6 +92,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.DependencyInjection
             containerRegistry.RegisterSingleton<ITaskRecoveryService, PersistentTaskRecoveryService>();
             containerRegistry.RegisterSingleton<IAlarmService, PersistentAlarmService>();
             containerRegistry.RegisterSingleton<IMapService, PersistentMapService>();
+            containerRegistry.RegisterSingleton<IMapManagementService, PersistentMapManagementService>();
             containerRegistry.RegisterSingleton<ITaskConfigService, PersistentTaskConfigService>();
             containerRegistry.RegisterSingleton<IOperationLogService, PersistentOperationLogService>();
             containerRegistry.RegisterSingleton<IAuditTrailService, PersistentAuditTrailService>();

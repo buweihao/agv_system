@@ -22,6 +22,8 @@ namespace AgvDispatcher.Core.Contracts.MapManagement.Requests
         /// Gets an optional source map version to copy.
         /// </summary>
         public string? SourceVersion { get; init; }
+
+        public string? SourceMapId { get; init; }
     }
 
     /// <summary>
@@ -101,6 +103,33 @@ namespace AgvDispatcher.Core.Contracts.MapManagement.Requests
         /// Gets an optional publish note.
         /// </summary>
         public string? Comment { get; init; }
+    }
+
+    public sealed class ActivateMapRequest : IAgvRequest
+    {
+        public RequestContext Context { get; init; } = new();
+
+        public string MapId { get; init; } = string.Empty;
+
+        public string Version { get; init; } = string.Empty;
+
+        public string? Reason { get; init; }
+    }
+
+    public sealed class DeleteMapDraftRequest : IAgvRequest
+    {
+        public RequestContext Context { get; init; } = new();
+
+        public string DraftId { get; init; } = string.Empty;
+    }
+
+    public sealed class ArchiveMapVersionRequest : IAgvRequest
+    {
+        public RequestContext Context { get; init; } = new();
+
+        public string MapId { get; init; } = string.Empty;
+
+        public string Version { get; init; } = string.Empty;
     }
 
     /// <summary>

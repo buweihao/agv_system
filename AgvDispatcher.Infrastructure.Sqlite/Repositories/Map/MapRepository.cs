@@ -24,10 +24,28 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
                 .ToArrayAsync();
         }
 
+        public async Task<IReadOnlyList<MapNode>> GetNodesAsync(string mapId, string mapVersion)
+        {
+            using var db = CreateContext();
+            return await db.MapNodes.AsNoTracking()
+                .Where(node => node.MapId == mapId && node.MapVersion == mapVersion)
+                .OrderBy(node => node.NodeCode)
+                .ToArrayAsync();
+        }
+
         public async Task<IReadOnlyList<MapEdge>> GetEdgesAsync()
         {
             using var db = CreateContext();
             return await db.MapEdges.AsNoTracking()
+                .OrderBy(edge => edge.EdgeId)
+                .ToArrayAsync();
+        }
+
+        public async Task<IReadOnlyList<MapEdge>> GetEdgesAsync(string mapId, string mapVersion)
+        {
+            using var db = CreateContext();
+            return await db.MapEdges.AsNoTracking()
+                .Where(edge => edge.MapId == mapId && edge.MapVersion == mapVersion)
                 .OrderBy(edge => edge.EdgeId)
                 .ToArrayAsync();
         }
@@ -37,7 +55,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
             ArgumentNullException.ThrowIfNull(node);
 
             using var db = CreateContext();
-            var existing = await db.MapNodes.FindAsync(node.NodeId);
+            var existing = await db.MapNodes.FindAsync(node.MapId, node.MapVersion, node.NodeId);
             if (existing is null)
             {
                 db.MapNodes.Add(node);
@@ -56,7 +74,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
             ArgumentNullException.ThrowIfNull(edge);
 
             using var db = CreateContext();
-            var existing = await db.MapEdges.FindAsync(edge.EdgeId);
+            var existing = await db.MapEdges.FindAsync(edge.MapId, edge.MapVersion, edge.EdgeId);
             if (existing is null)
             {
                 db.MapEdges.Add(edge);
@@ -72,7 +90,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         public async Task DeleteNodeAsync(string nodeId)
         {
             using var db = CreateContext();
-            var node = await db.MapNodes.FindAsync(nodeId);
+            var node = await db.MapNodes.FirstOrDefaultAsync(item => item.NodeId == nodeId);
             if (node is not null)
             {
                 db.MapNodes.Remove(node);
@@ -83,7 +101,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         public async Task DeleteEdgeAsync(string edgeId)
         {
             using var db = CreateContext();
-            var edge = await db.MapEdges.FindAsync(edgeId);
+            var edge = await db.MapEdges.FirstOrDefaultAsync(item => item.EdgeId == edgeId);
             if (edge is not null)
             {
                 db.MapEdges.Remove(edge);

@@ -109,4 +109,19 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Requests
         /// <summary>Gets an optional execution identifier used to disambiguate task executions.</summary>
         public string? ExecutionId { get; init; }
     }
+
+    /// <summary>
+    /// Requests the current in-memory dispatch executions.
+    /// </summary>
+    public sealed class GetDispatchExecutionsRequest : IAgvRequest
+    {
+        /// <summary>Gets the request context.</summary>
+        public RequestContext Context { get; init; } = new();
+
+        /// <summary>Gets an optional task identifier filter.</summary>
+        public string? TaskId { get; init; }
+
+        /// <summary>Gets an optional vehicle identifier filter.</summary>
+        public string? VehicleId { get; init; }
+    }
 }

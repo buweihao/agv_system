@@ -47,7 +47,7 @@ public sealed class PersistentTrafficReservationLifecycleTests
 
     [Fact] public async Task PersistentLocks_ShouldBeRecoverableAfterServiceRecreated()
     {
-        await using var f = await Fixture.CreateAsync(); var id = await f.CreateAsync("T1", "V1"); await f.Routes.AcquireNextWindowAsync(Acquire(id, 0, 2)); await using var db2 = new AgvDispatcherDbContext(f.Options); var traffic2 = new PersistentTrafficControlService(db2); var routes2 = new PersistentRouteReservationService(db2, traffic2); Assert.Equal(TrafficResourceState.Locked, (await traffic2.GetResourceStatusAsync(R(TrafficResourceType.Edge, "E1"), Context)).Data!.State); Assert.True((await routes2.GetReservationAsync(new GetRouteReservationRequest { Context = Context, ReservationId = id })).Success);
+        await using var f = await Fixture.CreateAsync(); var id = await f.CreateAsync("T1", "V1"); await f.Routes.AcquireNextWindowAsync(Acquire(id, 0, 2)); var traffic2 = new PersistentTrafficControlService(f.Options); var routes2 = new PersistentRouteReservationService(f.Options, traffic2); Assert.Equal(TrafficResourceState.Locked, (await traffic2.GetResourceStatusAsync(R(TrafficResourceType.Edge, "E1"), Context)).Data!.State); Assert.True((await routes2.GetReservationAsync(new GetRouteReservationRequest { Context = Context, ReservationId = id })).Success);
     }
 
     [Fact] public async Task ConcurrentAcquire_ShouldAllowOnlyOneVehicle()
@@ -64,7 +64,7 @@ public sealed class PersistentTrafficReservationLifecycleTests
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection; public AgvDispatcherDbContext Db { get; } public DbContextOptions<AgvDispatcherDbContext> Options { get; } public PersistentTrafficControlService Traffic { get; } public PersistentRouteReservationService Routes { get; }
-        private Fixture(SqliteConnection c, DbContextOptions<AgvDispatcherDbContext> o, AgvDispatcherDbContext db) { _connection = c; Options = o; Db = db; Traffic = new PersistentTrafficControlService(db); Routes = new PersistentRouteReservationService(db, Traffic); }
+        private Fixture(SqliteConnection c, DbContextOptions<AgvDispatcherDbContext> o, AgvDispatcherDbContext db) { _connection = c; Options = o; Db = db; Traffic = new PersistentTrafficControlService(o); Routes = new PersistentRouteReservationService(o, Traffic); }
         public static async Task<Fixture> CreateAsync() { var c = new SqliteConnection("Data Source=:memory:"); await c.OpenAsync(); var o = new DbContextOptionsBuilder<AgvDispatcherDbContext>().UseSqlite(c).Options; var db = new AgvDispatcherDbContext(o); await db.Database.EnsureCreatedAsync(); return new Fixture(c, o, db); }
         public async Task<string> CreateAsync(string task, string vehicle) { var result = await Routes.CreateReservationAsync(new CreateRouteReservationRequest { Context = Context, TaskId = task, VehicleId = vehicle, PlanId = "P-" + task, MapId = "M1", MapVersion = "1", RollingWindowSize = 2, Segments = Segments() }); Assert.True(result.Success); return result.Data!.ReservationId; }
         public async Task<TrafficResourceState> State(TrafficResourceType type, string id) => (await Traffic.GetResourceStatusAsync(R(type, id), Context)).Data!.State;

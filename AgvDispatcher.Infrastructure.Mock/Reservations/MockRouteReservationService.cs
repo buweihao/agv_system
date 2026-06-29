@@ -477,6 +477,34 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
             }
         }
 
+        public async Task<AgvResult<IReadOnlyList<RouteReservationDto>>> GetActiveReservationsAsync(
+            GetRouteReservationsRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            await _gate.WaitAsync(cancellationToken);
+            try
+            {
+                IReadOnlyList<RouteReservationDto> matches = _reservations.Values
+                    .Where(reservation =>
+                        reservation.State is not RouteReservationState.Released and
+                            not RouteReservationState.Canceled and
+                            not RouteReservationState.Completed and
+                            not RouteReservationState.Failed &&
+                        (string.IsNullOrWhiteSpace(request.TaskId) ||
+                         string.Equals(reservation.TaskId, request.TaskId, StringComparison.OrdinalIgnoreCase)) &&
+                        (string.IsNullOrWhiteSpace(request.VehicleId) ||
+                         string.Equals(reservation.VehicleId, request.VehicleId, StringComparison.OrdinalIgnoreCase)))
+                    .OrderByDescending(reservation => reservation.UpdatedAt)
+                    .ToArray();
+
+                return AgvResult<IReadOnlyList<RouteReservationDto>>.Ok(matches);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
         private async Task<(RouteReservationFailureReason Reason, bool RequiresReplan)> DescribeAcquireFailureAsync(
             RouteReservationDto reservation,
             IEnumerable<RouteReservedSegmentDto> segments,

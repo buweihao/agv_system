@@ -57,5 +57,12 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Interfaces
         Task<AgvResult<DispatchExecutionDto>> GetExecutionAsync(
             GetDispatchExecutionRequest request,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets the current in-memory dispatch executions without changing orchestration state.
+        /// </summary>
+        Task<AgvResult<IReadOnlyList<DispatchExecutionDto>>> GetActiveExecutionsAsync(
+            GetDispatchExecutionsRequest request,
+            CancellationToken cancellationToken = default);
     }
 }

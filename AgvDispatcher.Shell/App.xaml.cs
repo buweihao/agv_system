@@ -1,3 +1,5 @@
+using AgvDispatcher.DebugDashboard;
+using AgvDispatcher.DebugDashboard.Views;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Infrastructure.Sqlite;
 using AgvDispatcher.Infrastructure.Sqlite.Persistence;
@@ -25,6 +27,7 @@ public partial class App : PrismApplication
     protected override void RegisterTypes(IContainerRegistry containerRegistry)
     {
         LocalPersistenceRegistration.RegisterLocalPersistence(containerRegistry);
+        DebugDashboardRegistration.RegisterDebugDashboard(containerRegistry);
     }
 
     protected override IModuleCatalog CreateModuleCatalog()
@@ -61,6 +64,10 @@ public partial class App : PrismApplication
 
         regionManager.RequestNavigate("MainWorkspaceRegion", "MonitorLayoutView");
         eventAggregator.GetEvent<AgvDispatcher.Core.Events.NavigationTitleEvent>().Publish("运行监控");
+
+        var debugDashboardWindow = Container.Resolve<DebugDashboardWindow>();
+        debugDashboardWindow.Owner = Current.MainWindow;
+        debugDashboardWindow.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)

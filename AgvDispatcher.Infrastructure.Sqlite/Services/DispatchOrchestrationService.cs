@@ -781,6 +781,26 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 : AgvResult<DispatchExecutionDto>.Ok(execution));
         }
 
+        /// <inheritdoc />
+        public Task<AgvResult<IReadOnlyList<DispatchExecutionDto>>> GetActiveExecutionsAsync(
+            GetDispatchExecutionsRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            request ??= new GetDispatchExecutionsRequest();
+
+            IReadOnlyList<DispatchExecutionDto> executions = _executions.Values
+                .Where(execution =>
+                    (string.IsNullOrWhiteSpace(request.TaskId) ||
+                     string.Equals(execution.TaskId, request.TaskId, StringComparison.OrdinalIgnoreCase)) &&
+                    (string.IsNullOrWhiteSpace(request.VehicleId) ||
+                     string.Equals(execution.VehicleId, request.VehicleId, StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(execution => execution.UpdatedAt)
+                .ToArray();
+
+            return Task.FromResult(AgvResult<IReadOnlyList<DispatchExecutionDto>>.Ok(executions));
+        }
+
         private async Task<AgvResult<StartDispatchTaskResultDto>> CompleteDispatchStartAsync(
             StartDispatchTaskRequest request,
             TaskOrder task,

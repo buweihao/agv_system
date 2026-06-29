@@ -68,5 +68,13 @@ namespace AgvDispatcher.Core.Contracts.Reservations.Interfaces
         Task<AgvResult<IReadOnlyList<RouteReservationDto>>> GetReservationsByVehicleAsync(
             GetVehicleRouteReservationsRequest request,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets active route reservations for read-only diagnostics.
+        /// 获取用于只读诊断的活动路线预留。
+        /// </summary>
+        Task<AgvResult<IReadOnlyList<RouteReservationDto>>> GetActiveReservationsAsync(
+            GetRouteReservationsRequest request,
+            CancellationToken cancellationToken = default);
     }
 }

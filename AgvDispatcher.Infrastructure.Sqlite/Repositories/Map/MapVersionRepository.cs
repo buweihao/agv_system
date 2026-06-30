@@ -20,10 +20,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
         public async Task<MapVersionEntity?> GetActiveAsync()
         {
             using var db = CreateContext();
-            return await db.MapVersions.AsNoTracking()
+            return (await db.MapVersions.AsNoTracking()
                 .Where(version => version.IsActive || version.State == MapState.Active)
+                .ToArrayAsync())
                 .OrderByDescending(version => version.ActivatedAt)
-                .FirstOrDefaultAsync();
+                .FirstOrDefault();
         }
 
         public async Task<MapVersionEntity?> GetAsync(string mapId, string mapVersion)
@@ -42,10 +43,10 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
                 query = query.Where(version => version.MapId == mapId);
             }
 
-            return await query
+            return (await query.ToArrayAsync())
                 .OrderByDescending(version => version.IsActive)
                 .ThenByDescending(version => version.UpdatedAt)
-                .ToArrayAsync();
+                .ToArray();
         }
 
         public async Task SaveAsync(MapVersionEntity version)

@@ -1,0 +1,157 @@
+<Window x:Class="AgvDispatcher.DebugDashboard.Views.MockVehicleDetailWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding VehicleId, StringFormat=Mock Vehicle - {0}}"
+        Width="520"
+        Height="620"
+        MinWidth="480"
+        MinHeight="560"
+        Background="#050B14">
+    <Window.Resources>
+        <Style x:Key="LabelTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8FA8BF"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,10,0"/>
+        </Style>
+        <Style x:Key="ValueTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#D8E8F8"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+        <Style x:Key="FieldBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="#08111E"/>
+            <Setter Property="Foreground" Value="#D8E8F8"/>
+            <Setter Property="BorderBrush" Value="#1A2B3C"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="PanelBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#0A111E"/>
+            <Setter Property="BorderBrush" Value="#1A2B3C"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="14">
+        <StatusBar DockPanel.Dock="Bottom" Background="#07101B" Foreground="#B8C7D9">
+            <StatusBarItem Content="{Binding StatusMessage}"/>
+            <Separator/>
+            <StatusBarItem Content="{Binding ReportedAt, StringFormat=Reported: {0:yyyy-MM-dd HH:mm:ss}}"/>
+        </StatusBar>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Border Style="{StaticResource PanelBorderStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="VehicleId" Style="{StaticResource LabelTextStyle}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding VehicleId}" FontSize="20" FontWeight="Bold" Foreground="White"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="State" Style="{StaticResource LabelTextStyle}" Margin="0,10,10,0"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding State}" Style="{StaticResource ValueTextStyle}" Margin="0,10,0,0"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Location" Style="{StaticResource LabelTextStyle}" Margin="0,10,10,0"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Location}" Style="{StaticResource ValueTextStyle}" Margin="0,10,0,0"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Battery" Style="{StaticResource LabelTextStyle}" Margin="0,10,10,0"/>
+                        <ProgressBar Grid.Row="3" Grid.Column="1" Value="{Binding BatteryLevel}" Minimum="0" Maximum="100" Height="16" Margin="0,12,60,0"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding BatteryLevel, StringFormat={}{0:F0}%}" Foreground="#D8E8F8" HorizontalAlignment="Right" Margin="0,10,0,0"/>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource PanelBorderStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Text="Mock 状态编辑" Foreground="White" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Brand" Style="{StaticResource LabelTextStyle}"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Brand, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="State" Style="{StaticResource LabelTextStyle}" Margin="0,8,10,0"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding RobotStates}" SelectedItem="{Binding State}" Height="30" Margin="0,8,0,0"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Load" Style="{StaticResource LabelTextStyle}" Margin="0,8,10,0"/>
+                        <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding LoadStates}" SelectedItem="{Binding LoadState}" Height="30" Margin="0,8,0,0"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Battery" Style="{StaticResource LabelTextStyle}" Margin="0,8,10,0"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding BatteryLevel, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" Margin="0,8,0,0"/>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Location" Style="{StaticResource LabelTextStyle}" Margin="0,8,10,0"/>
+                        <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" Margin="0,8,0,0"/>
+
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="TaskId" Style="{StaticResource LabelTextStyle}" Margin="0,8,10,0"/>
+                        <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding CurrentTaskId, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" Margin="0,8,0,0"/>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource PanelBorderStyle}">
+                    <StackPanel>
+                        <TextBlock Text="状态开关" Foreground="White" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                        <WrapPanel>
+                            <CheckBox Content="Online" IsChecked="{Binding IsOnline}" Foreground="#D8E8F8" Margin="0,0,16,8"/>
+                            <CheckBox Content="Charging" IsChecked="{Binding IsCharging}" Foreground="#D8E8F8" Margin="0,0,16,8"/>
+                            <CheckBox Content="Alarm" IsChecked="{Binding HasAlarm}" Foreground="#D8E8F8" Margin="0,0,16,8"/>
+                        </WrapPanel>
+                        <TextBox Text="{Binding ActiveAlarmCode, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" Margin="0,0,0,8"/>
+                        <TextBox Text="{Binding ActiveAlarmMessage, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FieldBoxStyle}" Margin="0,0,0,8"/>
+                        <WrapPanel>
+                            <Button Content="Apply" Command="{Binding ApplyCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="Online" Command="{Binding SetOnlineCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="Offline" Command="{Binding SetOfflineCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="Running" Command="{Binding SetRunningCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="Idle" Command="{Binding SetIdleCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="Fault" Command="{Binding SetFaultCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="Clear" Command="{Binding ClearFaultCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource PanelBorderStyle}">
+                    <StackPanel>
+                        <TextBlock Text="Telemetry" Foreground="White" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                        <DataGrid ItemsSource="{Binding TelemetryRows}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  HeadersVisibility="Column"
+                                  Height="130"
+                                  Background="#08111E"
+                                  Foreground="#D8E8F8"
+                                  BorderBrush="#1A2B3C">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="180"/>
+                                <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

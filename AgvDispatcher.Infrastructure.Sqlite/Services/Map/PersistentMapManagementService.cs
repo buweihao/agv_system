@@ -249,7 +249,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 query = query.Where(item => item.MapId == request.MapId);
             }
 
-            var versions = await query.OrderByDescending(item => item.UpdatedAt)
+            var versions = (await query.ToArrayAsync(cancellationToken))
+                .OrderByDescending(item => item.UpdatedAt)
                 .Select(item => new MapVersionDto
                 {
                     MapId = item.MapId,
@@ -260,7 +261,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     PublishedAt = item.PublishedAt,
                     OperatorId = item.CreatedBy
                 })
-                .ToArrayAsync(cancellationToken);
+                .ToArray();
             return AgvResult<IReadOnlyList<MapVersionDto>>.Ok(versions);
         }
 
@@ -400,10 +401,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     .FirstOrDefaultAsync(item => item.MapVersion == version, cancellationToken);
             }
 
-            return await db.MapVersions.AsNoTracking()
+            return (await db.MapVersions.AsNoTracking()
                 .Where(item => item.IsActive || item.State == MapState.Active)
+                .ToArrayAsync(cancellationToken))
                 .OrderByDescending(item => item.ActivatedAt)
-                .FirstOrDefaultAsync(cancellationToken);
+                .FirstOrDefault();
         }
 
         private static async Task<MapDraftDto> ToDraftAsync(

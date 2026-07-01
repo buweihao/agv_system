@@ -1,7 +1,7 @@
 using AgvDispatcher.DebugDashboard;
 using AgvDispatcher.DebugDashboard.Views;
 using AgvDispatcher.Core.Interfaces;
-using AgvDispatcher.Infrastructure.Sqlite;
+using AgvDispatcher.Infrastructure.Sqlite.DependencyInjection;
 using AgvDispatcher.Infrastructure.Sqlite.Persistence;
 using Prism.DryIoc;
 using Prism.Ioc;

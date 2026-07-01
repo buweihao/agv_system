@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Contracts.MapManagement.Results;
+using MapState = AgvDispatcher.Core.Enums.MapState;
 
 namespace AgvDispatcher.Modules.MapModule.Services
 {
@@ -125,7 +126,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
                     Version = version,
                     IsCurrent = true,
                     PublishedAt = now,
-                    OperatorId = operatorId
+                    OperatorId = operatorId,
+                    State = MapState.Active
                 };
 
                 SetCurrentVersion(snapshot, versionDto);
@@ -151,11 +153,90 @@ namespace AgvDispatcher.Modules.MapModule.Services
                     Version = versionDto.Version,
                     IsCurrent = true,
                     PublishedAt = versionDto.PublishedAt,
-                    OperatorId = operatorId ?? versionDto.OperatorId
+                    OperatorId = operatorId ?? versionDto.OperatorId,
+                    State = MapState.Active
                 };
 
                 SetCurrentVersion(snapshot, rollbackVersion);
                 return rollbackVersion;
+            }
+        }
+
+        public MapVersionDto? Activate(string mapId, string version, string? operatorId)
+        {
+            lock (_syncRoot)
+            {
+                var key = VersionKey(mapId, version);
+                if (!_publishedSnapshots.TryGetValue(key, out var snapshot)
+                    || !_versions.TryGetValue(key, out var versionDto))
+                {
+                    return null;
+                }
+
+                var activeVersion = new MapVersionDto
+                {
+                    MapId = versionDto.MapId,
+                    MapName = versionDto.MapName,
+                    Version = versionDto.Version,
+                    IsCurrent = true,
+                    PublishedAt = versionDto.PublishedAt,
+                    OperatorId = operatorId ?? versionDto.OperatorId,
+                    State = MapState.Active
+                };
+
+                SetCurrentVersion(snapshot, activeVersion);
+                return CloneVersion(activeVersion);
+            }
+        }
+
+        public MapVersionDto? GetCurrentVersion(string? mapId = null)
+        {
+            lock (_syncRoot)
+            {
+                return _versions.Values
+                    .Where(version => string.IsNullOrWhiteSpace(mapId)
+                        || string.Equals(version.MapId, mapId, StringComparison.OrdinalIgnoreCase))
+                    .FirstOrDefault(version => version.IsCurrent) is { } current
+                    ? CloneVersion(current)
+                    : null;
+            }
+        }
+
+        public MapVersionDto? GetVersion(string mapId, string version)
+        {
+            lock (_syncRoot)
+            {
+                return _versions.TryGetValue(VersionKey(mapId, version), out var versionDto)
+                    ? CloneVersion(versionDto)
+                    : null;
+            }
+        }
+
+        public bool DeleteDraft(string draftId)
+        {
+            lock (_syncRoot)
+            {
+                return _drafts.Remove(draftId);
+            }
+        }
+
+        public bool Archive(string mapId, string version)
+        {
+            lock (_syncRoot)
+            {
+                var key = VersionKey(mapId, version);
+                if (!_versions.TryGetValue(key, out var versionDto))
+                {
+                    return false;
+                }
+
+                if (versionDto.IsCurrent)
+                {
+                    throw new InvalidOperationException("Cannot archive the active map.");
+                }
+
+                _versions[key] = CopyVersion(versionDto, isCurrent: false, state: MapState.Archived);
+                return true;
             }
         }
 
@@ -201,7 +282,7 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 _versions[versionKey] = CopyVersion(item, isCurrent: false);
             }
 
-            _versions[key] = currentVersion;
+            _versions[key] = CopyVersion(currentVersion, isCurrent: true, state: MapState.Active);
         }
 
         private void Seed()
@@ -366,7 +447,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
                     Version = snapshot.Version,
                     IsCurrent = true,
                     PublishedAt = now,
-                    OperatorId = "system"
+                    OperatorId = "system",
+                    State = MapState.Active
                 });
         }
 
@@ -388,17 +470,19 @@ namespace AgvDispatcher.Modules.MapModule.Services
             Version = version.Version,
             IsCurrent = version.IsCurrent,
             PublishedAt = version.PublishedAt,
-            OperatorId = version.OperatorId
+            OperatorId = version.OperatorId,
+            State = version.State
         };
 
-        private static MapVersionDto CopyVersion(MapVersionDto version, bool isCurrent) => new()
+        private static MapVersionDto CopyVersion(MapVersionDto version, bool isCurrent, MapState? state = null) => new()
         {
             MapId = version.MapId,
             MapName = version.MapName,
             Version = version.Version,
             IsCurrent = isCurrent,
             PublishedAt = version.PublishedAt,
-            OperatorId = version.OperatorId
+            OperatorId = version.OperatorId,
+            State = state ?? (isCurrent ? MapState.Active : version.State == MapState.Archived ? MapState.Archived : MapState.Published)
         };
 
         private static MapSnapshotDto CopySnapshot(

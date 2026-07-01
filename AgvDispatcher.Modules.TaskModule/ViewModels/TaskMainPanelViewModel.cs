@@ -324,6 +324,10 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                     ? $"派发成功：{result.TaskId} -> {result.VehicleId}"
                     : $"派发失败：{result.Code}，{result.Message}";
             }
+            catch (Exception ex)
+            {
+                DispatchMessage = $"派发失败：{ex.Message}";
+            }
             finally
             {
                 _dispatchingTaskIds.Remove(task.Id);

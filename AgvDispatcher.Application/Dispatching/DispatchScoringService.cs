@@ -2,7 +2,7 @@ using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 
-namespace AgvDispatcher.Infrastructure.Sqlite.Services
+namespace AgvDispatcher.Application.Dispatching
 {
     public class DispatchScoringService : IDispatchScoringService
     {

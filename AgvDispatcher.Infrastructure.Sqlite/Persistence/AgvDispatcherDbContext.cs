@@ -25,6 +25,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
 
         public DbSet<MapLocationAlias> MapLocationAliases => Set<MapLocationAlias>();
 
+        public DbSet<MapVersionEntity> MapVersions => Set<MapVersionEntity>();
+
         public DbSet<TaskTemplateConfig> TaskTemplates => Set<TaskTemplateConfig>();
 
         public DbSet<ParameterConfig> SystemParameters => Set<ParameterConfig>();
@@ -44,6 +46,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             ConfigureVehicle(modelBuilder);
             ConfigureChargeStation(modelBuilder);
             ConfigureMap(modelBuilder);
+            ConfigureMapVersion(modelBuilder);
             ConfigureMapLocationAlias(modelBuilder);
             ConfigureTaskConfig(modelBuilder);
             ConfigureAlarm(modelBuilder);
@@ -88,11 +91,13 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.HasKey(e => e.AliasId);
                 entity.Property(e => e.AliasId).HasMaxLength(64);
                 entity.Property(e => e.MapId).HasMaxLength(64);
+                entity.Property(e => e.MapVersion).HasMaxLength(64);
                 entity.Property(e => e.NodeId).HasMaxLength(64);
                 entity.Property(e => e.AliasType).HasMaxLength(64);
                 entity.Property(e => e.AliasValue).HasMaxLength(128);
                 entity.Property(e => e.Brand).HasMaxLength(64);
                 entity.Property(e => e.Remark).HasMaxLength(256);
+                entity.HasIndex(e => new { e.MapId, e.MapVersion, e.Brand, e.AliasValue }).IsUnique();
             });
         }
 
@@ -160,9 +165,10 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
             modelBuilder.Entity<MapNode>(entity =>
             {
                 entity.ToTable("MapNodes");
-                entity.HasKey(node => node.NodeId);
+                entity.HasKey(node => new { node.MapId, node.MapVersion, node.NodeId });
                 entity.Property(node => node.NodeId).HasMaxLength(64);
                 entity.Property(node => node.MapId).HasMaxLength(64);
+                entity.Property(node => node.MapVersion).HasMaxLength(64);
                 entity.Property(node => node.NodeCode).HasMaxLength(64);
                 entity.Property(node => node.Name).HasMaxLength(128);
                 entity.OwnsOne(node => node.Position);
@@ -170,17 +176,39 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                     .HasConversion(dictionaryConverter)
                     .Metadata.SetValueComparer(dictionaryComparer);
                 entity.Property(node => node.AllowedBrands).HasMaxLength(256);
+                entity.HasIndex(node => new { node.MapId, node.MapVersion, node.NodeCode }).IsUnique();
             });
 
             modelBuilder.Entity<MapEdge>(entity =>
             {
                 entity.ToTable("MapEdges");
-                entity.HasKey(edge => edge.EdgeId);
+                entity.HasKey(edge => new { edge.MapId, edge.MapVersion, edge.EdgeId });
                 entity.Property(edge => edge.EdgeId).HasMaxLength(64);
+                entity.Property(edge => edge.MapId).HasMaxLength(64);
+                entity.Property(edge => edge.MapVersion).HasMaxLength(64);
                 entity.Property(edge => edge.FromNodeId).HasMaxLength(64);
                 entity.Property(edge => edge.ToNodeId).HasMaxLength(64);
                 entity.Property(edge => edge.AllowedBrands).HasMaxLength(256);
                 entity.HasIndex(edge => new { edge.FromNodeId, edge.ToNodeId });
+            });
+        }
+
+        private static void ConfigureMapVersion(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<MapVersionEntity>(entity =>
+            {
+                entity.ToTable("MapVersions");
+                entity.HasKey(version => version.Id);
+                entity.Property(version => version.Id).HasMaxLength(64);
+                entity.Property(version => version.MapId).HasMaxLength(64);
+                entity.Property(version => version.MapVersion).HasMaxLength(64);
+                entity.Property(version => version.Name).HasMaxLength(128);
+                entity.Property(version => version.BaseMapId).HasMaxLength(64);
+                entity.Property(version => version.BaseMapVersion).HasMaxLength(64);
+                entity.Property(version => version.CreatedBy).HasMaxLength(64);
+                entity.Property(version => version.Description).HasMaxLength(512);
+                entity.HasIndex(version => new { version.MapId, version.MapVersion }).IsUnique();
+                entity.HasIndex(version => version.IsActive);
             });
         }
 

@@ -1,6 +1,6 @@
 using AgvDispatcher.Core.Contracts.Traffic.Enums;
 using AgvDispatcher.Core.Contracts.Traffic.Models;
-using AgvDispatcher.Infrastructure.Sqlite.Services;
+using AgvDispatcher.Application.Dispatching;
 using Xunit;
 
 namespace AgvDispatcher.Tests.Dispatching;

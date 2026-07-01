@@ -47,6 +47,10 @@ namespace AgvDispatcher.Core.Contracts.MapManagement.Interfaces
             PublishMapDraftRequest request,
             CancellationToken cancellationToken = default);
 
+        Task<AgvResult<MapActivationResultDto>> ActivateMapAsync(
+            ActivateMapRequest request,
+            CancellationToken cancellationToken = default);
+
         /// <summary>
         /// Gets known map versions for management screens.
         /// </summary>
@@ -59,6 +63,14 @@ namespace AgvDispatcher.Core.Contracts.MapManagement.Interfaces
         /// </summary>
         Task<AgvResult<MapRollbackResultDto>> RollbackToVersionAsync(
             RollbackMapVersionRequest request,
+            CancellationToken cancellationToken = default);
+
+        Task<AgvResult> DeleteDraftAsync(
+            DeleteMapDraftRequest request,
+            CancellationToken cancellationToken = default);
+
+        Task<AgvResult> ArchiveMapAsync(
+            ArchiveMapVersionRequest request,
             CancellationToken cancellationToken = default);
 
         /// <summary>

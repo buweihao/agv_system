@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Contracts.Map;
 
 namespace AgvDispatcher.Core.Contracts.MapManagement.Results
@@ -33,6 +34,8 @@ namespace AgvDispatcher.Core.Contracts.MapManagement.Results
         /// Gets the operator that last changed the draft.
         /// </summary>
         public string? OperatorId { get; init; }
+
+        public MapState State { get; init; } = MapState.Draft;
     }
 
     /// <summary>
@@ -76,6 +79,8 @@ namespace AgvDispatcher.Core.Contracts.MapManagement.Results
         /// </summary>
         public bool IsCurrent { get; init; }
 
+        public MapState State { get; init; } = MapState.Published;
+
         /// <summary>
         /// Gets the publish time, if this version has been published.
         /// </summary>
@@ -110,6 +115,21 @@ namespace AgvDispatcher.Core.Contracts.MapManagement.Results
         /// <summary>
         /// Gets the operator that published the map.
         /// </summary>
+        public string? OperatorId { get; init; }
+    }
+
+    public sealed class MapActivationResultDto
+    {
+        public string? OldMapId { get; init; }
+
+        public string? OldVersion { get; init; }
+
+        public string MapId { get; init; } = string.Empty;
+
+        public string Version { get; init; } = string.Empty;
+
+        public DateTimeOffset ActivatedAt { get; init; } = DateTimeOffset.Now;
+
         public string? OperatorId { get; init; }
     }
 

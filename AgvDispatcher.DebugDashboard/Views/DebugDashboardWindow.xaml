@@ -232,6 +232,17 @@
             <TabItem Header="车辆">
                 <DataGrid Margin="8" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding Vehicles}">
                     <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="Detail" Width="78">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="详情"
+                                            Width="56"
+                                            Height="24"
+                                            Command="{Binding DataContext.OpenVehicleWindowCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="VehicleId" Binding="{Binding VehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
                         <DataGridTextColumn Header="Code" Binding="{Binding VehicleCode}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
                         <DataGridTextColumn Header="Name" Binding="{Binding Name}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>

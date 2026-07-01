@@ -1,5 +1,6 @@
 ﻿using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Models;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
@@ -30,6 +31,7 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
                 CREATE TABLE IF NOT EXISTS ""MapLocationAliases"" (
                     ""AliasId"" TEXT NOT NULL CONSTRAINT ""PK_MapLocationAliases"" PRIMARY KEY,
                     ""MapId"" TEXT NOT NULL,
+                    ""MapVersion"" TEXT NOT NULL DEFAULT 'v1',
                     ""NodeId"" TEXT NOT NULL,
                     ""AliasType"" TEXT NOT NULL,
                     ""AliasValue"" TEXT NOT NULL,
@@ -37,8 +39,30 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
                     ""IsEnabled"" INTEGER NOT NULL,
                     ""Remark"" TEXT NULL
                 );
+                CREATE TABLE IF NOT EXISTS ""MapVersions"" (
+                    ""Id"" TEXT NOT NULL CONSTRAINT ""PK_MapVersions"" PRIMARY KEY,
+                    ""MapId"" TEXT NOT NULL,
+                    ""MapVersion"" TEXT NOT NULL,
+                    ""Name"" TEXT NOT NULL,
+                    ""State"" INTEGER NOT NULL,
+                    ""BaseMapId"" TEXT NULL,
+                    ""BaseMapVersion"" TEXT NULL,
+                    ""IsActive"" INTEGER NOT NULL,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    ""UpdatedAt"" TEXT NOT NULL,
+                    ""PublishedAt"" TEXT NULL,
+                    ""ActivatedAt"" TEXT NULL,
+                    ""CreatedBy"" TEXT NULL,
+                    ""Description"" TEXT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_MapVersions_MapId_MapVersion"" ON ""MapVersions"" (""MapId"", ""MapVersion"");
+                CREATE INDEX IF NOT EXISTS ""IX_MapVersions_IsActive"" ON ""MapVersions"" (""IsActive"");
             ");
 
+            EnsureMapSchemaCompatibility(db);
+            db.Database.ExecuteSqlRaw(@"
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_MapLocationAliases_MapId_MapVersion_Brand_AliasValue"" ON ""MapLocationAliases"" (""MapId"", ""MapVersion"", ""Brand"", ""AliasValue"");
+            ");
             NormalizeStaticMapTables(db);
             EnsureReferenceMapSeed(db);
             var referenceSeedInitialized = IsReferenceSeedInitialized(db);
@@ -113,8 +137,9 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
 PRAGMA foreign_keys=OFF;
 DROP TABLE IF EXISTS __MapNodes_Static;
 CREATE TABLE __MapNodes_Static (
-    NodeId TEXT NOT NULL CONSTRAINT PK_MapNodes PRIMARY KEY,
     MapId TEXT NOT NULL,
+    MapVersion TEXT NOT NULL,
+    NodeId TEXT NOT NULL,
     NodeCode TEXT NOT NULL,
     Name TEXT NOT NULL,
     NodeType INTEGER NOT NULL,
@@ -131,24 +156,27 @@ CREATE TABLE __MapNodes_Static (
     ParkingCapacity INTEGER NOT NULL,
     AllowedBrands TEXT NOT NULL,
     RequiredCapabilities INTEGER NOT NULL,
-    Tags TEXT NOT NULL
+    Tags TEXT NOT NULL,
+    CONSTRAINT PK_MapNodes PRIMARY KEY (MapId, MapVersion, NodeId)
 );
 INSERT OR IGNORE INTO __MapNodes_Static (
-    NodeId, MapId, NodeCode, Name, NodeType, Position_MapId, Position_X, Position_Y,
+    MapId, MapVersion, NodeId, NodeCode, Name, NodeType, Position_MapId, Position_X, Position_Y,
     Position_Z, Position_Heading, Position_NodeId, Position_AreaCode, Heading,
     AreaCode, IsEnabled, ParkingCapacity, AllowedBrands, RequiredCapabilities, Tags)
 SELECT
-    NodeId, MapId, NodeCode, Name, NodeType, Position_MapId, Position_X, Position_Y,
+    MapId, COALESCE(NULLIF(MapVersion, ''), 'v1'), NodeId, NodeCode, Name, NodeType, Position_MapId, Position_X, Position_Y,
     Position_Z, Position_Heading, Position_NodeId, Position_AreaCode, Heading,
     AreaCode, IsEnabled, ParkingCapacity, AllowedBrands, RequiredCapabilities, Tags
 FROM MapNodes;
 DROP TABLE MapNodes;
 ALTER TABLE __MapNodes_Static RENAME TO MapNodes;
+CREATE UNIQUE INDEX IF NOT EXISTS IX_MapNodes_MapId_MapVersion_NodeCode ON MapNodes(MapId, MapVersion, NodeCode);
 
 DROP TABLE IF EXISTS __MapEdges_Static;
 CREATE TABLE __MapEdges_Static (
-    EdgeId TEXT NOT NULL CONSTRAINT PK_MapEdges PRIMARY KEY,
     MapId TEXT NOT NULL,
+    MapVersion TEXT NOT NULL,
+    EdgeId TEXT NOT NULL,
     FromNodeId TEXT NOT NULL,
     ToNodeId TEXT NOT NULL,
     Direction INTEGER NOT NULL,
@@ -160,19 +188,102 @@ CREATE TABLE __MapEdges_Static (
     AreaCode TEXT NOT NULL,
     AllowedBrands TEXT NOT NULL,
     MaxVehicleFlow INTEGER NOT NULL,
-    Remark TEXT NOT NULL
+    Remark TEXT NOT NULL,
+    CONSTRAINT PK_MapEdges PRIMARY KEY (MapId, MapVersion, EdgeId)
 );
 INSERT OR IGNORE INTO __MapEdges_Static (
-    EdgeId, MapId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
+    MapId, MapVersion, EdgeId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
     Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, Remark)
 SELECT
-    EdgeId, MapId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
+    MapId, COALESCE(NULLIF(MapVersion, ''), 'v1'), EdgeId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
     Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, Remark
 FROM MapEdges;
 DROP TABLE MapEdges;
 ALTER TABLE __MapEdges_Static RENAME TO MapEdges;
 CREATE INDEX IF NOT EXISTS IX_MapEdges_FromNodeId_ToNodeId ON MapEdges(FromNodeId, ToNodeId);
 PRAGMA foreign_keys=ON;");
+        }
+
+        private static void EnsureMapSchemaCompatibility(AgvDispatcherDbContext db)
+        {
+            AddColumnIfMissing(db, "MapNodes", "MapVersion", "TEXT NOT NULL DEFAULT 'v1'");
+            AddColumnIfMissing(db, "MapEdges", "MapVersion", "TEXT NOT NULL DEFAULT 'v1'");
+            AddColumnIfMissing(db, "MapLocationAliases", "MapVersion", "TEXT NOT NULL DEFAULT 'v1'");
+        }
+
+        private static void AddColumnIfMissing(
+            AgvDispatcherDbContext db,
+            string tableName,
+            string columnName,
+            string columnDefinition)
+        {
+            if (!TableExists(db, tableName) || ColumnExists(db, tableName, columnName))
+            {
+                return;
+            }
+
+            db.Database.ExecuteSqlRaw($@"ALTER TABLE ""{tableName}"" ADD COLUMN ""{columnName}"" {columnDefinition};");
+        }
+
+        private static bool TableExists(AgvDispatcherDbContext db, string tableName)
+        {
+            var connection = db.Database.GetDbConnection();
+            var shouldClose = connection.State != ConnectionState.Open;
+            if (shouldClose)
+            {
+                connection.Open();
+            }
+
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $tableName LIMIT 1;";
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "$tableName";
+                parameter.Value = tableName;
+                command.Parameters.Add(parameter);
+                return command.ExecuteScalar() is not null;
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    connection.Close();
+                }
+            }
+        }
+
+        private static bool ColumnExists(AgvDispatcherDbContext db, string tableName, string columnName)
+        {
+            var connection = db.Database.GetDbConnection();
+            var shouldClose = connection.State != ConnectionState.Open;
+            if (shouldClose)
+            {
+                connection.Open();
+            }
+
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $@"PRAGMA table_info(""{tableName}"");";
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    connection.Close();
+                }
+            }
         }
 
         private static void EnsureReferenceMapSeed(AgvDispatcherDbContext db)

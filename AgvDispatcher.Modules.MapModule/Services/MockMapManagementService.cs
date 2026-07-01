@@ -114,6 +114,50 @@ namespace AgvDispatcher.Modules.MapModule.Services
             });
         }
 
+        public async Task<AgvResult<MapActivationResultDto>> ActivateMapAsync(
+            ActivateMapRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var old = _store.GetCurrentVersion(request.MapId);
+            var version = _store.Activate(request.MapId, request.Version, request.Context.OperatorId);
+            if (version is null)
+            {
+                return AgvResult<MapActivationResultDto>.Fail(
+                    FailureCode.InvalidRequest,
+                    $"Map version '{request.MapId}/{request.Version}' was not found.");
+            }
+
+            var snapshot = _store.GetPublishedSnapshot(request.MapId, request.Version);
+            if (snapshot is not null)
+            {
+                await PersistCurrentMapAsync(snapshot, cancellationToken);
+            }
+
+            var now = DateTimeOffset.Now;
+            var result = new MapActivationResultDto
+            {
+                OldMapId = old?.MapId,
+                OldVersion = old?.Version,
+                MapId = request.MapId,
+                Version = request.Version,
+                ActivatedAt = now,
+                OperatorId = request.Context.OperatorId
+            };
+
+            _eventAggregator.GetEvent<PubSubEvent<ActiveMapChangedEvent>>().Publish(new ActiveMapChangedEvent
+            {
+                OldMapId = result.OldMapId,
+                OldMapVersion = result.OldVersion,
+                NewMapId = result.MapId,
+                NewMapVersion = result.Version,
+                ChangedAt = now.DateTime,
+                OperatorId = result.OperatorId,
+                Reason = request.Reason
+            });
+
+            return AgvResult<MapActivationResultDto>.Ok(result);
+        }
+
         public Task<AgvResult<IReadOnlyList<MapVersionDto>>> GetMapVersionsAsync(
             GetMapVersionsRequest request,
             CancellationToken cancellationToken = default)
@@ -341,6 +385,37 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 Draft = draft,
                 Warnings = validation.Messages.Where(message => message.StartsWith("P1", StringComparison.OrdinalIgnoreCase)).ToList()
             }));
+        }
+
+        public Task<AgvResult> DeleteDraftAsync(
+            DeleteMapDraftRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            _store.DeleteDraft(request.DraftId);
+            return Task.FromResult(AgvResult.Ok());
+        }
+
+        public Task<AgvResult> ArchiveMapAsync(
+            ArchiveMapVersionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var version = _store.GetVersion(request.MapId, request.Version);
+            if (version is null)
+            {
+                return Task.FromResult(AgvResult.Fail(
+                    FailureCode.InvalidRequest,
+                    $"Map version '{request.MapId}/{request.Version}' was not found."));
+            }
+
+            if (version.IsCurrent)
+            {
+                return Task.FromResult(AgvResult.Fail(
+                    FailureCode.InvalidState,
+                    "Cannot archive the active map."));
+            }
+
+            _store.Archive(request.MapId, request.Version);
+            return Task.FromResult(AgvResult.Ok());
         }
 
         private void PublishMapChanged(

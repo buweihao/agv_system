@@ -1,3 +1,4 @@
+using AgvDispatcher.Application.DependencyInjection;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Infrastructure.Mock;
 using AgvDispatcher.Infrastructure.Sqlite.Persistence;
@@ -13,11 +14,12 @@ using AgvDispatcher.Core.Contracts.Planning.Interfaces;
 using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
 using AgvDispatcher.Core.Contracts.Traffic.Interfaces;
 using AgvDispatcher.Core.Contracts.Map;
+using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
 using AgvDispatcher.Infrastructure.Mock.Planning;
 using AgvDispatcher.Infrastructure.Mock.Reservations;
 using AgvDispatcher.Infrastructure.Mock.Traffic;
 
-namespace AgvDispatcher.Infrastructure.Sqlite
+namespace AgvDispatcher.Infrastructure.Sqlite.DependencyInjection
 {
     public static class LocalPersistenceRegistration
     {
@@ -39,6 +41,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IVehicleRepository, VehicleRepository>();
             containerRegistry.RegisterSingleton<IChargeStationRepository, ChargeStationRepository>();
             containerRegistry.RegisterSingleton<IMapRepository, MapRepository>();
+            containerRegistry.RegisterSingleton<IMapVersionRepository, MapVersionRepository>();
             containerRegistry.RegisterSingleton<IMapLocationAliasRepository, MapLocationAliasRepository>();
             containerRegistry.RegisterSingleton<IMapValidationService, PersistentMapValidationService>();
             containerRegistry.RegisterSingleton<ITaskTemplateRepository, TaskTemplateRepository>();
@@ -68,7 +71,6 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IVehicleAdapterFactory, CompositeVehicleAdapterFactory>();
             containerRegistry.RegisterSingleton<IVehicleAdapterManager, VehicleAdapterManager>();
             containerRegistry.RegisterSingleton<ITaskExecutionSimulator, MockTaskExecutionSimulator>();
-            containerRegistry.RegisterSingleton<IDispatchScoringService, DispatchScoringService>();
             containerRegistry.RegisterSingleton<IPathPlanner, DijkstraPathPlanner>();
             // This is a startup-time composition choice. Read it directly from the system
             // parameter table because repositories are not registered/resolvable yet.
@@ -83,8 +85,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
                 containerRegistry.RegisterSingleton<ITrafficControlService, MockTrafficControlService>();
                 containerRegistry.RegisterSingleton<IRouteReservationService, MockRouteReservationService>();
             }
-            containerRegistry.RegisterSingleton<IDispatchOrchestrationService, DispatchOrchestrationService>();
-            containerRegistry.RegisterSingleton<IDispatchService, AdapterDispatchService>();
+            ApplicationRegistration.RegisterApplicationServices(containerRegistry);
 
             containerRegistry.RegisterSingleton<IVehicleService, PersistentVehicleService>();
             containerRegistry.RegisterSingleton<IChargeService, PersistentChargeService>();
@@ -92,6 +93,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite
             containerRegistry.RegisterSingleton<IAlarmService, PersistentAlarmService>();
             // 真实只读静态地图查询实现已就绪；当前界面阶段仍由 MapModule 的 Mock 闭环接管注册。
             containerRegistry.RegisterSingleton<IMapService, PersistentMapService>();
+            containerRegistry.RegisterSingleton<IMapManagementService, PersistentMapManagementService>();
             containerRegistry.RegisterSingleton<ITaskConfigService, PersistentTaskConfigService>();
             containerRegistry.RegisterSingleton<IOperationLogService, PersistentOperationLogService>();
             containerRegistry.RegisterSingleton<IAuditTrailService, PersistentAuditTrailService>();

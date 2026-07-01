@@ -66,7 +66,9 @@ public sealed class PersistentRouteReservationService : IRouteReservationService
             var q = db.RouteReservations.Include(a => a.Segments).AsNoTracking().Where(a => !terminal.Contains(a.State));
             if (!string.IsNullOrWhiteSpace(r.TaskId)) q = q.Where(a => a.TaskId == r.TaskId);
             if (!string.IsNullOrWhiteSpace(r.VehicleId)) q = q.Where(a => a.VehicleId == r.VehicleId);
-            var x = await q.OrderByDescending(a => a.UpdatedAt).ToArrayAsync(ct);
+            var x = (await q.ToArrayAsync(ct))
+                .OrderByDescending(a => a.UpdatedAt)
+                .ToArray();
             return AgvResult<IReadOnlyList<RouteReservationDto>>.Ok(x.Select(Map).ToArray());
         }
         finally { Gate.Release(); }

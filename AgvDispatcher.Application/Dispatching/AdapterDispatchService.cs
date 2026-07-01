@@ -5,7 +5,7 @@ using AgvDispatcher.Core.Contracts.Dispatching.Requests;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
 
-namespace AgvDispatcher.Infrastructure.Sqlite.Services
+namespace AgvDispatcher.Application.Dispatching
 {
     public class AdapterDispatchService : IDispatchService
     {

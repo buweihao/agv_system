@@ -22,6 +22,14 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
             return await db.MapLocationAliases.AsNoTracking().ToListAsync();
         }
 
+        public async Task<IReadOnlyList<MapLocationAlias>> GetAllAsync(string mapId, string mapVersion)
+        {
+            using var db = CreateContext();
+            return await db.MapLocationAliases.AsNoTracking()
+                .Where(alias => alias.MapId == mapId && alias.MapVersion == mapVersion)
+                .ToListAsync();
+        }
+
         public async Task SaveAsync(MapLocationAlias alias)
         {
             using var db = CreateContext();

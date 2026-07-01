@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AgvDispatcher.Application\AgvDispatcher.Application.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Core\AgvDispatcher.Core.csproj" />
     <ProjectReference Include="..\AgvDispatcher.DebugDashboard\AgvDispatcher.DebugDashboard.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />

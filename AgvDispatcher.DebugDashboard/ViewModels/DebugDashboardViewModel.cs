@@ -17,6 +17,7 @@ namespace AgvDispatcher.DebugDashboard.ViewModels;
 public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 {
     private readonly IDebugSnapshotService _debugSnapshotService;
+    private readonly IMockVehicleWindowService _mockVehicleWindowService;
     private readonly DispatcherTimer _timer;
     private DebugSnapshotDto _snapshot = new();
     private bool _isRefreshing;
@@ -29,10 +30,14 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private RouteReservationRow? _selectedRouteReservation;
     private OkapiProtocolTraceRecord? _selectedOkapiRecord;
 
-    public DebugDashboardViewModel(IDebugSnapshotService debugSnapshotService)
+    public DebugDashboardViewModel(
+        IDebugSnapshotService debugSnapshotService,
+        IMockVehicleWindowService mockVehicleWindowService)
     {
         _debugSnapshotService = debugSnapshotService;
+        _mockVehicleWindowService = mockVehicleWindowService;
         RefreshCommand = new DelegateCommand(async () => await RefreshAsync().ConfigureAwait(true), () => !IsRefreshing);
+        OpenVehicleWindowCommand = new DelegateCommand<VehicleRow?>(OpenVehicleWindow);
         RefreshIntervals = new[] { 1, 2, 5 };
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(_selectedRefreshIntervalSeconds) };
         _timer.Tick += async (_, _) => await RefreshAsync().ConfigureAwait(true);
@@ -41,6 +46,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     }
 
     public DelegateCommand RefreshCommand { get; }
+
+    public DelegateCommand<VehicleRow?> OpenVehicleWindowCommand { get; }
 
     public IReadOnlyList<int> RefreshIntervals { get; }
 
@@ -268,6 +275,16 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             : _snapshot.RouteReservations
                 .Where(reservation => string.Equals(reservation.TaskId, taskId, StringComparison.OrdinalIgnoreCase))
                 .Select(ToRouteReservationRow));
+    }
+
+    private void OpenVehicleWindow(VehicleRow? vehicle)
+    {
+        if (vehicle is null || string.IsNullOrWhiteSpace(vehicle.VehicleId))
+        {
+            return;
+        }
+
+        _mockVehicleWindowService.ShowVehicle(vehicle.VehicleId);
     }
 
     private static TaskRow ToTaskRow(TaskOrder task) => new()

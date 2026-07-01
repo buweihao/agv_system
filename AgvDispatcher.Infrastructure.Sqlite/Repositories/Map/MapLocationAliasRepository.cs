@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AgvDispatcher.Infrastructure.Sqlite.Repositories
 {
-    internal class MapLocationAliasRepository : IMapLocationAliasRepository
+    public class MapLocationAliasRepository : IMapLocationAliasRepository
     {
         private readonly DbContextOptions<AgvDispatcherDbContext> _options;
 

@@ -1,4 +1,5 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.Globalization;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Models;
@@ -17,7 +18,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         // 编辑器交互模式
         private bool _isConnectMode;
         private bool _isPlaceStationMode;
+        private bool _isAddNodeMode;
         private bool _isGridSnapEnabled = true;
+        private AreaDrawMode _areaDrawMode = AreaDrawMode.None;
 
         /// <summary>对齐网格步长（画布像素）。</summary>
         public const double GridStep = 20;
@@ -29,6 +32,22 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         /// <summary>画布边项集合（由 <see cref="Edges"/> 投影，端点随节点联动）。</summary>
         public ObservableCollection<EditorEdgeVm> EditorEdges { get; } = new();
+
+        public ObservableCollection<EditorAreaVm> EditorAreas { get; } = new();
+
+        public IReadOnlyList<string> AreaColorOptions { get; } =
+        [
+            "#2D8CFF",
+            "#00BFA6",
+            "#9B6DFF",
+            "#FFB020",
+            "#FF4D4F",
+            "#32D583",
+            "#5A7FA6",
+            "#00BFFF",
+            "#FFD700",
+            "#FF7A45"
+        ];
 
         /// <summary>充电桩领域集合（编辑器与表格共用）。</summary>
         public ObservableCollection<ChargeStation> Stations { get; } = new();
@@ -59,11 +78,26 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// <summary>重做被撤销的编辑。</summary>
         public DelegateCommand RedoCommand { get; private set; } = null!;
 
-        /// <summary>在画布中心新增一个节点。</summary>
+        /// <summary>切换节点放置模式：开启后点击画布空白处新增节点。</summary>
         public DelegateCommand AddNodeAtCenterCommand { get; private set; } = null!;
+
+        public DelegateCommand AddAreaCommand { get; private set; } = null!;
+
+        public DelegateCommand DeleteRectangleCommand { get; private set; } = null!;
+
+        public DelegateCommand DrawRectangleAreaCommand { get; private set; } = null!;
+
+        public DelegateCommand DrawPolygonAreaCommand { get; private set; } = null!;
+
+        public DelegateCommand EncloseElementsAreaCommand { get; private set; } = null!;
+
+        public DelegateCommand<string> SetSelectedAreaColorCommand { get; private set; } = null!;
 
         /// <summary>删除当前选中的画布对象（节点/边/充电桩）。</summary>
         public DelegateCommand DeleteSelectionCommand { get; private set; } = null!;
+
+        /// <summary>交换当前选中路线的起点/终点，只修改静态地图边定义。</summary>
+        public DelegateCommand ReverseSelectedEdgeCommand { get; private set; } = null!;
 
         /// <summary>整图保存：前置校验通过后，把节点/边/别名/充电桩批量落库。</summary>
         public DelegateCommand SaveAllCommand { get; private set; } = null!;
@@ -77,6 +111,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 if (SetProperty(ref _isConnectMode, value) && value)
                 {
                     IsPlaceStationMode = false;
+                    IsAddNodeMode = false;
+                    AreaDrawMode = AreaDrawMode.None;
                 }
             }
         }
@@ -90,6 +126,22 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 if (SetProperty(ref _isPlaceStationMode, value) && value)
                 {
                     IsConnectMode = false;
+                    IsAddNodeMode = false;
+                    AreaDrawMode = AreaDrawMode.None;
+                }
+            }
+        }
+
+        public bool IsAddNodeMode
+        {
+            get => _isAddNodeMode;
+            set
+            {
+                if (SetProperty(ref _isAddNodeMode, value) && value)
+                {
+                    IsConnectMode = false;
+                    IsPlaceStationMode = false;
+                    AreaDrawMode = AreaDrawMode.None;
                 }
             }
         }
@@ -100,6 +152,35 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             get => _isGridSnapEnabled;
             set => SetProperty(ref _isGridSnapEnabled, value);
         }
+
+        public AreaDrawMode AreaDrawMode
+        {
+            get => _areaDrawMode;
+            set
+            {
+                if (SetProperty(ref _areaDrawMode, value))
+                {
+                    RaisePropertyChanged(nameof(IsRectangleAreaMode));
+                    RaisePropertyChanged(nameof(IsPolygonAreaMode));
+                    RaisePropertyChanged(nameof(IsEncloseElementsAreaMode));
+                    RaisePropertyChanged(nameof(IsDeleteElementsMode));
+                    if (value != AreaDrawMode.None)
+                    {
+                        IsConnectMode = false;
+                        IsPlaceStationMode = false;
+                        IsAddNodeMode = false;
+                    }
+                }
+            }
+        }
+
+        public bool IsRectangleAreaMode => AreaDrawMode == AreaDrawMode.Rectangle;
+
+        public bool IsPolygonAreaMode => AreaDrawMode == AreaDrawMode.Polygon;
+
+        public bool IsEncloseElementsAreaMode => AreaDrawMode == AreaDrawMode.EncloseElements;
+
+        public bool IsDeleteElementsMode => AreaDrawMode == AreaDrawMode.DeleteElements;
 
         private EditorNodeVm? _selectedEditorNode;
         /// <summary>当前选中的画布节点（点击/拖拽选中）。同步选中底层表格节点。</summary>
@@ -116,9 +197,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                         SelectedNode = value.Model;
                         SelectedEditorEdge = null;
                         SelectedEditorStation = null;
+                        SelectedEditorArea = null;
                     }
                     RaisePropertyChanged(nameof(HasSelection));
                     DeleteSelectionCommand.RaiseCanExecuteChanged();
+                    ReverseSelectedEdgeCommand.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -138,6 +221,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                         SelectedEdge = value.Model;
                         SelectedEditorNode = null;
                         SelectedEditorStation = null;
+                        SelectedEditorArea = null;
                     }
                     RaisePropertyChanged(nameof(HasSelection));
                     DeleteSelectionCommand.RaiseCanExecuteChanged();
@@ -159,6 +243,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                     {
                         SelectedEditorNode = null;
                         SelectedEditorEdge = null;
+                        SelectedEditorArea = null;
                     }
                     RaisePropertyChanged(nameof(HasSelection));
                     DeleteSelectionCommand.RaiseCanExecuteChanged();
@@ -167,7 +252,28 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         }
 
         /// <summary>是否有任意画布对象被选中。</summary>
-        public bool HasSelection => SelectedEditorNode is not null || SelectedEditorEdge is not null || SelectedEditorStation is not null;
+        private EditorAreaVm? _selectedEditorArea;
+        public EditorAreaVm? SelectedEditorArea
+        {
+            get => _selectedEditorArea;
+            set
+            {
+                if (SetProperty(ref _selectedEditorArea, value))
+                {
+                    UpdateSelectionVisuals();
+                    if (value is not null)
+                    {
+                        SelectedEditorNode = null;
+                        SelectedEditorEdge = null;
+                        SelectedEditorStation = null;
+                    }
+                    RaisePropertyChanged(nameof(HasSelection));
+                    DeleteSelectionCommand.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        public bool HasSelection => SelectedEditorNode is not null || SelectedEditorEdge is not null || SelectedEditorStation is not null || SelectedEditorArea is not null;
 
         private string _coordReadout = string.Empty;
         /// <summary>画布角落坐标读数（随光标移动更新，按米/像素显示）。</summary>
@@ -181,16 +287,74 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private void InitializeEditorCommands()
         {
             ToggleConnectModeCommand = new DelegateCommand(() => IsConnectMode = !IsConnectMode);
-            TogglePlaceStationModeCommand = new DelegateCommand(() => IsPlaceStationMode = !IsPlaceStationMode);
+            TogglePlaceStationModeCommand = new DelegateCommand(TogglePlaceStationMode);
             ToggleGridSnapCommand = new DelegateCommand(() => IsGridSnapEnabled = !IsGridSnapEnabled);
             ToggleUnitCommand = new DelegateCommand(() => Settings.ShowInMeters = !Settings.ShowInMeters);
             UndoCommand = new DelegateCommand(() => { _undoRedo.Undo(); RaiseUndoRedoState(); }, () => _undoRedo.CanUndo);
             RedoCommand = new DelegateCommand(() => { _undoRedo.Redo(); RaiseUndoRedoState(); }, () => _undoRedo.CanRedo);
-            AddNodeAtCenterCommand = new DelegateCommand(AddNodeAtCenter);
+            AddNodeAtCenterCommand = new DelegateCommand(() => IsAddNodeMode = !IsAddNodeMode);
+            AddAreaCommand = new DelegateCommand(AddArea);
+            DrawRectangleAreaCommand = new DelegateCommand(() => ToggleAreaDrawMode(AreaDrawMode.Rectangle));
+            DrawPolygonAreaCommand = new DelegateCommand(() => ToggleAreaDrawMode(AreaDrawMode.Polygon));
+            EncloseElementsAreaCommand = new DelegateCommand(() => ToggleAreaDrawMode(AreaDrawMode.EncloseElements));
+            DeleteRectangleCommand = new DelegateCommand(() => ToggleAreaDrawMode(AreaDrawMode.DeleteElements));
+            SetSelectedAreaColorCommand = new DelegateCommand<string>(SetSelectedAreaColor);
             DeleteSelectionCommand = new DelegateCommand(DeleteSelection, () => HasSelection).ObservesProperty(() => HasSelection);
+            ReverseSelectedEdgeCommand = new DelegateCommand(ReverseSelectedEdge, () => SelectedEditorEdge is not null)
+                .ObservesProperty(() => SelectedEditorEdge);
             SaveAllCommand = new DelegateCommand(SaveAll);
 
             LoadMapSettings();
+        }
+
+        private void ToggleAreaDrawMode(AreaDrawMode mode)
+        {
+            AreaDrawMode = AreaDrawMode == mode ? AreaDrawMode.None : mode;
+            ClearBulkHighlights();
+        }
+
+        private void TogglePlaceStationMode()
+        {
+            if (EditorNodes.Count == 0)
+            {
+                AddChargeNodeAtCenter();
+                return;
+            }
+
+            if (SelectedEditorNode is { } selectedNode)
+            {
+                selectedNode.NodeType = MapNodeType.Charge;
+                selectedNode.IsEnabled = true;
+                PlaceStationOnNode(selectedNode);
+                return;
+            }
+
+            IsPlaceStationMode = !IsPlaceStationMode;
+        }
+
+        private void SetSelectedAreaColor(string color)
+        {
+            if (SelectedEditorArea is null || string.IsNullOrWhiteSpace(color))
+            {
+                return;
+            }
+
+            SelectedEditorArea.Color = color;
+        }
+
+        private void ReverseSelectedEdge()
+        {
+            if (SelectedEditorEdge is not { } edgeVm)
+            {
+                return;
+            }
+
+            _undoRedo.Do(new EditorAction(
+                $"反向路线 {edgeVm.EdgeId}",
+                redo: edgeVm.ReverseEndpoints,
+                undo: edgeVm.ReverseEndpoints));
+            RaiseUndoRedoState();
+            SelectedEdge = edgeVm.Model;
         }
 
         private void RaiseUndoRedoState()
@@ -240,9 +404,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             _selectedEditorNode = null;
             _selectedEditorEdge = null;
             _selectedEditorStation = null;
+            _selectedEditorArea = null;
             RaisePropertyChanged(nameof(SelectedEditorNode));
             RaisePropertyChanged(nameof(SelectedEditorEdge));
             RaisePropertyChanged(nameof(SelectedEditorStation));
+            RaisePropertyChanged(nameof(SelectedEditorArea));
             RaisePropertyChanged(nameof(HasSelection));
             _undoRedo.Clear();
             RaiseUndoRedoState();
@@ -254,6 +420,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             foreach (var n in EditorNodes) n.IsSelected = ReferenceEquals(n, _selectedEditorNode);
             foreach (var e in EditorEdges) e.IsSelected = ReferenceEquals(e, _selectedEditorEdge);
             foreach (var s in EditorStations) s.IsSelected = ReferenceEquals(s, _selectedEditorStation);
+            foreach (var a in EditorAreas) a.IsSelected = ReferenceEquals(a, _selectedEditorArea);
         }
 
         /// <summary>
@@ -334,6 +501,14 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// <param name="node">被点击的节点画布项。</param>
         public void PlaceStationOnNode(EditorNodeVm node)
         {
+            var existing = EditorStations.FirstOrDefault(station =>
+                string.Equals(station.Model.NodeId, node.NodeId, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                SelectedEditorStation = existing;
+                return;
+            }
+
             if (node.Model.NodeType != MapNodeType.Charge || !node.Model.IsEnabled)
             {
                 System.Windows.MessageBox.Show("充电桩只能放置在启用的 Charge 类型节点上。",
@@ -367,6 +542,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// <summary>在画布中心新增一个默认节点并登记撤销步。</summary>
         private void AddNodeAtCenter()
         {
+            AddNodeAt(430, 290);
+        }
+
+        public EditorNodeVm AddNodeAt(double x, double y, MapNodeType nodeType = MapNodeType.Normal)
+        {
             var number = NextNodeNumber();
             var id = $"N{number:000}";
             var model = new MapNode
@@ -374,9 +554,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 NodeId = id,
                 MapId = "MAIN",
                 NodeCode = id,
-                Name = $"节点 {number:000}",
-                NodeType = MapNodeType.Normal,
-                Position = new MapPosition { MapId = "MAIN", NodeId = id, X = Snap(430), Y = Snap(290) },
+                Name = nodeType == MapNodeType.Charge ? $"充电点 {number:000}" : $"节点 {number:000}",
+                NodeType = nodeType,
+                Position = new MapPosition { MapId = "MAIN", NodeId = id, X = Snap(x), Y = Snap(y) },
                 IsEnabled = true
             };
             var vm = new EditorNodeVm(model);
@@ -387,15 +567,324 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 undo: () => { Nodes.Remove(model); EditorNodes.Remove(vm); RaisePropertyChanged(nameof(TotalNodes)); }));
             RaiseUndoRedoState();
             SelectedEditorNode = vm;
+            return vm;
+        }
+
+        private void AddChargeNodeAtCenter()
+        {
+            var nodeVm = AddNodeAt(430, 290, MapNodeType.Charge);
+            SelectedEditorNode = nodeVm;
+            PlaceStationOnNode(nodeVm);
         }
 
         /// <summary>删除当前选中的画布对象（节点会先检查是否被边引用），登记撤销步。</summary>
+        public void ApplyAreas(IEnumerable<AgvDispatcher.Core.Contracts.Map.MapAreaDto> areas)
+        {
+            EditorAreas.Clear();
+            foreach (var area in areas)
+            {
+                EditorAreas.Add(new EditorAreaVm(area));
+            }
+
+            RaisePropertyChanged(nameof(TotalAreas));
+        }
+
+        private void AddArea()
+        {
+            var number = EditorAreas.Count + 1;
+            string areaId;
+            do { areaId = $"AREA-{number:00}"; number++; }
+            while (EditorAreas.Any(area => string.Equals(area.AreaId, areaId, StringComparison.OrdinalIgnoreCase)));
+
+            var area = new AgvDispatcher.Core.Contracts.Map.MapAreaDto
+            {
+                AreaId = areaId,
+                AreaName = $"区域 {areaId}",
+                AreaType = AgvDispatcher.Core.Contracts.Map.MapAreaType.Normal,
+                BoundaryPoints =
+                [
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 120, Y = 120 },
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 360, Y = 120 },
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 360, Y = 300 },
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 120, Y = 300 }
+                ],
+                Enabled = true,
+                Properties = new Dictionary<string, string> { ["Color"] = "#2D8CFF" }
+            };
+            var vm = new EditorAreaVm(area);
+
+            _undoRedo.Do(new EditorAction(
+                $"新增区域 {areaId}",
+                redo: () => { if (!EditorAreas.Contains(vm)) EditorAreas.Add(vm); RaisePropertyChanged(nameof(TotalAreas)); },
+                undo: () => { EditorAreas.Remove(vm); RaisePropertyChanged(nameof(TotalAreas)); }));
+            RaiseUndoRedoState();
+            SelectedEditorArea = vm;
+        }
+
+        public EditorAreaVm CreateAreaFromRectangle(double x1, double y1, double x2, double y2)
+        {
+            var left = Snap(Math.Min(x1, x2));
+            var top = Snap(Math.Min(y1, y2));
+            var right = Snap(Math.Max(x1, x2));
+            var bottom = Snap(Math.Max(y1, y2));
+            if (Math.Abs(right - left) < 8 || Math.Abs(bottom - top) < 8)
+            {
+                return SelectedEditorArea ?? AddAreaCore();
+            }
+
+            var points = new[]
+            {
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = left, Y = top },
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = right, Y = top },
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = right, Y = bottom },
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = left, Y = bottom }
+            };
+            return AddAreaFromPoints(points, "\u77e9\u5f62\u533a\u57df");
+        }
+
+        public EditorAreaVm? CreateAreaFromPolygon(IEnumerable<AgvDispatcher.Core.Contracts.Map.MapPointDto> points)
+        {
+            var snappedPoints = points
+                .Select(point => new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = Snap(point.X), Y = Snap(point.Y) })
+                .ToList();
+            if (snappedPoints.Count < 3)
+            {
+                return null;
+            }
+
+            return AddAreaFromPoints(snappedPoints, "\u591a\u8fb9\u5f62\u533a\u57df");
+        }
+
+        public void PreviewEnclosedElements(double x1, double y1, double x2, double y2)
+        {
+            var left = Math.Min(x1, x2);
+            var top = Math.Min(y1, y2);
+            var right = Math.Max(x1, x2);
+            var bottom = Math.Max(y1, y2);
+
+            foreach (var node in EditorNodes)
+            {
+                node.IsBulkHighlighted = IsInside(node.X, node.Y, left, top, right, bottom);
+            }
+
+            foreach (var edge in EditorEdges)
+            {
+                edge.IsBulkHighlighted =
+                    IsInside(edge.X1, edge.Y1, left, top, right, bottom)
+                    && IsInside(edge.X2, edge.Y2, left, top, right, bottom);
+            }
+        }
+
+        public void PreviewDeleteElements(double x1, double y1, double x2, double y2)
+        {
+            PreviewEnclosedElements(x1, y1, x2, y2);
+        }
+
+        public void DeleteElementsInRectangle(double x1, double y1, double x2, double y2)
+        {
+            var left = Math.Min(x1, x2);
+            var top = Math.Min(y1, y2);
+            var right = Math.Max(x1, x2);
+            var bottom = Math.Max(y1, y2);
+            if (Math.Abs(right - left) < 8 || Math.Abs(bottom - top) < 8)
+            {
+                ClearBulkHighlights();
+                return;
+            }
+
+            var nodes = EditorNodes
+                .Where(node => IsInside(node.X, node.Y, left, top, right, bottom))
+                .ToList();
+            var nodeIds = nodes.Select(node => node.NodeId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var edges = EditorEdges
+                .Where(edge =>
+                    nodeIds.Contains(edge.Model.FromNodeId)
+                    || nodeIds.Contains(edge.Model.ToNodeId)
+                    || (IsInside(edge.X1, edge.Y1, left, top, right, bottom) && IsInside(edge.X2, edge.Y2, left, top, right, bottom)))
+                .Distinct()
+                .ToList();
+            var stations = EditorStations
+                .Where(station =>
+                    nodeIds.Contains(station.Model.NodeId)
+                    || IsInside(station.Model.Position.X, station.Model.Position.Y, left, top, right, bottom))
+                .ToList();
+            var aliases = Aliases
+                .Where(alias => nodeIds.Contains(alias.NodeId))
+                .ToList();
+            var areas = EditorAreas
+                .Where(area =>
+                {
+                    var points = EditorAreaVm.ParseBoundary(area.BoundaryText);
+                    return points.Count > 0 && points.All(point => IsInside(point.X, point.Y, left, top, right, bottom));
+                })
+                .ToList();
+
+            if (nodes.Count == 0 && edges.Count == 0 && stations.Count == 0 && aliases.Count == 0 && areas.Count == 0)
+            {
+                ClearBulkHighlights();
+                return;
+            }
+
+            _undoRedo.Do(new EditorAction(
+                $"框选删除 {nodes.Count} 点/{edges.Count} 边/{areas.Count} 区",
+                redo: () =>
+                {
+                    foreach (var edge in edges) { Edges.Remove(edge.Model); EditorEdges.Remove(edge); }
+                    foreach (var station in stations) { Stations.Remove(station.Model); EditorStations.Remove(station); }
+                    foreach (var alias in aliases) Aliases.Remove(alias);
+                    foreach (var node in nodes) { Nodes.Remove(node.Model); EditorNodes.Remove(node); }
+                    foreach (var area in areas) EditorAreas.Remove(area);
+                    RaiseEditorCounts();
+                },
+                undo: () =>
+                {
+                    foreach (var area in areas) if (!EditorAreas.Contains(area)) EditorAreas.Add(area);
+                    foreach (var node in nodes) { if (!Nodes.Contains(node.Model)) Nodes.Add(node.Model); if (!EditorNodes.Contains(node)) EditorNodes.Add(node); }
+                    foreach (var edge in edges) { if (!Edges.Contains(edge.Model)) Edges.Add(edge.Model); if (!EditorEdges.Contains(edge)) EditorEdges.Add(edge); }
+                    foreach (var station in stations) { if (!Stations.Contains(station.Model)) Stations.Add(station.Model); if (!EditorStations.Contains(station)) EditorStations.Add(station); }
+                    foreach (var alias in aliases) if (!Aliases.Contains(alias)) Aliases.Add(alias);
+                    RaiseEditorCounts();
+                }));
+
+            SelectedEditorNode = null;
+            SelectedEditorEdge = null;
+            SelectedEditorStation = null;
+            SelectedEditorArea = null;
+            RaiseUndoRedoState();
+            ClearBulkHighlights();
+        }
+
+        public void AssignEnclosedElementsToArea(double x1, double y1, double x2, double y2)
+        {
+            var left = Snap(Math.Min(x1, x2));
+            var top = Snap(Math.Min(y1, y2));
+            var right = Snap(Math.Max(x1, x2));
+            var bottom = Snap(Math.Max(y1, y2));
+            if (Math.Abs(right - left) < 8 || Math.Abs(bottom - top) < 8)
+            {
+                ClearBulkHighlights();
+                return;
+            }
+
+            var area = SelectedEditorArea ?? AddAreaFromPoints(new[]
+            {
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = left, Y = top },
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = right, Y = top },
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = right, Y = bottom },
+                new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = left, Y = bottom }
+            }, "\u6846\u9009\u5143\u7d20\u533a");
+
+            var nodes = EditorNodes
+                .Where(node => IsInside(node.X, node.Y, left, top, right, bottom))
+                .ToList();
+            var edges = EditorEdges
+                .Where(edge => IsInside(edge.X1, edge.Y1, left, top, right, bottom) && IsInside(edge.X2, edge.Y2, left, top, right, bottom))
+                .ToList();
+            var oldNodeAreas = nodes.ToDictionary(node => node, node => node.AreaCode);
+            var oldEdgeAreas = edges.ToDictionary(edge => edge, edge => edge.Model.AreaCode);
+            var oldBoundary = area.BoundaryText;
+            var newBoundary = string.Join("; ", new[]
+            {
+                $"{left:0.##},{top:0.##}",
+                $"{right:0.##},{top:0.##}",
+                $"{right:0.##},{bottom:0.##}",
+                $"{left:0.##},{bottom:0.##}"
+            });
+
+            _undoRedo.Do(new EditorAction(
+                $"\u6846\u9009\u5143\u7d20\u5f52\u5165\u533a\u57df {area.AreaId}",
+                redo: () =>
+                {
+                    foreach (var node in nodes) node.AreaCode = area.AreaId;
+                    foreach (var edge in edges) edge.Model.AreaCode = area.AreaId;
+                    area.BoundaryText = newBoundary;
+                },
+                undo: () =>
+                {
+                    foreach (var pair in oldNodeAreas) pair.Key.AreaCode = pair.Value;
+                    foreach (var pair in oldEdgeAreas) pair.Key.Model.AreaCode = pair.Value;
+                    area.BoundaryText = oldBoundary;
+                }));
+            RaiseUndoRedoState();
+            ClearBulkHighlights();
+            SelectedEditorArea = area;
+        }
+
+        public void ClearBulkHighlights()
+        {
+            foreach (var node in EditorNodes) node.IsBulkHighlighted = false;
+            foreach (var edge in EditorEdges) edge.IsBulkHighlighted = false;
+        }
+
+        private EditorAreaVm AddAreaCore()
+        {
+            var number = EditorAreas.Count + 1;
+            string areaId;
+            do { areaId = $"AREA-{number:00}"; number++; }
+            while (EditorAreas.Any(area => string.Equals(area.AreaId, areaId, StringComparison.OrdinalIgnoreCase)));
+
+            var area = new AgvDispatcher.Core.Contracts.Map.MapAreaDto
+            {
+                AreaId = areaId,
+                AreaName = $"\u533a\u57df {areaId}",
+                AreaType = AgvDispatcher.Core.Contracts.Map.MapAreaType.Normal,
+                BoundaryPoints =
+                [
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 120, Y = 120 },
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 360, Y = 120 },
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 360, Y = 300 },
+                    new AgvDispatcher.Core.Contracts.Map.MapPointDto { X = 120, Y = 300 }
+                ],
+                Enabled = true,
+                Properties = new Dictionary<string, string> { ["Color"] = "#2D8CFF" }
+            };
+            return AddAreaDto(area);
+        }
+
+        private EditorAreaVm AddAreaFromPoints(IReadOnlyList<AgvDispatcher.Core.Contracts.Map.MapPointDto> points, string namePrefix)
+        {
+            var area = new AgvDispatcher.Core.Contracts.Map.MapAreaDto
+            {
+                AreaId = NextAreaId(),
+                AreaName = $"{namePrefix} {EditorAreas.Count + 1:00}",
+                AreaType = AgvDispatcher.Core.Contracts.Map.MapAreaType.Normal,
+                BoundaryPoints = points,
+                Enabled = true,
+                Properties = new Dictionary<string, string> { ["Color"] = AreaColorOptions[EditorAreas.Count % AreaColorOptions.Count] }
+            };
+            return AddAreaDto(area);
+        }
+
+        private EditorAreaVm AddAreaDto(AgvDispatcher.Core.Contracts.Map.MapAreaDto area)
+        {
+            var vm = new EditorAreaVm(area);
+            _undoRedo.Do(new EditorAction(
+                $"\u65b0\u589e\u533a\u57df {vm.AreaId}",
+                redo: () => { if (!EditorAreas.Contains(vm)) EditorAreas.Add(vm); RaisePropertyChanged(nameof(TotalAreas)); },
+                undo: () => { EditorAreas.Remove(vm); RaisePropertyChanged(nameof(TotalAreas)); }));
+            RaiseUndoRedoState();
+            SelectedEditorArea = vm;
+            return vm;
+        }
+
+        private string NextAreaId()
+        {
+            var number = EditorAreas.Count + 1;
+            string areaId;
+            do { areaId = $"AREA-{number:00}"; number++; }
+            while (EditorAreas.Any(area => string.Equals(area.AreaId, areaId, StringComparison.OrdinalIgnoreCase)));
+            return areaId;
+        }
+
+        private static bool IsInside(double x, double y, double left, double top, double right, double bottom)
+            => x >= left && x <= right && y >= top && y <= bottom;
+
         private void DeleteSelection()
         {
             if (SelectedEditorNode is { } nodeVm)
             {
                 var nodeId = nodeVm.Model.NodeId;
-                if (Edges.Any(e => string.Equals(e.FromNodeId, nodeId, StringComparison.OrdinalIgnoreCase)
+                if (false && Edges.Any(e => string.Equals(e.FromNodeId, nodeId, StringComparison.OrdinalIgnoreCase)
                                    || string.Equals(e.ToNodeId, nodeId, StringComparison.OrdinalIgnoreCase)))
                 {
                     System.Windows.MessageBox.Show($"节点 {nodeId} 被路径引用，无法删除。请先删除相关边。",
@@ -403,10 +892,40 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                     return;
                 }
                 var model = nodeVm.Model;
+                var relatedEdges = EditorEdges
+                    .Where(edge => string.Equals(edge.Model.FromNodeId, nodeId, StringComparison.OrdinalIgnoreCase)
+                                   || string.Equals(edge.Model.ToNodeId, nodeId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var relatedStations = EditorStations
+                    .Where(station => string.Equals(station.Model.NodeId, nodeId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var relatedAliases = Aliases
+                    .Where(alias => string.Equals(alias.NodeId, nodeId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
                 _undoRedo.Do(new EditorAction(
                     $"删除节点 {nodeId}",
-                    redo: () => { Nodes.Remove(model); EditorNodes.Remove(nodeVm); RaisePropertyChanged(nameof(TotalNodes)); },
-                    undo: () => { Nodes.Add(model); EditorNodes.Add(nodeVm); RaisePropertyChanged(nameof(TotalNodes)); }));
+                    redo: () =>
+                    {
+                        foreach (var edge in relatedEdges) { Edges.Remove(edge.Model); EditorEdges.Remove(edge); }
+                        foreach (var station in relatedStations) { Stations.Remove(station.Model); EditorStations.Remove(station); }
+                        foreach (var alias in relatedAliases) Aliases.Remove(alias);
+                        Nodes.Remove(model);
+                        EditorNodes.Remove(nodeVm);
+                        RaisePropertyChanged(nameof(TotalNodes));
+                        RaisePropertyChanged(nameof(TotalEdges));
+                        RaisePropertyChanged(nameof(TotalAliases));
+                    },
+                    undo: () =>
+                    {
+                        Nodes.Add(model);
+                        EditorNodes.Add(nodeVm);
+                        foreach (var edge in relatedEdges) { if (!Edges.Contains(edge.Model)) Edges.Add(edge.Model); if (!EditorEdges.Contains(edge)) EditorEdges.Add(edge); }
+                        foreach (var station in relatedStations) { if (!Stations.Contains(station.Model)) Stations.Add(station.Model); if (!EditorStations.Contains(station)) EditorStations.Add(station); }
+                        foreach (var alias in relatedAliases) { if (!Aliases.Contains(alias)) Aliases.Add(alias); }
+                        RaisePropertyChanged(nameof(TotalNodes));
+                        RaisePropertyChanged(nameof(TotalEdges));
+                        RaisePropertyChanged(nameof(TotalAliases));
+                    }));
                 SelectedEditorNode = null;
             }
             else if (SelectedEditorEdge is { } edgeVm)
@@ -427,13 +946,38 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                     undo: () => { Stations.Add(model); EditorStations.Add(stationVm); }));
                 SelectedEditorStation = null;
             }
+            else if (SelectedEditorArea is { } areaVm)
+            {
+                var areaId = areaVm.AreaId;
+                var areaNodes = Nodes
+                    .Where(node => string.Equals(node.AreaCode, areaId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var areaEdges = Edges
+                    .Where(edge => string.Equals(edge.AreaCode, areaId, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                _undoRedo.Do(new EditorAction(
+                    $"删除区域 {areaId}",
+                    redo: () =>
+                    {
+                        foreach (var node in areaNodes) node.AreaCode = string.Empty;
+                        foreach (var edge in areaEdges) edge.AreaCode = string.Empty;
+                        EditorAreas.Remove(areaVm);
+                        RaisePropertyChanged(nameof(TotalAreas));
+                    },
+                    undo: () =>
+                    {
+                        if (!EditorAreas.Contains(areaVm)) EditorAreas.Add(areaVm);
+                        foreach (var node in areaNodes) node.AreaCode = areaId;
+                        foreach (var edge in areaEdges) edge.AreaCode = areaId;
+                        RaisePropertyChanged(nameof(TotalAreas));
+                    }));
+                SelectedEditorArea = null;
+            }
             RaiseUndoRedoState();
         }
 
         /// <summary>
-        /// 整图保存：前置校验（复用 <see cref="PassesPreSaveValidation"/>）通过后，
-        /// 把当前内存中的节点/边/别名/充电桩与库做差异化同步（删除已移除项、保存现存项），
-        /// 并持久化比例尺设置。最后刷新。
+        /// 整图保存草稿：只把当前画布投影保存为地图草稿，不切换当前运行地图。
         /// </summary>
         private void SaveAll()
         {
@@ -441,47 +985,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             try
             {
-                // 节点：删除库里已不存在的，保存现存的
-                var dbNodes = _mapRepository.GetNodesAsync().GetAwaiter().GetResult();
-                foreach (var n in dbNodes)
-                {
-                    if (Nodes.All(x => !string.Equals(x.NodeId, n.NodeId, StringComparison.OrdinalIgnoreCase)))
-                        _mapRepository.DeleteNodeAsync(n.NodeId).GetAwaiter().GetResult();
-                }
-                foreach (var n in Nodes) _mapRepository.SaveNodeAsync(n).GetAwaiter().GetResult();
-
-                // 边
-                var dbEdges = _mapRepository.GetEdgesAsync().GetAwaiter().GetResult();
-                foreach (var e in dbEdges)
-                {
-                    if (Edges.All(x => !string.Equals(x.EdgeId, e.EdgeId, StringComparison.OrdinalIgnoreCase)))
-                        _mapRepository.DeleteEdgeAsync(e.EdgeId).GetAwaiter().GetResult();
-                }
-                foreach (var e in Edges) _mapRepository.SaveEdgeAsync(e).GetAwaiter().GetResult();
-
-                // 别名
-                var dbAliases = _aliasRepo.GetAllAsync().GetAwaiter().GetResult();
-                foreach (var a in dbAliases)
-                {
-                    if (Aliases.All(x => x.AliasId != a.AliasId))
-                        _aliasRepo.DeleteAsync(a.AliasId).GetAwaiter().GetResult();
-                }
-                foreach (var a in Aliases) _aliasRepo.SaveAsync(a).GetAwaiter().GetResult();
-
-                // 充电桩
-                var dbStations = _chargeStationRepo.GetAllAsync().GetAwaiter().GetResult();
-                foreach (var s in dbStations)
-                {
-                    if (Stations.All(x => !string.Equals(x.StationId, s.StationId, StringComparison.OrdinalIgnoreCase)))
-                        _chargeStationRepo.DeleteAsync(s.StationId).GetAwaiter().GetResult();
-                }
-                foreach (var s in Stations) _chargeStationRepo.SaveAsync(s).GetAwaiter().GetResult();
-
                 SaveMapSettings();
-
-                LoadData();
-                System.Windows.MessageBox.Show("地图已保存。", "成功",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                SaveCurrentDraft();
             }
             catch (Exception ex)
             {
@@ -574,5 +1079,14 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 Description = "地图编辑器比例尺设置"
             }).GetAwaiter().GetResult();
         }
+    }
+
+    public enum AreaDrawMode
+    {
+        None,
+        Rectangle,
+        Polygon,
+        EncloseElements,
+        DeleteElements
     }
 }

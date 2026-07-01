@@ -157,16 +157,19 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             foreach (var vehicle in vehicles.Where(vehicle => vehicle.IsEnabled))
             {
+                var homeLocation = !string.IsNullOrWhiteSpace(vehicle.HomeNodeId)
+                    ? vehicle.HomeNodeId
+                    : string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode;
                 var snapshot = new VehicleStatusSnapshot
                 {
                     VehicleId = vehicle.VehicleId,
                     Brand = vehicle.Brand,
                     State = RobotState.Offline,
-                    Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
+                    Location = homeLocation,
                     BatteryLevel = 100,
                     CurrentTaskId = null,
                     ReportedAt = now,
-                    Position = new MapPosition { AreaCode = vehicle.AreaCode },
+                    Position = new MapPosition { MapId = "MAIN", NodeId = homeLocation, AreaCode = vehicle.AreaCode },
                     LoadState = VehicleLoadState.Unknown,
                     IsOnline = false,
                     IsCharging = false,
@@ -200,25 +203,46 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 if (_vehicles.TryGetValue(vehicle.VehicleId, out var snapshot))
                 {
                     snapshot.Brand = vehicle.Brand;
+                    snapshot.Location = ResolveConfiguredLocation(vehicle);
+                    snapshot.Position ??= new MapPosition();
+                    snapshot.Position.MapId = "MAIN";
+                    snapshot.Position.NodeId = snapshot.Location;
+                    snapshot.Position.AreaCode = vehicle.AreaCode;
+                    snapshot.ReportedAt = DateTime.Now;
+                    _eventAggregator.GetEvent<VehicleStatusUpdatedEvent>().Publish(snapshot);
+                    _eventAggregator.GetEvent<VehicleStateChangedEvent>().Publish(new VehicleStateChangedMessage
+                    {
+                        ChangeType = VehicleStateChangeType.Updated,
+                        Snapshot = snapshot,
+                        OccurredAt = DateTime.Now
+                    });
                     return;
                 }
             }
 
+            var location = ResolveConfiguredLocation(vehicle);
             UpsertStatus(new VehicleStatusSnapshot
             {
                 VehicleId = vehicle.VehicleId,
                 Brand = vehicle.Brand,
                 State = RobotState.Offline,
-                Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
+                Location = location,
                 BatteryLevel = 100,
                 ReportedAt = DateTime.Now,
-                Position = new MapPosition { AreaCode = vehicle.AreaCode },
+                Position = new MapPosition { MapId = "MAIN", NodeId = location, AreaCode = vehicle.AreaCode },
                 LoadState = VehicleLoadState.Unknown,
                 IsOnline = false,
                 IsCharging = false,
                 HasAlarm = false,
                 Telemetry = new Dictionary<string, string>()
             });
+        }
+
+        private static string ResolveConfiguredLocation(Vehicle vehicle)
+        {
+            return !string.IsNullOrWhiteSpace(vehicle.HomeNodeId)
+                ? vehicle.HomeNodeId
+                : string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode;
         }
     }
 }

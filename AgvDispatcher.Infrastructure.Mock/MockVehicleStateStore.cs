@@ -154,6 +154,19 @@ namespace AgvDispatcher.Infrastructure.Mock
                 if (_vehicles.TryGetValue(vehicle.VehicleId, out var snapshot))
                 {
                     snapshot.Brand = vehicle.Brand;
+                    snapshot.Location = ResolveConfiguredLocation(vehicle);
+                    snapshot.Position ??= new MapPosition();
+                    snapshot.Position.MapId = "MAIN";
+                    snapshot.Position.NodeId = snapshot.Location;
+                    snapshot.Position.AreaCode = vehicle.AreaCode;
+                    snapshot.ReportedAt = DateTime.Now;
+                    _eventAggregator.GetEvent<VehicleStatusUpdatedEvent>().Publish(snapshot);
+                    _eventAggregator.GetEvent<VehicleStateChangedEvent>().Publish(new VehicleStateChangedMessage
+                    {
+                        ChangeType = VehicleStateChangeType.Updated,
+                        Snapshot = snapshot,
+                        OccurredAt = DateTime.Now
+                    });
                     return;
                 }
             }
@@ -163,10 +176,23 @@ namespace AgvDispatcher.Infrastructure.Mock
                 VehicleId = vehicle.VehicleId,
                 Brand = vehicle.Brand,
                 State = RobotState.Idle,
-                Location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode,
+                Location = ResolveConfiguredLocation(vehicle),
                 BatteryLevel = 100,
-                ReportedAt = DateTime.Now
+                ReportedAt = DateTime.Now,
+                Position = new MapPosition
+                {
+                    MapId = "MAIN",
+                    NodeId = ResolveConfiguredLocation(vehicle),
+                    AreaCode = vehicle.AreaCode
+                }
             });
+        }
+
+        private static string ResolveConfiguredLocation(Vehicle vehicle)
+        {
+            return !string.IsNullOrWhiteSpace(vehicle.HomeNodeId)
+                ? vehicle.HomeNodeId
+                : string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode;
         }
     }
 }

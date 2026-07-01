@@ -1,3 +1,6 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using AgvDispatcher.Core.Contracts.Common;
@@ -14,6 +17,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
     /// </summary>
     public sealed class PersistentMapService : IMapService
     {
+        private const string CurrentMapVersion = "sqlite-current";
         private readonly IMapRepository _maps;
         private readonly IMapVersionRepository _mapVersions;
         private readonly IMapLocationAliasRepository _aliases;
@@ -234,8 +238,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public double GetPathDistance(string startNodeId, string endNodeId)
         {
-            var path = FindPlannedPath(startNodeId, endNodeId);
-            return path.IsAvailable ? path.TotalLength : double.PositiveInfinity;
+            return FindPlannedPath(startNodeId, endNodeId).TotalLength;
         }
 
         public IReadOnlyList<MapNode> FindReachableNodes(string startNodeId) =>
@@ -324,6 +327,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     Version = active?.MapVersion ?? ComputeVersion(sourceNodes, sourceEdges, mappings),
                     Nodes = nodes,
                     Edges = edges,
+                    Areas = BuildAreas(sourceNodes, sourceEdges),
                     VendorNodeMappings = mappings,
                     UpdatedAt = DateTimeOffset.Now
                 };
@@ -351,11 +355,58 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         private MapVersionEntity? LoadActiveVersion() => _mapVersions.GetActiveAsync().GetAwaiter().GetResult();
 
+        private static IReadOnlyList<MapAreaDto> BuildAreas(IReadOnlyList<MapNode> nodes, IReadOnlyList<MapEdge> edges)
+        {
+            if (nodes.Any(node => node.NodeId == "PICK-A1"))
+            {
+                static MapPointDto P(double x, double y) => new() { X = x, Y = y };
+                static Dictionary<string, string> Props(params (string Key, string Value)[] values)
+                    => values.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
+                static MapAreaDto Area(string id, string name, MapAreaType type, string color, IReadOnlyList<MapPointDto> points, params (string Key, string Value)[] properties) => new()
+                {
+                    AreaId = id,
+                    AreaName = name,
+                    AreaType = type,
+                    BoundaryPoints = points,
+                    Enabled = true,
+                    Properties = Props(properties.Prepend(("Color", color)).ToArray())
+                };
+
+                return new[]
+                {
+                    Area("CAP-A", "成品库限流区", MapAreaType.WorkArea, "#00BFA6", new[] { P(40, 40), P(300, 40), P(300, 210), P(40, 210) }, ("ZoneKind", "CapacityLimited"), ("Capacity", "3"), ("Label", "成品库A: 0/3")),
+                    Area("RAW-B", "原材料限流区", MapAreaType.WorkArea, "#32D583", new[] { P(40, 255), P(300, 255), P(300, 420), P(40, 420) }, ("ZoneKind", "CapacityLimited"), ("Capacity", "4"), ("Label", "原材料B: 0/4")),
+                    Area("QR-A", "二维码导航区", MapAreaType.Normal, "#8EA8C3", new[] { P(330, 55), P(540, 55), P(540, 260), P(330, 260) }, ("ZoneKind", "NavigationMedium"), ("NavigationMedium", "二维码导航")),
+                    Area("SLAM-B", "激光 SLAM 导航区", MapAreaType.Normal, "#5A7FA6", new[] { P(610, 45), P(840, 45), P(840, 210), P(610, 210) }, ("ZoneKind", "NavigationMedium"), ("NavigationMedium", "激光SLAM")),
+                    Area("INT-01", "交通互斥区", MapAreaType.IntersectionArea, "#FFB020", new[] { P(350, 225), P(535, 240), P(530, 385), P(350, 395) }, ("ZoneKind", "Interlocking"), ("Capacity", "1"), ("Label", "互斥区: 0/1")),
+                    Area("FIRE-01", "消防安全联动区", MapAreaType.BlockedArea, "#FF4D4F", new[] { P(610, 250), P(835, 250), P(835, 340), P(610, 340) }, ("ZoneKind", "FireSafety"), ("AlarmSource", "PLC-FIRE-01"), ("Label", "消防安全区")),
+                    Area("SPD-01", "限速工艺区", MapAreaType.NarrowArea, "#9B6DFF", new[] { P(840, 295), P(1130, 310), P(1130, 535), P(840, 535) }, ("ZoneKind", "SpeedRestricted"), ("SpeedLimit", "0.3"), ("Process", "Weighing"), ("Label", "限速: 300mm/s")),
+                    Area("STBY-CHG", "待机充电区", MapAreaType.ChargingArea, "#FFD700", new[] { P(560, 395), P(850, 395), P(850, 545), P(560, 545) }, ("ZoneKind", "StandbyCharging"), ("Capacity", "5"), ("Label", "待机/充电区")),
+                    Area("MAINT-01", "维护阻断预留区", MapAreaType.BlockedArea, "#777777", new[] { P(335, 425), P(540, 425), P(540, 535), P(335, 535) }, ("ZoneKind", "StaticRestricted"), ("Label", "维护预留区"))
+                };
+            }
+
+            return nodes.Select(node => node.AreaCode)
+                .Concat(edges.Select(edge => edge.AreaCode))
+                .Where(area => !string.IsNullOrWhiteSpace(area))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(area => new MapAreaDto
+                {
+                    AreaId = area,
+                    AreaName = area,
+                    AreaType = MapAreaType.Normal,
+                    Properties = new Dictionary<string, string> { ["Capacity"] = "0" }
+                })
+                .ToList();
+        }
+
         private static MapNodeDto ToContractNode(MapNode node)
         {
             var properties = new Dictionary<string, string>(node.Tags, StringComparer.OrdinalIgnoreCase);
             AddProperty(properties, "AreaCode", node.AreaCode);
             AddProperty(properties, "AllowedBrands", node.AllowedBrands);
+            AddProperty(properties, "Capacity", node.ParkingCapacity.ToString());
+            AddProperty(properties, "RequiredCapabilities", ((int)node.RequiredCapabilities).ToString());
             return new MapNodeDto
             {
                 NodeId = node.NodeId,
@@ -377,6 +428,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             AddProperty(properties, "AllowedBrands", edge.AllowedBrands);
             AddProperty(properties, "Remark", edge.Remark);
+            AddProperty(properties, "MaxVehicleFlow", edge.MaxVehicleFlow.ToString());
             return new MapEdgeDto
             {
                 EdgeId = edge.EdgeId,
@@ -497,3 +549,4 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         }
     }
 }
+

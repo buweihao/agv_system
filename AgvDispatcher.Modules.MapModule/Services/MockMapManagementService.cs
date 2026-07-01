@@ -9,123 +9,83 @@ using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Contracts.MapManagement.Interfaces;
 using AgvDispatcher.Core.Contracts.MapManagement.Requests;
 using AgvDispatcher.Core.Contracts.MapManagement.Results;
-using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
+using AgvDispatcher.Core.Interfaces;
+using AgvDispatcher.Core.Models;
 using Prism.Events;
+using LegacyEdgeDirection = AgvDispatcher.Core.Enums.EdgeDirection;
+using LegacyMapNodeType = AgvDispatcher.Core.Enums.MapNodeType;
+using VehicleCapability = AgvDispatcher.Core.Enums.VehicleCapability;
 
 namespace AgvDispatcher.Modules.MapModule.Services
 {
     /// <summary>
-    /// In-memory map management service for contract integration and UI development.
+    /// In-memory map management service. 草稿保存不影响当前运行地图，发布/回滚才切换运行版本。
     /// </summary>
     public sealed class MockMapManagementService : IMapManagementService
     {
+        private readonly MockMapStore _store;
+        private readonly MapStaticValidator _validator;
         private readonly IEventAggregator _eventAggregator;
-        private readonly Dictionary<string, MapDraftDto> _drafts = new(StringComparer.OrdinalIgnoreCase);
-        private readonly List<MapVersionDto> _versions = new();
+        private readonly IMapRepository _mapRepository;
+        private readonly IMapLocationAliasRepository _aliasRepository;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="MockMapManagementService"/> class.
-        /// </summary>
-        public MockMapManagementService(IEventAggregator eventAggregator)
+        public MockMapManagementService(
+            MockMapStore store,
+            MapStaticValidator validator,
+            IEventAggregator eventAggregator,
+            IMapRepository mapRepository,
+            IMapLocationAliasRepository aliasRepository)
         {
+            _store = store;
+            _validator = validator;
             _eventAggregator = eventAggregator;
+            _mapRepository = mapRepository;
+            _aliasRepository = aliasRepository;
         }
 
-        /// <inheritdoc />
         public Task<AgvResult<MapDraftDto>> CreateDraftAsync(
             CreateMapDraftRequest request,
             CancellationToken cancellationToken = default)
         {
-            var now = DateTimeOffset.Now;
-            var draft = new MapDraftDto
-            {
-                DraftId = Guid.NewGuid().ToString("N"),
-                Map = new MapSnapshotDto
-                {
-                    MapId = Guid.NewGuid().ToString("N"),
-                    MapName = string.IsNullOrWhiteSpace(request.MapName) ? "Untitled Map" : request.MapName,
-                    Version = "draft",
-                    UpdatedAt = now
-                },
-                CreatedAt = now,
-                UpdatedAt = now,
-                OperatorId = request.Context.OperatorId,
-                State = MapState.Draft
-            };
-
-            _drafts[draft.DraftId] = draft;
+            var draft = _store.CreateDraft(request.MapName, request.SourceVersion, request.Context.OperatorId);
             return Task.FromResult(AgvResult<MapDraftDto>.Ok(draft));
         }
 
-        /// <inheritdoc />
         public Task<AgvResult<MapDraftDto>> GetDraftAsync(
             GetMapDraftRequest request,
             CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(_drafts.TryGetValue(request.DraftId, out var draft)
-                ? AgvResult<MapDraftDto>.Ok(draft)
-                : AgvResult<MapDraftDto>.Fail(FailureCode.InvalidRequest, $"Draft '{request.DraftId}' was not found."));
+            var draft = _store.GetDraft(request.DraftId);
+            return Task.FromResult(draft is null
+                ? AgvResult<MapDraftDto>.Fail(FailureCode.InvalidRequest, $"Draft '{request.DraftId}' was not found.")
+                : AgvResult<MapDraftDto>.Ok(draft));
         }
 
-        /// <inheritdoc />
         public Task<AgvResult<MapDraftDto>> SaveDraftAsync(
             SaveMapDraftRequest request,
             CancellationToken cancellationToken = default)
         {
-            var now = DateTimeOffset.Now;
-            var draft = new MapDraftDto
-            {
-                DraftId = request.DraftId,
-                Map = request.Map,
-                CreatedAt = _drafts.TryGetValue(request.DraftId, out var existing) ? existing.CreatedAt : now,
-                UpdatedAt = now,
-                OperatorId = request.Context.OperatorId,
-                State = MapState.Draft
-            };
-
-            _drafts[request.DraftId] = draft;
+            // 保存草稿只更新草稿区，不切换运行图，也不触发 MapPublishedEvent。
+            var draft = _store.SaveDraft(request.DraftId, request.Map, request.Context.OperatorId);
             return Task.FromResult(AgvResult<MapDraftDto>.Ok(draft));
         }
 
-        /// <inheritdoc />
         public Task<AgvResult<MapValidationResultDto>> ValidateDraftAsync(
             ValidateMapDraftRequest request,
             CancellationToken cancellationToken = default)
         {
-            if (!_drafts.TryGetValue(request.DraftId, out var draft))
+            var draft = _store.GetDraft(request.DraftId);
+            if (draft is null)
             {
                 return Task.FromResult(AgvResult<MapValidationResultDto>.Fail(
                     FailureCode.InvalidRequest,
                     $"Draft '{request.DraftId}' was not found."));
             }
 
-            var messages = new List<string>();
-            if (string.IsNullOrWhiteSpace(draft.Map.MapId))
-            {
-                messages.Add("MapId is required.");
-            }
-
-            if (draft.Map.Nodes.GroupBy(node => node.NodeId, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
-            {
-                messages.Add("Duplicate node IDs are not allowed.");
-            }
-
-            if (draft.Map.Edges.GroupBy(edge => edge.EdgeId, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
-            {
-                messages.Add("Duplicate edge IDs are not allowed.");
-            }
-
-            var result = new MapValidationResultDto
-            {
-                IsValid = messages.Count == 0,
-                Messages = messages
-            };
-
-            return Task.FromResult(AgvResult<MapValidationResultDto>.Ok(result));
+            return Task.FromResult(AgvResult<MapValidationResultDto>.Ok(_validator.Validate(draft.Map)));
         }
 
-        /// <inheritdoc />
         public async Task<AgvResult<MapPublishResultDto>> PublishDraftAsync(
             PublishMapDraftRequest request,
             CancellationToken cancellationToken = default)
@@ -141,61 +101,38 @@ namespace AgvDispatcher.Modules.MapModule.Services
                     validation.Data is null ? validation.Message : string.Join("; ", validation.Data.Messages));
             }
 
-            var draft = _drafts[request.DraftId];
-            var now = DateTimeOffset.Now;
-            var version = string.IsNullOrWhiteSpace(draft.Map.Version) || draft.Map.Version == "draft"
-                ? now.ToString("yyyyMMddHHmmss")
-                : draft.Map.Version;
+            var (snapshot, version) = _store.PublishDraft(request.DraftId, request.Context.OperatorId);
+            await PersistCurrentMapAsync(snapshot, cancellationToken);
+            PublishMapChanged(snapshot.MapId, snapshot.Version, version.PublishedAt ?? DateTimeOffset.Now, request.Context.OperatorId);
 
-            MarkCurrentVersion(draft.Map.MapId, version);
-
-            _versions.Add(new MapVersionDto
+            return AgvResult<MapPublishResultDto>.Ok(new MapPublishResultDto
             {
-                MapId = draft.Map.MapId,
-                MapName = draft.Map.MapName,
-                Version = version,
-                IsCurrent = true,
-                PublishedAt = now,
-                OperatorId = request.Context.OperatorId,
-                State = MapState.Published
-            });
-
-            var result = new MapPublishResultDto
-            {
-                MapId = draft.Map.MapId,
-                Version = version,
-                PublishedAt = now,
+                MapId = snapshot.MapId,
+                Version = snapshot.Version,
+                PublishedAt = version.PublishedAt ?? DateTimeOffset.Now,
                 OperatorId = request.Context.OperatorId
-            };
-
-            _eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>().Publish(new MapPublishedEvent
-            {
-                MapId = result.MapId,
-                MapVersion = result.Version,
-                PublishedAt = result.PublishedAt.DateTime,
-                OperatorId = result.OperatorId
             });
-
-            return AgvResult<MapPublishResultDto>.Ok(result);
         }
 
-        /// <inheritdoc />
-        public Task<AgvResult<MapActivationResultDto>> ActivateMapAsync(
+        public async Task<AgvResult<MapActivationResultDto>> ActivateMapAsync(
             ActivateMapRequest request,
             CancellationToken cancellationToken = default)
         {
-            var version = _versions.FirstOrDefault(item =>
-                string.Equals(item.MapId, request.MapId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(item.Version, request.Version, StringComparison.OrdinalIgnoreCase));
+            var old = _store.GetCurrentVersion(request.MapId);
+            var version = _store.Activate(request.MapId, request.Version, request.Context.OperatorId);
             if (version is null)
             {
-                return Task.FromResult(AgvResult<MapActivationResultDto>.Fail(
+                return AgvResult<MapActivationResultDto>.Fail(
                     FailureCode.InvalidRequest,
-                    $"Map version '{request.MapId}/{request.Version}' was not found."));
+                    $"Map version '{request.MapId}/{request.Version}' was not found.");
             }
 
-            var old = _versions.FirstOrDefault(item => item.IsCurrent);
-            MarkCurrentVersion(request.MapId, request.Version);
+            var snapshot = _store.GetPublishedSnapshot(request.MapId, request.Version);
+            if (snapshot is not null)
+            {
+                await PersistCurrentMapAsync(snapshot, cancellationToken);
+            }
+
             var now = DateTimeOffset.Now;
             var result = new MapActivationResultDto
             {
@@ -214,34 +151,25 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 NewMapId = result.MapId,
                 NewMapVersion = result.Version,
                 ChangedAt = now.DateTime,
-                OperatorId = request.Context.OperatorId,
+                OperatorId = result.OperatorId,
                 Reason = request.Reason
             });
 
-            return Task.FromResult(AgvResult<MapActivationResultDto>.Ok(result));
+            return AgvResult<MapActivationResultDto>.Ok(result);
         }
 
-        /// <inheritdoc />
         public Task<AgvResult<IReadOnlyList<MapVersionDto>>> GetMapVersionsAsync(
             GetMapVersionsRequest request,
             CancellationToken cancellationToken = default)
         {
-            var versions = string.IsNullOrWhiteSpace(request.MapId)
-                ? _versions
-                : _versions.Where(item => string.Equals(item.MapId, request.MapId, StringComparison.OrdinalIgnoreCase)).ToList();
-
-            return Task.FromResult(AgvResult<IReadOnlyList<MapVersionDto>>.Ok(versions));
+            return Task.FromResult(AgvResult<IReadOnlyList<MapVersionDto>>.Ok(_store.GetVersions(request.MapId)));
         }
 
-        /// <inheritdoc />
         public Task<AgvResult<MapRollbackResultDto>> RollbackToVersionAsync(
             RollbackMapVersionRequest request,
             CancellationToken cancellationToken = default)
         {
-            var version = _versions.FirstOrDefault(item =>
-                string.Equals(item.MapId, request.MapId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(item.Version, request.Version, StringComparison.OrdinalIgnoreCase));
-
+            var version = _store.Rollback(request.MapId, request.Version, request.Context.OperatorId);
             if (version is null)
             {
                 return Task.FromResult(AgvResult<MapRollbackResultDto>.Fail(
@@ -250,48 +178,191 @@ namespace AgvDispatcher.Modules.MapModule.Services
             }
 
             var now = DateTimeOffset.Now;
-            MarkCurrentVersion(request.MapId, request.Version);
-            var result = new MapRollbackResultDto
+            var snapshot = _store.GetPublishedSnapshot(request.MapId, request.Version) ?? _store.GetCurrentMap();
+            PersistCurrentMapAsync(snapshot, cancellationToken).GetAwaiter().GetResult();
+            PublishMapChanged(request.MapId, request.Version, now, request.Context.OperatorId);
+            return Task.FromResult(AgvResult<MapRollbackResultDto>.Ok(new MapRollbackResultDto
             {
                 MapId = request.MapId,
                 Version = request.Version,
                 RolledBackAt = now,
                 OperatorId = request.Context.OperatorId
-            };
-
-            _eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>().Publish(new MapPublishedEvent
-            {
-                MapId = result.MapId,
-                MapVersion = result.Version,
-                PublishedAt = result.RolledBackAt.DateTime,
-                OperatorId = result.OperatorId
-            });
-
-            return Task.FromResult(AgvResult<MapRollbackResultDto>.Ok(result));
+            }));
         }
 
-        /// <inheritdoc />
+        private async Task PersistCurrentMapAsync(MapSnapshotDto snapshot, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var nextNodeIds = snapshot.Nodes
+                .Select(node => node.NodeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var currentNodes = await _mapRepository.GetNodesAsync();
+            foreach (var node in currentNodes.Where(node =>
+                string.Equals(node.MapId, snapshot.MapId, StringComparison.OrdinalIgnoreCase)
+                && !nextNodeIds.Contains(node.NodeId)))
+            {
+                await _mapRepository.DeleteNodeAsync(node.NodeId);
+            }
+
+            foreach (var node in snapshot.Nodes.Select(node => ToLegacyNode(snapshot.MapId, node)))
+            {
+                await _mapRepository.SaveNodeAsync(node);
+            }
+
+            var nextEdgeIds = snapshot.Edges
+                .Select(edge => edge.EdgeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var currentEdges = await _mapRepository.GetEdgesAsync();
+            foreach (var edge in currentEdges.Where(edge =>
+                string.Equals(edge.MapId, snapshot.MapId, StringComparison.OrdinalIgnoreCase)
+                && !nextEdgeIds.Contains(edge.EdgeId)))
+            {
+                await _mapRepository.DeleteEdgeAsync(edge.EdgeId);
+            }
+
+            foreach (var edge in snapshot.Edges.Select(edge => ToLegacyEdge(snapshot.MapId, edge)))
+            {
+                await _mapRepository.SaveEdgeAsync(edge);
+            }
+
+            var currentAliases = await _aliasRepository.GetAllAsync();
+            foreach (var alias in currentAliases.Where(alias =>
+                string.Equals(alias.MapId, snapshot.MapId, StringComparison.OrdinalIgnoreCase)))
+            {
+                await _aliasRepository.DeleteAsync(alias.AliasId);
+            }
+
+            foreach (var alias in snapshot.VendorNodeMappings.Select(mapping => ToLegacyAlias(snapshot.MapId, mapping)))
+            {
+                await _aliasRepository.SaveAsync(alias);
+            }
+        }
+
+        private static MapNode ToLegacyNode(string mapId, MapNodeDto node)
+        {
+            return new MapNode
+            {
+                NodeId = node.NodeId,
+                MapId = mapId,
+                NodeCode = string.IsNullOrWhiteSpace(node.NodeCode) ? node.NodeId : node.NodeCode,
+                Name = string.IsNullOrWhiteSpace(node.NodeName) ? node.NodeId : node.NodeName,
+                NodeType = ToLegacyNodeType(node.NodeType),
+                Position = new MapPosition { MapId = mapId, NodeId = node.NodeId, X = node.X, Y = node.Y, AreaCode = node.AreaId },
+                Heading = node.Angle ?? 0,
+                AreaCode = node.AreaId ?? string.Empty,
+                IsEnabled = node.Enabled,
+                ParkingCapacity = TryReadInt(node.Properties, "Capacity", 1),
+                AllowedBrands = TryReadString(node.Properties, "AllowedBrands"),
+                RequiredCapabilities = (VehicleCapability)TryReadInt(node.Properties, "RequiredCapabilities", 0),
+                Tags = node.Properties
+                    .Where(item => item.Key is not ("Capacity" or "AllowedBrands" or "RequiredCapabilities"))
+                    .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase)
+            };
+        }
+
+        private static MapEdge ToLegacyEdge(string mapId, MapEdgeDto edge)
+        {
+            return new MapEdge
+            {
+                EdgeId = string.IsNullOrWhiteSpace(edge.EdgeId) ? $"E-{edge.FromNodeId}-{edge.ToNodeId}" : edge.EdgeId,
+                MapId = mapId,
+                FromNodeId = edge.FromNodeId,
+                ToNodeId = edge.ToNodeId,
+                Direction = edge.Enabled
+                    ? edge.Direction == MapEdgeDirection.Bidirectional ? LegacyEdgeDirection.Bidirectional : LegacyEdgeDirection.ForwardOnly
+                    : LegacyEdgeDirection.Closed,
+                Length = edge.Distance,
+                MaxSpeed = edge.SpeedLimit ?? 0,
+                Cost = Math.Max(1, (int)Math.Round(edge.Cost <= 0 ? edge.Distance : edge.Cost)),
+                IsEnabled = edge.Enabled,
+                AreaCode = edge.AreaId ?? string.Empty,
+                AllowedBrands = TryReadString(edge.Properties, "AllowedBrands"),
+                MaxVehicleFlow = TryReadInt(edge.Properties, "MaxVehicleFlow", 1),
+                Remark = TryReadString(edge.Properties, "Remark")
+            };
+        }
+
+        private static MapLocationAlias ToLegacyAlias(string mapId, VendorNodeMappingDto mapping)
+        {
+            var vendorCode = string.IsNullOrWhiteSpace(mapping.VendorCode) ? "GLOBAL" : mapping.VendorCode;
+            return new MapLocationAlias
+            {
+                AliasId = $"{vendorCode}-{mapping.SystemNodeId}",
+                MapId = mapId,
+                NodeId = mapping.SystemNodeId,
+                AliasType = "Vendor",
+                AliasValue = mapping.VendorNodeCode,
+                Brand = string.Equals(vendorCode, "GLOBAL", StringComparison.OrdinalIgnoreCase) ? string.Empty : vendorCode,
+                IsEnabled = true
+            };
+        }
+
+        private static LegacyMapNodeType ToLegacyNodeType(MapNodeType nodeType) => nodeType switch
+        {
+            MapNodeType.WorkStation => LegacyMapNodeType.Station,
+            MapNodeType.PickPoint => LegacyMapNodeType.Pickup,
+            MapNodeType.PutPoint => LegacyMapNodeType.Dropoff,
+            MapNodeType.ChargeStation => LegacyMapNodeType.Charge,
+            MapNodeType.WaitingPoint => LegacyMapNodeType.Waiting,
+            MapNodeType.Elevator => LegacyMapNodeType.Elevator,
+            MapNodeType.Door => LegacyMapNodeType.Door,
+            _ => LegacyMapNodeType.Normal
+        };
+
+        private static int TryReadInt(IReadOnlyDictionary<string, string> properties, string key, int fallback)
+        {
+            return properties.TryGetValue(key, out var raw) && int.TryParse(raw, out var value) ? value : fallback;
+        }
+
+        private static string TryReadString(IReadOnlyDictionary<string, string> properties, string key)
+        {
+            return properties.TryGetValue(key, out var value) ? value : string.Empty;
+        }
+
         public Task<AgvResult<MapExportResultDto>> ExportMapAsync(
             ExportMapRequest request,
             CancellationToken cancellationToken = default)
         {
-            var payload = JsonSerializer.Serialize(_drafts.Values.Select(item => item.Map));
-            var result = new MapExportResultDto
+            var snapshot = string.IsNullOrWhiteSpace(request.Version)
+                ? _store.GetCurrentMap()
+                : _store.GetPublishedSnapshot(request.MapId, request.Version);
+            if (snapshot is null)
+            {
+                return Task.FromResult(AgvResult<MapExportResultDto>.Fail(
+                    FailureCode.InvalidRequest,
+                    $"Map '{request.MapId}/{request.Version}' was not found."));
+            }
+
+            var payload = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
+            return Task.FromResult(AgvResult<MapExportResultDto>.Ok(new MapExportResultDto
             {
                 Format = request.Format,
                 Payload = payload,
                 ExportedAt = DateTimeOffset.Now
-            };
-
-            return Task.FromResult(AgvResult<MapExportResultDto>.Ok(result));
+            }));
         }
 
-        /// <inheritdoc />
         public Task<AgvResult<MapImportResultDto>> ImportMapAsync(
             ImportMapRequest request,
             CancellationToken cancellationToken = default)
         {
-            var map = JsonSerializer.Deserialize<MapSnapshotDto>(request.Payload);
+            IReadOnlyList<string> runtimeFields;
+            MapSnapshotDto? map;
+            try
+            {
+                runtimeFields = CollectJsonFieldNames(request.Payload);
+                map = JsonSerializer.Deserialize<MapSnapshotDto>(
+                    request.Payload,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException ex)
+            {
+                return Task.FromResult(AgvResult<MapImportResultDto>.Fail(
+                    FailureCode.InvalidRequest,
+                    $"Import payload is not valid json: {ex.Message}"));
+            }
+
             if (map is null)
             {
                 return Task.FromResult(AgvResult<MapImportResultDto>.Fail(
@@ -299,94 +370,100 @@ namespace AgvDispatcher.Modules.MapModule.Services
                     "Import payload is not a valid map snapshot."));
             }
 
-            var now = DateTimeOffset.Now;
-            var draft = new MapDraftDto
+            var validation = _validator.Validate(map, runtimeFields);
+            if (!validation.IsValid)
             {
-                DraftId = Guid.NewGuid().ToString("N"),
-                Map = map,
-                CreatedAt = now,
-                UpdatedAt = now,
-                OperatorId = request.Context.OperatorId,
-                State = MapState.Draft
-            };
-
-            _drafts[draft.DraftId] = draft;
-            return Task.FromResult(AgvResult<MapImportResultDto>.Ok(new MapImportResultDto { Draft = draft }));
-        }
-
-        private void MarkCurrentVersion(string mapId, string version)
-        {
-            for (var i = 0; i < _versions.Count; i++)
-            {
-                var item = _versions[i];
-                if (!string.Equals(item.MapId, mapId, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                _versions[i] = new MapVersionDto
-                {
-                    MapId = item.MapId,
-                    MapName = item.MapName,
-                    Version = item.Version,
-                    IsCurrent = string.Equals(item.Version, version, StringComparison.OrdinalIgnoreCase),
-                    State = string.Equals(item.Version, version, StringComparison.OrdinalIgnoreCase)
-                        ? MapState.Active
-                        : item.State == MapState.Active
-                            ? MapState.Archived
-                            : item.State,
-                    PublishedAt = item.PublishedAt,
-                    OperatorId = item.OperatorId
-                };
+                return Task.FromResult(AgvResult<MapImportResultDto>.Fail(
+                    FailureCode.InvalidRequest,
+                    string.Join("; ", validation.Messages)));
             }
+
+            // 外部导入只能生成草稿，不能直接覆盖当前运行图。
+            var draft = _store.SaveDraft(Guid.NewGuid().ToString("N"), map, request.Context.OperatorId);
+            return Task.FromResult(AgvResult<MapImportResultDto>.Ok(new MapImportResultDto
+            {
+                Draft = draft,
+                Warnings = validation.Messages.Where(message => message.StartsWith("P1", StringComparison.OrdinalIgnoreCase)).ToList()
+            }));
         }
 
-        /// <inheritdoc />
         public Task<AgvResult> DeleteDraftAsync(
             DeleteMapDraftRequest request,
             CancellationToken cancellationToken = default)
         {
-            _drafts.Remove(request.DraftId);
+            _store.DeleteDraft(request.DraftId);
             return Task.FromResult(AgvResult.Ok());
         }
 
-        /// <inheritdoc />
         public Task<AgvResult> ArchiveMapAsync(
             ArchiveMapVersionRequest request,
             CancellationToken cancellationToken = default)
         {
-            for (var i = 0; i < _versions.Count; i++)
+            var version = _store.GetVersion(request.MapId, request.Version);
+            if (version is null)
             {
-                var item = _versions[i];
-                if (!string.Equals(item.MapId, request.MapId, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(item.Version, request.Version, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                if (item.IsCurrent)
-                {
-                    return Task.FromResult(AgvResult.Fail(
-                        FailureCode.InvalidState,
-                        "Cannot archive the active map."));
-                }
-
-                _versions[i] = new MapVersionDto
-                {
-                    MapId = item.MapId,
-                    MapName = item.MapName,
-                    Version = item.Version,
-                    IsCurrent = false,
-                    State = MapState.Archived,
-                    PublishedAt = item.PublishedAt,
-                    OperatorId = item.OperatorId
-                };
-                return Task.FromResult(AgvResult.Ok());
+                return Task.FromResult(AgvResult.Fail(
+                    FailureCode.InvalidRequest,
+                    $"Map version '{request.MapId}/{request.Version}' was not found."));
             }
 
-            return Task.FromResult(AgvResult.Fail(
-                FailureCode.InvalidRequest,
-                $"Map version '{request.MapId}/{request.Version}' was not found."));
+            if (version.IsCurrent)
+            {
+                return Task.FromResult(AgvResult.Fail(
+                    FailureCode.InvalidState,
+                    "Cannot archive the active map."));
+            }
+
+            _store.Archive(request.MapId, request.Version);
+            return Task.FromResult(AgvResult.Ok());
+        }
+
+        private void PublishMapChanged(
+            string mapId,
+            string version,
+            DateTimeOffset publishedAt,
+            string? operatorId)
+        {
+            // 版本指针已在 Store 内切换完成，事件在外部发布，避免锁内回调订阅者。
+            _eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>().Publish(new MapPublishedEvent
+            {
+                MapId = mapId,
+                MapVersion = version,
+                PublishedAt = publishedAt.DateTime,
+                OperatorId = operatorId
+            });
+        }
+
+        private static IReadOnlyList<string> CollectJsonFieldNames(string payload)
+        {
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                return Array.Empty<string>();
+            }
+
+            using var document = JsonDocument.Parse(payload);
+            var names = new List<string>();
+            CollectJsonFieldNames(document.RootElement, names);
+            return names;
+        }
+
+        private static void CollectJsonFieldNames(JsonElement element, ICollection<string> names)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in element.EnumerateObject())
+                {
+                    names.Add(property.Name);
+                    CollectJsonFieldNames(property.Value, names);
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in element.EnumerateArray())
+                {
+                    CollectJsonFieldNames(item, names);
+                }
+            }
         }
     }
 }

@@ -11,15 +11,15 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
     /// 包裹领域模型 <see cref="MapEdge"/> 并持有两端节点画布项 <see cref="EditorNodeVm"/> 引用，
     /// 订阅其坐标变化，使边线段（<see cref="X1"/>..<see cref="Y2"/>）与方向箭头折点随节点拖拽实时联动。
     /// </para>
-    /// <para>配色规则与监控页一致：禁用/封闭=红，锁定=橙，正常=绿。</para>
+    /// <para>配色规则与监控页一致：禁用/封闭=红，正常=绿。</para>
     /// </summary>
     public class EditorEdgeVm : BindableBase, IDisposable
     {
         /// <summary>被包裹的领域边模型（保存时直接落库此对象）。</summary>
         public MapEdge Model { get; }
 
-        private readonly EditorNodeVm _from;
-        private readonly EditorNodeVm _to;
+        private EditorNodeVm _from;
+        private EditorNodeVm _to;
 
         /// <summary>构造画布边项并订阅两端节点坐标变化以联动重绘。</summary>
         /// <param name="model">底层领域边。</param>
@@ -52,6 +52,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         /// <summary>边编号（只读展示）。</summary>
         public string EdgeId => Model.EdgeId;
 
+        public string FromNodeId => Model.FromNodeId;
+
+        public string ToNodeId => Model.ToNodeId;
+
         /// <summary>起点 X 画布坐标。</summary>
         public double X1 => _from.X;
         /// <summary>起点 Y 画布坐标。</summary>
@@ -60,6 +64,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         public double X2 => _to.X;
         /// <summary>终点 Y 画布坐标。</summary>
         public double Y2 => _to.Y;
+
+        public void ReverseEndpoints()
+        {
+            _from.PropertyChanged -= OnEndpointChanged;
+            _to.PropertyChanged -= OnEndpointChanged;
+            (_from, _to) = (_to, _from);
+            (Model.FromNodeId, Model.ToNodeId) = (Model.ToNodeId, Model.FromNodeId);
+            _from.PropertyChanged += OnEndpointChanged;
+            _to.PropertyChanged += OnEndpointChanged;
+            RaisePropertyChanged(nameof(FromNodeId));
+            RaisePropertyChanged(nameof(ToNodeId));
+            RaiseGeometryChanged();
+        }
 
         /// <summary>边方向（修改即写回模型并刷新配色/箭头）。</summary>
         public EdgeDirection Direction
@@ -92,22 +109,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             }
         }
 
-        private bool _isLocked;
-
-        /// <summary>是否锁定（仅用于编辑器本地显示，不写入 Core MapEdge）。</summary>
-        public bool IsLocked
-        {
-            get => _isLocked;
-            set
-            {
-                if (SetProperty(ref _isLocked, value))
-                {
-                    RaiseStyleChanged();
-                }
-            }
-        }
-
         private bool _isSelected;
+        private bool _isBulkHighlighted;
         /// <summary>是否处于选中态（加粗高亮）。</summary>
         public bool IsSelected
         {
@@ -122,20 +125,32 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             }
         }
 
-        /// <summary>线条颜色：禁用/封闭=红，锁定=橙，正常=绿；选中时统一金色。</summary>
+        public bool IsBulkHighlighted
+        {
+            get => _isBulkHighlighted;
+            set
+            {
+                if (SetProperty(ref _isBulkHighlighted, value))
+                {
+                    RaisePropertyChanged(nameof(Stroke));
+                    RaisePropertyChanged(nameof(StrokeThickness));
+                }
+            }
+        }
+
+        /// <summary>线条颜色：禁用/封闭=红，正常=绿；选中时统一金色。</summary>
         public string Stroke
         {
             get
             {
-                if (IsSelected) return "#FFD700";
+                if (IsSelected || IsBulkHighlighted) return "#FFD700";
                 if (!Model.IsEnabled || Model.Direction == EdgeDirection.Closed) return "#FF4500";
-                if (IsLocked) return "#FFA500";
                 return "#00FF7F";
             }
         }
 
         /// <summary>线条粗细：选中加粗。</summary>
-        public double StrokeThickness => IsSelected ? 4 : 2;
+        public double StrokeThickness => IsSelected || IsBulkHighlighted ? 4 : 2;
 
         /// <summary>线条透明度。</summary>
         public double Opacity => 0.85;

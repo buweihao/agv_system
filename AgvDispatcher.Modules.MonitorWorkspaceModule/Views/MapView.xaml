@@ -1,4 +1,4 @@
-<UserControl x:Class="AgvDispatcher.Modules.MonitorWorkspaceModule.Views.MapView"
+﻿<UserControl x:Class="AgvDispatcher.Modules.MonitorWorkspaceModule.Views.MapView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:prism="http://prismlibrary.com/"
@@ -49,6 +49,10 @@
                 <TextBlock Text="■ 地图模式" Foreground="#00BFFF" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,20,0"/>
                 <RadioButton x:Name="Rb2D" Content="2D" GroupName="MapMode" IsChecked="True" Style="{StaticResource MapToggleStyle}" Padding="20,5" Margin="0,0,10,0"/>
                 <RadioButton x:Name="Rb3D" Content="3D" GroupName="MapMode" Style="{StaticResource MapToggleStyle}" Padding="20,5"/>
+                <Button Content="拖拽" Click="TogglePanMode_Click" Background="#12304A" Foreground="#DCEFFF" BorderBrush="#2D5D88" Padding="12,5" Margin="12,0,6,0" Cursor="Hand"/>
+                <Button Content="+" Click="ZoomIn_Click" Background="#12304A" Foreground="#DCEFFF" BorderBrush="#2D5D88" Width="30" Margin="0,0,6,0" Cursor="Hand"/>
+                <Button Content="-" Click="ZoomOut_Click" Background="#12304A" Foreground="#DCEFFF" BorderBrush="#2D5D88" Width="30" Margin="0,0,6,0" Cursor="Hand"/>
+                <Button Content="居中" Click="CenterMap_Click" Background="#12304A" Foreground="#DCEFFF" BorderBrush="#2D5D88" Padding="12,5" Cursor="Hand"/>
             </StackPanel>
 
             <TextBlock Grid.Column="2"
@@ -95,6 +99,8 @@
 
                 <Grid Background="Transparent" ClipToBounds="True"
                       MouseWheel="MapContainer_MouseWheel"
+                      MouseLeftButtonDown="MapContainer_MouseLeftButtonDown"
+                      MouseLeftButtonUp="MapContainer_MouseLeftButtonUp"
                       MouseRightButtonDown="MapContainer_MouseRightButtonDown"
                       MouseRightButtonUp="MapContainer_MouseRightButtonUp"
                       MouseMove="MapContainer_MouseMove">
@@ -106,12 +112,44 @@
                             </TransformGroup>
                         </Viewbox.RenderTransform>
                         <Canvas Width="860" Height="580" ClipToBounds="False">
-                        <Border Canvas.Left="90" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="290" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="490" Canvas.Top="90" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="90" Canvas.Top="310" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="290" Canvas.Top="310" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
-                        <Border Canvas.Left="490" Canvas.Top="310" Width="160" Height="160" Background="#15253A" BorderBrush="#254060" BorderThickness="1" CornerRadius="2" Opacity="0.9"/>
+                        <ItemsControl ItemsSource="{Binding Areas}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Polygon Points="{Binding PointsText}"
+                                             Fill="{Binding Fill}"
+                                             Stroke="{Binding Stroke}"
+                                             StrokeThickness="1"
+                                             Opacity="{Binding Opacity}"
+                                             IsHitTestVisible="False"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <ItemsControl ItemsSource="{Binding Areas}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding LabelLeft}"/>
+                                    <Setter Property="Canvas.Top" Value="{Binding LabelTop}"/>
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#AA0B1828" BorderBrush="{Binding Stroke}" BorderThickness="1" CornerRadius="3" Padding="6,2" IsHitTestVisible="False">
+                                        <TextBlock Text="{Binding AreaName}" Foreground="#DCEFFF" FontSize="11"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
                         <ItemsControl ItemsSource="{Binding Edges}">
                             <ItemsControl.ItemsPanel>
@@ -207,6 +245,7 @@
                                 <Style TargetType="ContentPresenter">
                                     <Setter Property="Canvas.Left" Value="{Binding CanvasLeft}"/>
                                     <Setter Property="Canvas.Top" Value="{Binding CanvasTop}"/>
+                                    <Setter Property="Panel.ZIndex" Value="20"/>
                                 </Style>
                             </ItemsControl.ItemContainerStyle>
                             <ItemsControl.ItemTemplate>
@@ -226,6 +265,7 @@
                                                 <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
                                                 <TextBlock Text="{Binding NodeId}"/>
                                                 <TextBlock Text="{Binding NodeType}"/>
+                                                <TextBlock Text="{Binding AreaName}"/>
                                             </StackPanel>
                                         </Ellipse.ToolTip>
                                     </Ellipse>
@@ -251,7 +291,7 @@
                                         <Border.InputBindings>
                                             <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.MapItemClickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
                                         </Border.InputBindings>
-                                        <TextBlock Text="{Binding NodeCode}" Foreground="White" FontWeight="Bold" FontSize="12"/>
+                                        <TextBlock Text="{Binding LabelText}" Foreground="White" FontWeight="Bold" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="92"/>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -267,6 +307,7 @@
                                 <Style TargetType="ContentPresenter">
                                     <Setter Property="Canvas.Left" Value="{Binding CanvasLeft}"/>
                                     <Setter Property="Canvas.Top" Value="{Binding CanvasTop}"/>
+                                    <Setter Property="Panel.ZIndex" Value="50"/>
                                 </Style>
                             </ItemsControl.ItemContainerStyle>
                             <ItemsControl.ItemTemplate>
@@ -318,7 +359,12 @@
                 <!-- Path Planning Preview overlay (collapsible) -->
                 <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="20" Width="240" Background="#1A2536" BorderBrush="#2D5D88" BorderThickness="1" CornerRadius="4" Padding="15,10">
                     <StackPanel>
-                        <ToggleButton x:Name="PreviewToggle" IsChecked="False" Cursor="Hand" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0">
+                        <ToggleButton x:Name="PreviewToggle"
+                                      IsChecked="{Binding IsPreviewPanelExpanded, Mode=TwoWay}"
+                                      Cursor="Hand"
+                                      HorizontalContentAlignment="Stretch"
+                                      Background="Transparent"
+                                      BorderThickness="0">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Grid Background="Transparent">
@@ -342,14 +388,26 @@
                                     Visibility="{Binding IsChecked, ElementName=PreviewToggle, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="起点" Foreground="#8EA8C3" FontSize="12" Margin="0,0,0,3"/>
                             <ComboBox ItemsSource="{Binding Nodes}"
-                                      SelectedItem="{Binding PreviewStartNode, Mode=TwoWay}"
-                                      DisplayMemberPath="NodeCode"
+                                      SelectedValue="{Binding PreviewStartNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      SelectedValuePath="NodeId"
+                                      DisplayMemberPath="DisplayText"
+                                      IsSynchronizedWithCurrentItem="False"
+                                      TextSearch.TextPath="DisplayText"
+                                      Height="34"
+                                      FontSize="12"
+                                      MaxDropDownHeight="240"
                                       Margin="0,0,0,8"/>
 
                             <TextBlock Text="终点" Foreground="#8EA8C3" FontSize="12" Margin="0,0,0,3"/>
                             <ComboBox ItemsSource="{Binding Nodes}"
-                                      SelectedItem="{Binding PreviewEndNode, Mode=TwoWay}"
-                                      DisplayMemberPath="NodeCode"
+                                      SelectedValue="{Binding PreviewEndNodeId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      SelectedValuePath="NodeId"
+                                      DisplayMemberPath="DisplayText"
+                                      IsSynchronizedWithCurrentItem="False"
+                                      TextSearch.TextPath="DisplayText"
+                                      Height="34"
+                                      FontSize="12"
+                                      MaxDropDownHeight="240"
                                       Margin="0,0,0,10"/>
 
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
@@ -386,20 +444,29 @@
         </Grid>
 
         <!-- Legend -->
-        <Border Grid.Row="2" Background="#0A111E" Padding="20,0">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="图例：" Foreground="#8EA8C3" FontWeight="Bold" Margin="0,0,10,0"/>
-                <Ellipse Width="10" Height="10" Fill="#00BFFF" Margin="0,0,5,0"/><TextBlock Text="待机点" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Ellipse Width="10" Height="10" Fill="#32CD32" Margin="0,0,5,0"/><TextBlock Text="充电桩" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Ellipse Width="10" Height="10" Fill="#FFA500" Margin="0,0,5,0"/><TextBlock Text="工作点" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Line X1="0" Y1="0" X2="20" Y2="0" Stroke="#1E90FF" StrokeThickness="2" Margin="0,0,5,0"/><TextBlock Text="路径" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Line X1="0" Y1="0" X2="20" Y2="0" Stroke="#00E5FF" StrokeThickness="3" Margin="0,0,5,0"/><TextBlock Text="预览路径" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Line X1="0" Y1="0" X2="20" Y2="0" Stroke="#FFA500" StrokeThickness="2" Margin="0,0,5,0"/><TextBlock Text="锁定边" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Line X1="0" Y1="0" X2="20" Y2="0" Stroke="#FF4500" StrokeThickness="2" Margin="0,0,5,0"/><TextBlock Text="禁用/封闭边" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Polyline Points="0,0 6,4 0,8" Stroke="#00FF7F" StrokeThickness="2" Margin="0,0,5,0" VerticalAlignment="Center"/><TextBlock Text="方向" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Ellipse Width="10" Height="10" Fill="#556070" Margin="0,0,5,0"/><TextBlock Text="禁用节点" Foreground="#8EA8C3" Margin="0,0,15,0"/>
-                <Border Width="16" Height="10" Background="#FF4500" CornerRadius="4" Margin="0,0,5,0"/><TextBlock Text="AGV(异常)" Foreground="#8EA8C3"/>
-            </StackPanel>
+        <Border Grid.Row="2" Background="#0A111E" Padding="12,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="图例：" Foreground="#8EA8C3" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <Ellipse Width="10" Height="10" Fill="#1E90FF" Margin="0,0,5,0"/><TextBlock Text="取货点" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Ellipse Width="10" Height="10" Fill="#00BFFF" Margin="0,0,5,0"/><TextBlock Text="放货点" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Ellipse Width="10" Height="10" Fill="#9370DB" Margin="0,0,5,0"/><TextBlock Text="充电点" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Ellipse Width="10" Height="10" Fill="#9FB7CC" Margin="0,0,5,0"/><TextBlock Text="普通/工艺点" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Line X1="0" Y1="0" X2="20" Y2="0" Stroke="#00FF7F" StrokeThickness="2" Margin="0,0,5,0"/><TextBlock Text="静态路线" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Line X1="0" Y1="0" X2="20" Y2="0" Stroke="#00E5FF" StrokeThickness="3" Margin="0,0,5,0"/><TextBlock Text="预览路径" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Line X1="0" Y1="0" X2="20" Y2="0" Stroke="#FF4500" StrokeThickness="2" Margin="0,0,5,0"/><TextBlock Text="禁用/阻断边" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Border Width="18" Height="10" Background="#3300BFA6" BorderBrush="#00BFA6" BorderThickness="1" Margin="0,0,5,0"/><TextBlock Text="限流区" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Border Width="18" Height="10" Background="#33FFB020" BorderBrush="#FFB020" BorderThickness="1" Margin="0,0,5,0"/><TextBlock Text="互斥区" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Border Width="18" Height="10" Background="#339B6DFF" BorderBrush="#9B6DFF" BorderThickness="1" Margin="0,0,5,0"/><TextBlock Text="限速/工艺区" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Border Width="18" Height="10" Background="#33FF4D4F" BorderBrush="#FF4D4F" BorderThickness="1" Margin="0,0,5,0"/><TextBlock Text="消防安全区" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Border Width="18" Height="10" Background="#33FFD700" BorderBrush="#FFD700" BorderThickness="1" Margin="0,0,5,0"/><TextBlock Text="待机/充电区" Foreground="#8EA8C3" Margin="0,0,12,0"/>
+                    <Border Width="18" Height="10" Background="#33777777" BorderBrush="#777777" BorderThickness="1" Margin="0,0,5,0"/><TextBlock Text="维护候选区" Foreground="#8EA8C3"/>
+                </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </UserControl>
+
+
+
+

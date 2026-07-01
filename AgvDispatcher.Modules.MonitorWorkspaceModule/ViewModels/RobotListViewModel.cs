@@ -28,10 +28,10 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
         private ObservableCollection<RobotModel> _robotList = new();
         // 手动上报表单的默认值
-        private string _vehicleId = "AGV-001";
+        private string _vehicleId = "AGV-002";
         private string _brand = "RGV-A";
         private double _batteryLevel = 76;
-        private string _location = "A01-01";
+        private string _location = "PICK-A1";
         private RobotState _state = RobotState.Running;
         private string _lastPublishMessage = "Ready";
         private RobotModel? _selectedRobot;
@@ -47,7 +47,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         /// <summary>手动上报表单：车辆 ID 候选项。</summary>
         public ObservableCollection<string> VehicleIdOptions { get; } = new()
         {
-            "AGV-001",
+            "AGV-002",
             "AGV-003",
             "AGV-008",
             "AGV-010",
@@ -274,8 +274,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 Brand = snapshot.Brand,
                 State = snapshot.State,
                 TaskId = string.IsNullOrWhiteSpace(snapshot.CurrentTaskId) ? "-" : snapshot.CurrentTaskId,
-                CurrentPosition = snapshot.Location,
-                TargetPosition = GetMockTargetPosition(snapshot.VehicleId),
+                CurrentPosition = FormatNodeLocation(snapshot.Location),
+                TargetPosition = FormatNodeLocation(GetMockTargetPosition(snapshot.VehicleId)),
                 BatteryLevel = (int)Math.Round(snapshot.BatteryLevel),
                 Speed = GetMockSpeed(snapshot.State, snapshot.VehicleId),
                 RunningTime = GetMockRunningTime(snapshot.VehicleId)
@@ -287,12 +287,59 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         {
             return vehicleId switch
             {
-                "AGV-001" => "B03-05",
-                "AGV-003" => "C02-03",
-                "AGV-010" => "D01-02",
+                "AGV-002" => "PUT-A1",
+                "AGV-003" => "INT-C",
+                "AGV-008" => "RAW-OUT-01",
+                "AGV-010" => "FIRE-G2",
+                "AGV-017" => "CHG-03",
                 _ => "-"
             };
         }
+
+        private static string FormatNodeLocation(string nodeId)
+        {
+            if (string.IsNullOrWhiteSpace(nodeId) || nodeId == "-")
+            {
+                return "-";
+            }
+
+            return NodeNames.TryGetValue(nodeId, out var name)
+                ? $"{nodeId} ({name})"
+                : nodeId;
+        }
+
+        private static readonly IReadOnlyDictionary<string, string> NodeNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PICK-A1"] = "\u6210\u54c1\u5e93\u53d6\u8d27\u70b9A1",
+            ["PICK-A2"] = "\u6210\u54c1\u5e93\u53d6\u8d27\u70b9A2",
+            ["PUT-A1"] = "\u6210\u54c1\u5e93\u653e\u8d27\u70b9A1",
+            ["RAW-IN-01"] = "\u539f\u6599\u533a\u5165\u5e93\u70b91",
+            ["RAW-IN-02"] = "\u539f\u6599\u533a\u5165\u5e93\u70b92",
+            ["RAW-OUT-01"] = "\u539f\u6599\u533a\u51fa\u5e93\u70b91",
+            ["QR-01"] = "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b91",
+            ["QR-02"] = "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b92",
+            ["QR-03"] = "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b93",
+            ["SLAM-01"] = "\u6fc0\u5149\u533a\u5165\u53e3",
+            ["SLAM-02"] = "\u6fc0\u5149\u5de5\u4f4d",
+            ["INT-N"] = "\u4e92\u65a5\u533a\u5317\u53e3",
+            ["INT-C"] = "\u4e92\u65a5\u533a\u4e2d\u5fc3",
+            ["INT-S"] = "\u4e92\u65a5\u533a\u5357\u53e3",
+            ["FIRE-G1"] = "\u6d88\u9632\u95e8\u524d\u70b9",
+            ["FIRE-G2"] = "\u6d88\u9632\u95e8\u540e\u70b9",
+            ["SPEED-IN"] = "\u9650\u901f\u533a\u5165\u53e3",
+            ["WEIGH-01"] = "\u5730\u78c5\u79f0\u91cd\u70b9",
+            ["WASH-01"] = "\u6e05\u6d17\u5de5\u4f4d",
+            ["SPEED-OUT"] = "\u9650\u901f\u533a\u51fa\u53e3",
+            ["WAIT-01"] = "\u5f85\u673a\u4f4d1",
+            ["WAIT-02"] = "\u5f85\u673a\u4f4d2",
+            ["WAIT-03"] = "\u5f85\u673a\u4f4d3",
+            ["PARK-01"] = "\u505c\u8f66\u4f4d1",
+            ["CHG-01"] = "\u5145\u7535\u68691",
+            ["CHG-02"] = "\u5145\u7535\u68692",
+            ["CHG-03"] = "\u5feb\u5145\u68693",
+            ["MAINT-IN"] = "\u7ef4\u62a4\u533a\u5165\u53e3",
+            ["MAINT-OUT"] = "\u7ef4\u62a4\u533a\u51fa\u53e3"
+        };
 
         /// <summary>按状态与车辆 ID 返回演示用速度（非运行恒为 0）。</summary>
         private static double GetMockSpeed(RobotState state, string vehicleId)
@@ -304,7 +351,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             return vehicleId switch
             {
-                "AGV-001" => 1.25,
+                "AGV-002" => 1.25,
                 "AGV-003" => 1.10,
                 "AGV-010" => 1.48,
                 _ => 0.00
@@ -316,7 +363,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         {
             return vehicleId switch
             {
-                "AGV-001" => "02:35:23",
+                "AGV-002" => "02:35:23",
                 "AGV-003" => "01:45:11",
                 "AGV-008" => "00:12:08",
                 "AGV-010" => "02:12:56",

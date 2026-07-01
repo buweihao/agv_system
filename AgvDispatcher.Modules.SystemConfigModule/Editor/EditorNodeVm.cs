@@ -95,6 +95,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             }
         }
 
+        public string AreaCode
+        {
+            get => Model.AreaCode;
+            set
+            {
+                if (Model.AreaCode != value)
+                {
+                    Model.AreaCode = value ?? string.Empty;
+                    RaisePropertyChanged();
+                }
+            }
+        }
+
         /// <summary>是否启用（修改即写回模型并刷新配色/透明度）。</summary>
         public bool IsEnabled
         {
@@ -112,6 +125,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         }
 
         private bool _isSelected;
+        private bool _isBulkHighlighted;
         /// <summary>是否处于选中态（描边高亮）。</summary>
         public bool IsSelected
         {
@@ -119,6 +133,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             set
             {
                 if (SetProperty(ref _isSelected, value))
+                {
+                    RaisePropertyChanged(nameof(Stroke));
+                    RaisePropertyChanged(nameof(StrokeThickness));
+                }
+            }
+        }
+
+        public bool IsBulkHighlighted
+        {
+            get => _isBulkHighlighted;
+            set
+            {
+                if (SetProperty(ref _isBulkHighlighted, value))
                 {
                     RaisePropertyChanged(nameof(Stroke));
                     RaisePropertyChanged(nameof(StrokeThickness));
@@ -139,10 +166,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             };
 
         /// <summary>描边颜色：选中=金色，否则常规。</summary>
-        public string Stroke => IsSelected ? "#FFD700" : (Model.IsEnabled ? "#D8F3FF" : "#3A4452");
+        public string Stroke => IsSelected || IsBulkHighlighted ? "#FFD700" : (Model.IsEnabled ? "#D8F3FF" : "#3A4452");
 
         /// <summary>描边粗细：选中加粗。</summary>
-        public double StrokeThickness => IsSelected ? 3 : 1;
+        public double StrokeThickness => IsSelected || IsBulkHighlighted ? 3 : 1;
 
         /// <summary>整体透明度（禁用节点半透明）。</summary>
         public double Opacity => Model.IsEnabled ? 1.0 : 0.5;

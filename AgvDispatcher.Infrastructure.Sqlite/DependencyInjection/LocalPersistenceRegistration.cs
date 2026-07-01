@@ -43,6 +43,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.DependencyInjection
             containerRegistry.RegisterSingleton<IMapRepository, MapRepository>();
             containerRegistry.RegisterSingleton<IMapVersionRepository, MapVersionRepository>();
             containerRegistry.RegisterSingleton<IMapLocationAliasRepository, MapLocationAliasRepository>();
+            containerRegistry.RegisterSingleton<IMapAreaRepository, MapAreaRepository>();
             containerRegistry.RegisterSingleton<IMapValidationService, PersistentMapValidationService>();
             containerRegistry.RegisterSingleton<ITaskTemplateRepository, TaskTemplateRepository>();
             containerRegistry.RegisterSingleton<ISystemParameterRepository, SystemParameterRepository>();

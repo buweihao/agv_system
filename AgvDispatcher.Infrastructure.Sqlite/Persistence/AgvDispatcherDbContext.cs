@@ -23,6 +23,8 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
 
         public DbSet<MapEdge> MapEdges => Set<MapEdge>();
 
+        public DbSet<MapArea> MapAreas => Set<MapArea>();
+
         public DbSet<MapLocationAlias> MapLocationAliases => Set<MapLocationAlias>();
 
         public DbSet<MapVersionEntity> MapVersions => Set<MapVersionEntity>();
@@ -189,7 +191,22 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
                 entity.Property(edge => edge.FromNodeId).HasMaxLength(64);
                 entity.Property(edge => edge.ToNodeId).HasMaxLength(64);
                 entity.Property(edge => edge.AllowedBrands).HasMaxLength(256);
+                entity.Property(edge => edge.Remark).HasMaxLength(512);
                 entity.HasIndex(edge => new { edge.FromNodeId, edge.ToNodeId });
+            });
+
+            modelBuilder.Entity<MapArea>(entity =>
+            {
+                entity.ToTable("MapAreas");
+                entity.HasKey(area => new { area.MapId, area.MapVersion, area.AreaId });
+                entity.Property(area => area.MapId).HasMaxLength(64);
+                entity.Property(area => area.MapVersion).HasMaxLength(64);
+                entity.Property(area => area.AreaId).HasMaxLength(64);
+                entity.Property(area => area.AreaName).HasMaxLength(128);
+                entity.Property(area => area.BoundaryJson).HasColumnType("TEXT");
+                entity.Property(area => area.Properties)
+                    .HasConversion(dictionaryConverter)
+                    .Metadata.SetValueComparer(dictionaryComparer);
             });
         }
 

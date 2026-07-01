@@ -474,6 +474,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             }
 
             var edgeId = GenerateEdgeId();
+            var distance = CalculateDistanceInMeters(from.X, from.Y, to.X, to.Y);
             var model = new MapEdge
             {
                 EdgeId = edgeId,
@@ -481,6 +482,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 FromNodeId = from.NodeId,
                 ToNodeId = to.NodeId,
                 Direction = EdgeDirection.Bidirectional,
+                Length = distance,
+                Cost = Math.Max(1, (int)Math.Round(distance)),
                 MaxSpeed = 1.0,
                 IsEnabled = true
             };
@@ -492,6 +495,15 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 undo: () => { Edges.Remove(model); EditorEdges.Remove(edgeVm); edgeVm.Dispose(); RaisePropertyChanged(nameof(TotalEdges)); }));
             RaiseUndoRedoState();
             SelectedEditorEdge = edgeVm;
+        }
+
+        private double CalculateDistanceInMeters(double fromX, double fromY, double toX, double toY)
+        {
+            var dx = toX - fromX;
+            var dy = toY - fromY;
+            var pixelDistance = Math.Sqrt(dx * dx + dy * dy);
+            var pixelsPerMeter = Settings.PixelsPerMeter <= 0 ? 1 : Settings.PixelsPerMeter;
+            return pixelDistance / pixelsPerMeter;
         }
 
         /// <summary>

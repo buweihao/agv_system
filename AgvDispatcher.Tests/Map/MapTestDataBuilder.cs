@@ -87,7 +87,8 @@ internal static class MapTestDataBuilder
         NodeId = id,
         NodeCode = id,
         NodeName = $"Node {id}",
-        NodeType = type
+        NodeType = type,
+        AreaId = "A1"
     };
 
     private static MapEdgeDto Edge(string id, string from, string to, MapEdgeDirection direction) => new()
@@ -96,6 +97,7 @@ internal static class MapTestDataBuilder
         FromNodeId = from,
         ToNodeId = to,
         Distance = 10,
-        Direction = direction
+        Direction = direction,
+        AreaId = "A1"
     };
 }

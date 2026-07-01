@@ -37,8 +37,11 @@ public sealed class MapStaticQueryServiceTests
         var nodes = _service.GetNodes(new GetMapSnapshotRequest());
         var edges = _service.GetEdges(new GetMapSnapshotRequest());
 
-        Assert.Equal(3, nodes.Data!.Count);
-        Assert.Equal(2, edges.Data!.Count);
+        Assert.True(nodes.Data!.Count >= 20);
+        Assert.True(edges.Data!.Count >= 20);
+        Assert.Contains(nodes.Data, node => node.NodeId == "PICK-A1");
+        Assert.Contains(nodes.Data, node => node.NodeId == "CHG-01");
+        Assert.Contains(edges.Data, edge => edge.EdgeId == "E-PICK-A1-PICK-A2");
         Assert.All(edges.Data, edge =>
         {
             Assert.False(string.IsNullOrWhiteSpace(edge.FromNodeId));
@@ -51,11 +54,11 @@ public sealed class MapStaticQueryServiceTests
     [Fact]
     public void GetNode_WhenNodeExists_ShouldReturnNode()
     {
-        var result = _service.GetNode(new GetMapNodeRequest { NodeId = "N1" });
+        var result = _service.GetNode(new GetMapNodeRequest { NodeId = "PICK-A1" });
 
         Assert.True(result.Success);
-        Assert.Equal("N1", result.Data!.NodeId);
-        Assert.Equal("Point_A", result.Data.NodeCode);
+        Assert.Equal("PICK-A1", result.Data!.NodeId);
+        Assert.Equal("PICK-A1", result.Data.NodeCode);
         Assert.Equal(MapNodeType.PickPoint, result.Data.NodeType);
     }
 
@@ -71,10 +74,10 @@ public sealed class MapStaticQueryServiceTests
     [Fact]
     public void GetEdge_WhenEdgeExists_ShouldReturnEdge()
     {
-        var result = _service.GetEdge(new GetMapEdgeRequest { EdgeId = "E1" });
+        var result = _service.GetEdge(new GetMapEdgeRequest { EdgeId = "E-PICK-A1-PICK-A2" });
 
         Assert.True(result.Success);
-        Assert.Equal("E1", result.Data!.EdgeId);
+        Assert.Equal("E-PICK-A1-PICK-A2", result.Data!.EdgeId);
     }
 
     [Fact]
@@ -89,20 +92,20 @@ public sealed class MapStaticQueryServiceTests
     [Fact]
     public void NodeExists_And_EdgeExists_ShouldReturnBoolean()
     {
-        Assert.True(_service.NodeExists(new GetMapNodeRequest { NodeId = "N1" }).Data);
+        Assert.True(_service.NodeExists(new GetMapNodeRequest { NodeId = "PICK-A1" }).Data);
         Assert.False(_service.NodeExists(new GetMapNodeRequest { NodeId = "missing" }).Data);
-        Assert.True(_service.EdgeExists(new GetMapEdgeRequest { EdgeId = "E1" }).Data);
+        Assert.True(_service.EdgeExists(new GetMapEdgeRequest { EdgeId = "E-PICK-A1-PICK-A2" }).Data);
         Assert.False(_service.EdgeExists(new GetMapEdgeRequest { EdgeId = "missing" }).Data);
     }
 
     [Fact]
     public void GetOutgoingEdges_ShouldRespectBidirectionalEdge()
     {
-        var reverseBidirectional = _service.GetOutgoingEdges(new GetOutgoingEdgesRequest { NodeId = "N2" });
-        var reverseOneWay = _service.GetOutgoingEdges(new GetOutgoingEdgesRequest { NodeId = "N3" });
+        var reverseBidirectional = _service.GetOutgoingEdges(new GetOutgoingEdgesRequest { NodeId = "PICK-A2" });
+        var reverseOneWay = _service.GetOutgoingEdges(new GetOutgoingEdgesRequest { NodeId = "FIRE-G2" });
 
-        Assert.Contains(reverseBidirectional.Data!, edge => edge.EdgeId == "E1");
-        Assert.DoesNotContain(reverseOneWay.Data!, edge => edge.EdgeId == "E2");
+        Assert.Contains(reverseBidirectional.Data!, edge => edge.EdgeId == "E-PICK-A1-PICK-A2");
+        Assert.DoesNotContain(reverseOneWay.Data!, edge => edge.EdgeId == "E-FIRE-G1-FIRE-G2");
     }
 
     [Theory]
@@ -122,22 +125,22 @@ public sealed class MapStaticQueryServiceTests
     {
         var vendorCode = _service.GetVendorNodeCode(new GetVendorNodeCodeRequest
         {
-            SystemNodeId = "N1",
-            VendorCode = "Seer"
+            SystemNodeId = "WEIGH-01",
+            VendorCode = "HANGCHA"
         });
         var systemId = _service.GetSystemNodeId(new GetSystemNodeIdRequest
         {
-            VendorNodeCode = "SEER_A01",
-            VendorCode = "Seer"
+            VendorNodeCode = "HC_WEIGHT_01",
+            VendorCode = "HANGCHA"
         });
         var missing = _service.GetVendorNodeCode(new GetVendorNodeCodeRequest
         {
             SystemNodeId = "missing",
-            VendorCode = "Seer"
+            VendorCode = "HANGCHA"
         });
 
-        Assert.Equal("SEER_A01", vendorCode.Data);
-        Assert.Equal("N1", systemId.Data);
+        Assert.Equal("HC_WEIGHT_01", vendorCode.Data);
+        Assert.Equal("WEIGH-01", systemId.Data);
         Assert.False(missing.Success);
         Assert.Equal(FailureCode.VendorNodeMappingNotFound, missing.Code);
     }

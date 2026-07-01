@@ -40,6 +40,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
                 if (SetProperty(ref _areaId, value))
                 {
                     RaisePropertyChanged(nameof(AreaDisplayName));
+                    RaisePropertyChanged(nameof(AreaSelectorName));
                 }
             }
         }
@@ -52,6 +53,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
                 if (SetProperty(ref _areaName, value))
                 {
                     RaisePropertyChanged(nameof(AreaDisplayName));
+                    RaisePropertyChanged(nameof(AreaSelectorName));
                 }
             }
         }
@@ -125,6 +127,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         public string AreaDisplayName => string.IsNullOrWhiteSpace(AreaName)
             ? AreaId
             : $"{AreaId} - {AreaName}";
+
+        public string AreaSelectorName => string.IsNullOrWhiteSpace(AreaName)
+            ? AreaId
+            : AreaName;
 
         public string PointsText => FormatBoundary(ParseBoundary(BoundaryText));
 

@@ -30,6 +30,16 @@ namespace AgvDispatcher.Modules.MapModule.Services
         private readonly IMapRepository _mapRepository;
         private readonly IMapLocationAliasRepository _aliasRepository;
 
+        public MockMapManagementService(IEventAggregator eventAggregator)
+            : this(
+                new MockMapStore(),
+                new MapStaticValidator(),
+                eventAggregator,
+                new NullMapRepository(),
+                new NullMapLocationAliasRepository())
+        {
+        }
+
         public MockMapManagementService(
             MockMapStore store,
             MapStaticValidator validator,
@@ -326,7 +336,8 @@ namespace AgvDispatcher.Modules.MapModule.Services
         {
             var snapshot = string.IsNullOrWhiteSpace(request.Version)
                 ? _store.GetCurrentMap()
-                : _store.GetPublishedSnapshot(request.MapId, request.Version);
+                : _store.GetDraft(request.Version)?.Map
+                    ?? _store.GetPublishedSnapshot(request.MapId, request.Version);
             if (snapshot is null)
             {
                 return Task.FromResult(AgvResult<MapExportResultDto>.Fail(
@@ -464,6 +475,42 @@ namespace AgvDispatcher.Modules.MapModule.Services
                     CollectJsonFieldNames(item, names);
                 }
             }
+        }
+
+        private sealed class NullMapRepository : IMapRepository
+        {
+            public Task<IReadOnlyList<MapNode>> GetNodesAsync() =>
+                Task.FromResult<IReadOnlyList<MapNode>>(Array.Empty<MapNode>());
+
+            public Task<IReadOnlyList<MapNode>> GetNodesAsync(string mapId, string mapVersion) =>
+                Task.FromResult<IReadOnlyList<MapNode>>(Array.Empty<MapNode>());
+
+            public Task<IReadOnlyList<MapEdge>> GetEdgesAsync() =>
+                Task.FromResult<IReadOnlyList<MapEdge>>(Array.Empty<MapEdge>());
+
+            public Task<IReadOnlyList<MapEdge>> GetEdgesAsync(string mapId, string mapVersion) =>
+                Task.FromResult<IReadOnlyList<MapEdge>>(Array.Empty<MapEdge>());
+
+            public Task SaveNodeAsync(MapNode node) => Task.CompletedTask;
+
+            public Task SaveEdgeAsync(MapEdge edge) => Task.CompletedTask;
+
+            public Task DeleteNodeAsync(string nodeId) => Task.CompletedTask;
+
+            public Task DeleteEdgeAsync(string edgeId) => Task.CompletedTask;
+        }
+
+        private sealed class NullMapLocationAliasRepository : IMapLocationAliasRepository
+        {
+            public Task<IReadOnlyList<MapLocationAlias>> GetAllAsync() =>
+                Task.FromResult<IReadOnlyList<MapLocationAlias>>(Array.Empty<MapLocationAlias>());
+
+            public Task<IReadOnlyList<MapLocationAlias>> GetAllAsync(string mapId, string mapVersion) =>
+                Task.FromResult<IReadOnlyList<MapLocationAlias>>(Array.Empty<MapLocationAlias>());
+
+            public Task SaveAsync(MapLocationAlias alias) => Task.CompletedTask;
+
+            public Task DeleteAsync(string aliasId) => Task.CompletedTask;
         }
     }
 }

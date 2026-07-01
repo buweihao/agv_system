@@ -116,7 +116,7 @@ namespace AgvDispatcher.Modules.MapModule.Services
                 }
 
                 var now = DateTimeOffset.Now;
-                var version = now.ToString("yyyyMMddHHmmss");
+                var version = now.ToString("yyyyMMddHHmmssfff");
                 var snapshot = CopySnapshot(Clone(draft.Map), version: version, updatedAt: now);
 
                 var versionDto = new MapVersionDto

@@ -10,6 +10,11 @@ namespace AgvDispatcher.Modules.MapModule.Services
     {
         private readonly MockMapStore _store;
 
+        public MockMapService()
+            : this(new MockMapStore())
+        {
+        }
+
         public MockMapService(MockMapStore store)
         {
             _store = store;

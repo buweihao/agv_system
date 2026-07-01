@@ -1,6 +1,7 @@
 ﻿using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Models;
 using System.Data;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgvDispatcher.Infrastructure.Sqlite.Persistence
@@ -57,6 +58,17 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_MapVersions_MapId_MapVersion"" ON ""MapVersions"" (""MapId"", ""MapVersion"");
                 CREATE INDEX IF NOT EXISTS ""IX_MapVersions_IsActive"" ON ""MapVersions"" (""IsActive"");
+                CREATE TABLE IF NOT EXISTS ""MapAreas"" (
+                    ""MapId"" TEXT NOT NULL,
+                    ""MapVersion"" TEXT NOT NULL DEFAULT 'v1',
+                    ""AreaId"" TEXT NOT NULL,
+                    ""AreaName"" TEXT NOT NULL,
+                    ""AreaType"" INTEGER NOT NULL,
+                    ""IsEnabled"" INTEGER NOT NULL,
+                    ""BoundaryJson"" TEXT NOT NULL,
+                    ""Properties"" TEXT NOT NULL,
+                    CONSTRAINT ""PK_MapAreas"" PRIMARY KEY (""MapId"", ""MapVersion"", ""AreaId"")
+                );
             ");
 
             EnsureMapSchemaCompatibility(db);
@@ -89,6 +101,11 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
             if (!referenceSeedInitialized && !db.MapEdges.Any() && !db.ChangeTracker.Entries<MapEdge>().Any())
             {
                 db.MapEdges.AddRange(CreateMapEdges());
+            }
+
+            if (!referenceSeedInitialized && !db.MapAreas.Any() && !db.ChangeTracker.Entries<MapArea>().Any())
+            {
+                db.MapAreas.AddRange(CreateMapAreas());
             }
 
             if (!db.TaskTemplates.Any())
@@ -188,15 +205,16 @@ CREATE TABLE __MapEdges_Static (
     AreaCode TEXT NOT NULL,
     AllowedBrands TEXT NOT NULL,
     MaxVehicleFlow INTEGER NOT NULL,
+    EdgeType INTEGER NOT NULL,
     Remark TEXT NOT NULL,
     CONSTRAINT PK_MapEdges PRIMARY KEY (MapId, MapVersion, EdgeId)
 );
 INSERT OR IGNORE INTO __MapEdges_Static (
     MapId, MapVersion, EdgeId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
-    Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, Remark)
+    Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, EdgeType, Remark)
 SELECT
     MapId, COALESCE(NULLIF(MapVersion, ''), 'v1'), EdgeId, FromNodeId, ToNodeId, Direction, Length, MaxSpeed, TurnAngle,
-    Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, Remark
+    Cost, IsEnabled, AreaCode, AllowedBrands, MaxVehicleFlow, EdgeType, Remark
 FROM MapEdges;
 DROP TABLE MapEdges;
 ALTER TABLE __MapEdges_Static RENAME TO MapEdges;
@@ -208,6 +226,7 @@ PRAGMA foreign_keys=ON;");
         {
             AddColumnIfMissing(db, "MapNodes", "MapVersion", "TEXT NOT NULL DEFAULT 'v1'");
             AddColumnIfMissing(db, "MapEdges", "MapVersion", "TEXT NOT NULL DEFAULT 'v1'");
+            AddColumnIfMissing(db, "MapEdges", "EdgeType", "INTEGER NOT NULL DEFAULT 1");
             AddColumnIfMissing(db, "MapLocationAliases", "MapVersion", "TEXT NOT NULL DEFAULT 'v1'");
         }
 
@@ -295,6 +314,7 @@ PRAGMA foreign_keys=ON;");
             if (hasReferenceMap)
             {
                 EnsureReferenceMapDisplayNames(db);
+                EnsureReferenceMapAreas(db);
                 MarkReferenceSeedInitialized(db);
                 return;
             }
@@ -318,6 +338,7 @@ PRAGMA foreign_keys=ON;");
 
             db.MapEdges.RemoveRange(db.MapEdges.Where(edge => edge.MapId == "MAIN"));
             db.MapNodes.RemoveRange(db.MapNodes.Where(node => node.MapId == "MAIN"));
+            db.MapAreas.RemoveRange(db.MapAreas.Where(area => area.MapId == "MAIN"));
             db.MapLocationAliases.RemoveRange(db.MapLocationAliases.Where(alias => alias.MapId == "MAIN"));
             db.ChargeStations.RemoveRange(db.ChargeStations.Where(station =>
                 station.NodeId.StartsWith("Charge-")
@@ -328,6 +349,7 @@ PRAGMA foreign_keys=ON;");
 
             db.MapNodes.AddRange(CreateMapNodes());
             db.MapEdges.AddRange(CreateMapEdges());
+            db.MapAreas.AddRange(CreateMapAreas());
             db.MapLocationAliases.AddRange(CreateMapLocationAliases());
             db.ChargeStations.AddRange(CreateChargeStations());
             MarkReferenceSeedInitialized(db);
@@ -341,6 +363,7 @@ PRAGMA foreign_keys=ON;");
             }
 
             db.MapEdges.RemoveRange(db.MapEdges.Where(edge => edge.MapId == "MAIN"));
+            db.MapAreas.RemoveRange(db.MapAreas.Where(area => area.MapId == "MAIN"));
             db.MapLocationAliases.RemoveRange(db.MapLocationAliases.Where(alias => alias.MapId == "MAIN"));
             db.ChargeStations.RemoveRange(db.ChargeStations.Where(station =>
                 station.NodeId == "CHG-01"
@@ -416,6 +439,29 @@ PRAGMA foreign_keys=ON;");
                     station.NodeId = reference.NodeId;
                     station.AllowedBrands = reference.AllowedBrands;
                 }
+            }
+        }
+
+        private static void EnsureReferenceMapAreas(AgvDispatcherDbContext db)
+        {
+            var referenceAreas = CreateMapAreas().ToDictionary(area => area.AreaId, StringComparer.OrdinalIgnoreCase);
+            foreach (var reference in referenceAreas.Values)
+            {
+                var area = db.MapAreas.FirstOrDefault(item =>
+                    item.MapId == reference.MapId &&
+                    item.MapVersion == reference.MapVersion &&
+                    item.AreaId == reference.AreaId);
+                if (area is null)
+                {
+                    db.MapAreas.Add(reference);
+                    continue;
+                }
+
+                area.AreaName = reference.AreaName;
+                area.AreaType = reference.AreaType;
+                area.IsEnabled = reference.IsEnabled;
+                area.BoundaryJson = reference.BoundaryJson;
+                area.Properties = reference.Properties;
             }
         }
 
@@ -543,6 +589,22 @@ PRAGMA foreign_keys=ON;");
             };
         }
 
+        private static IReadOnlyList<MapArea> CreateMapAreas()
+        {
+            return new[]
+            {
+                Area("CAP-A", "成品库限流区", AgvDispatcher.Core.Contracts.Map.MapAreaType.WorkArea, "#00BFA6", "CapacityLimited", 3, (40, 40), (300, 40), (300, 210), (40, 210)),
+                Area("RAW-B", "原材料限流区", AgvDispatcher.Core.Contracts.Map.MapAreaType.WorkArea, "#32D583", "CapacityLimited", 4, (40, 255), (300, 255), (300, 420), (40, 420)),
+                Area("QR-A", "二维码导航区", AgvDispatcher.Core.Contracts.Map.MapAreaType.Normal, "#8EA8C3", "NavigationMedium", 0, (330, 55), (540, 55), (540, 260), (330, 260)),
+                Area("SLAM-B", "激光SLAM导航区", AgvDispatcher.Core.Contracts.Map.MapAreaType.Normal, "#5A7FA6", "NavigationMedium", 0, (610, 45), (840, 45), (840, 210), (610, 210)),
+                Area("INT-01", "交通互斥区", AgvDispatcher.Core.Contracts.Map.MapAreaType.IntersectionArea, "#FFB020", "Interlocking", 1, (350, 225), (535, 240), (530, 385), (350, 395)),
+                Area("FIRE-01", "消防安全联动区", AgvDispatcher.Core.Contracts.Map.MapAreaType.BlockedArea, "#FF4D4F", "FireSafety", 0, (610, 250), (835, 250), (835, 340), (610, 340)),
+                Area("SPD-01", "限速工艺区", AgvDispatcher.Core.Contracts.Map.MapAreaType.NarrowArea, "#9B6DFF", "SpeedRestricted", 0, (840, 295), (1130, 310), (1130, 535), (840, 535)),
+                Area("STBY-CHG", "待机充电区", AgvDispatcher.Core.Contracts.Map.MapAreaType.ChargingArea, "#FFD700", "StandbyCharging", 5, (560, 395), (850, 395), (850, 545), (560, 545)),
+                Area("MAINT-01", "维护阻断预留区", AgvDispatcher.Core.Contracts.Map.MapAreaType.BlockedArea, "#777777", "StaticRestricted", 0, (335, 425), (540, 425), (540, 535), (335, 535))
+            };
+        }
+
         private static IReadOnlyList<MapLocationAlias> CreateMapLocationAliases()
         {
             return new[]
@@ -604,10 +666,49 @@ PRAGMA foreign_keys=ON;");
                 Cost = Math.Max(1, (int)Math.Round(length)),
                 IsEnabled = enabled,
                 AreaCode = areaCode,
+                EdgeType = (int)ResolveEdgeType(areaCode),
                 MaxVehicleFlow = areaCode is "CAP-A" or "RAW-B" ? 2 : 1,
                 Remark = direction == EdgeDirection.Closed ? "Static maintenance candidate edge for map display only" : string.Empty
             };
         }
+
+        private static MapArea Area(
+            string areaId,
+            string areaName,
+            AgvDispatcher.Core.Contracts.Map.MapAreaType areaType,
+            string color,
+            string zoneKind,
+            int capacity,
+            params (double X, double Y)[] points)
+        {
+            var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Color"] = color,
+                ["ZoneKind"] = zoneKind,
+                ["Capacity"] = capacity.ToString()
+            };
+
+            return new MapArea
+            {
+                AreaId = areaId,
+                MapId = "MAIN",
+                MapVersion = "v1",
+                AreaName = areaName,
+                AreaType = areaType,
+                IsEnabled = true,
+                BoundaryJson = JsonSerializer.Serialize(points.Select(point => new { point.X, point.Y })),
+                Properties = properties
+            };
+        }
+
+        private static AgvDispatcher.Core.Contracts.Map.MapEdgeType ResolveEdgeType(string areaCode) => areaCode switch
+        {
+            "INT-01" => AgvDispatcher.Core.Contracts.Map.MapEdgeType.Intersection,
+            "SPD-01" => AgvDispatcher.Core.Contracts.Map.MapEdgeType.NarrowRoad,
+            "STBY-CHG" => AgvDispatcher.Core.Contracts.Map.MapEdgeType.ChargingRoad,
+            "CAP-A" or "RAW-B" => AgvDispatcher.Core.Contracts.Map.MapEdgeType.WorkRoad,
+            _ => AgvDispatcher.Core.Contracts.Map.MapEdgeType.MainRoad
+        };
 
         private static MapLocationAlias Alias(string nodeId, string brand, string value)
         {

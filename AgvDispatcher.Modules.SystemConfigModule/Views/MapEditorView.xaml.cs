@@ -9,6 +9,19 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
 {
     public partial class MapEditorView : UserControl
     {
+        public static readonly DependencyProperty IsPanModeViewProperty =
+            DependencyProperty.Register(
+                nameof(IsPanModeView),
+                typeof(bool),
+                typeof(MapEditorView),
+                new PropertyMetadata(false));
+
+        public bool IsPanModeView
+        {
+            get => (bool)GetValue(IsPanModeViewProperty);
+            set => SetValue(IsPanModeViewProperty, value);
+        }
+
         private MapConfigViewModel? Vm => DataContext as MapConfigViewModel;
 
         private EditorNodeVm? _dragNode;
@@ -352,11 +365,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
         private void TogglePanMode_Click(object sender, RoutedEventArgs e)
         {
             _isPanMode = !_isPanMode;
+            IsPanModeView = _isPanMode;
             if (sender is Button button)
             {
-                button.Background = new System.Windows.Media.SolidColorBrush(
-                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(_isPanMode ? "#1E90FF" : "#12304A"));
-                button.Foreground = System.Windows.Media.Brushes.White;
+                button.Tag = _isPanMode;
             }
         }
 

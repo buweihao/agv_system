@@ -34,6 +34,8 @@ namespace AgvDispatcher.Core.Models
 
         public string AreaCode { get; set; } = string.Empty;
 
+        public int EdgeType { get; set; } = 1;
+
         public string AllowedBrands { get; set; } = string.Empty;
 
         public int MaxVehicleFlow { get; set; } = 1;

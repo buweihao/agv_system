@@ -67,11 +67,15 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 var edges = await db.MapEdges.AsNoTracking()
                     .Where(edge => edge.MapId == source.MapId && edge.MapVersion == source.MapVersion)
                     .ToArrayAsync(cancellationToken);
+                var areas = await db.MapAreas.AsNoTracking()
+                    .Where(area => area.MapId == source.MapId && area.MapVersion == source.MapVersion)
+                    .ToArrayAsync(cancellationToken);
                 var aliases = await db.MapLocationAliases.AsNoTracking()
                     .Where(alias => alias.MapId == source.MapId && alias.MapVersion == source.MapVersion)
                     .ToArrayAsync(cancellationToken);
                 db.MapNodes.AddRange(nodes.Select(node => CopyNode(node, mapId, mapVersion)));
                 db.MapEdges.AddRange(edges.Select(edge => CopyEdge(edge, mapId, mapVersion)));
+                db.MapAreas.AddRange(areas.Select(area => CopyArea(area, mapId, mapVersion)));
                 db.MapLocationAliases.AddRange(aliases.Select(alias => CopyAlias(alias, mapId, mapVersion)));
             }
 
@@ -105,9 +109,11 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             db.MapNodes.RemoveRange(db.MapNodes.Where(node => node.MapId == version.MapId && node.MapVersion == version.MapVersion));
             db.MapEdges.RemoveRange(db.MapEdges.Where(edge => edge.MapId == version.MapId && edge.MapVersion == version.MapVersion));
+            db.MapAreas.RemoveRange(db.MapAreas.Where(area => area.MapId == version.MapId && area.MapVersion == version.MapVersion));
             db.MapLocationAliases.RemoveRange(db.MapLocationAliases.Where(alias => alias.MapId == version.MapId && alias.MapVersion == version.MapVersion));
             db.MapNodes.AddRange(request.Map.Nodes.Select(node => ToModelNode(node, version.MapId, version.MapVersion)));
             db.MapEdges.AddRange(request.Map.Edges.Select(edge => ToModelEdge(edge, version.MapId, version.MapVersion)));
+            db.MapAreas.AddRange(request.Map.Areas.Select(area => ToModelArea(area, version.MapId, version.MapVersion)));
             db.MapLocationAliases.AddRange(request.Map.VendorNodeMappings.Select(mapping => ToAlias(mapping, version.MapId, version.MapVersion)));
             version.Name = string.IsNullOrWhiteSpace(request.Map.MapName) ? version.Name : request.Map.MapName;
             version.UpdatedAt = DateTimeOffset.Now;
@@ -151,15 +157,38 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             }
 
             await using var db = CreateContext();
+            if (await HasBlockingTasksAsync(db, cancellationToken))
+            {
+                return AgvResult<MapPublishResultDto>.Fail(
+                    FailureCode.InvalidState,
+                    "Cannot publish map while dispatching tasks are running.");
+            }
+
             var version = await db.MapVersions
                 .FirstAsync(item => item.MapVersion == request.DraftId, cancellationToken);
+            var old = await db.MapVersions.FirstOrDefaultAsync(item => item.IsActive || item.State == MapState.Active, cancellationToken);
             var now = DateTimeOffset.Now;
-            version.State = MapState.Published;
-            version.IsActive = false;
-            version.PublishedAt = now;
-            version.UpdatedAt = now;
-            version.Description = request.Comment;
+            foreach (var item in await db.MapVersions.ToArrayAsync(cancellationToken))
+            {
+                if (item.Id == version.Id)
+                {
+                    item.State = MapState.Active;
+                    item.IsActive = true;
+                    item.PublishedAt = now;
+                    item.ActivatedAt = now;
+                    item.UpdatedAt = now;
+                    item.Description = request.Comment;
+                }
+                else if (item.IsActive || item.State == MapState.Active)
+                {
+                    item.State = MapState.Archived;
+                    item.IsActive = false;
+                    item.UpdatedAt = now;
+                }
+            }
+
             await db.SaveChangesAsync(cancellationToken);
+            PublishRuntimeMapEvents(old, version, now, request.Context.OperatorId, request.Comment);
             return AgvResult<MapPublishResultDto>.Ok(new MapPublishResultDto
             {
                 MapId = version.MapId,
@@ -174,9 +203,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             CancellationToken cancellationToken = default)
         {
             await using var db = CreateContext();
-            if (await db.TaskOrders.AsNoTracking().AnyAsync(
-                    task => task.State == TaskState.Running || task.State == TaskState.Pending,
-                    cancellationToken))
+            if (await HasBlockingTasksAsync(db, cancellationToken))
             {
                 return AgvResult<MapActivationResultDto>.Fail(
                     FailureCode.InvalidState,
@@ -185,9 +212,9 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             var target = await db.MapVersions
                 .FirstOrDefaultAsync(item => item.MapId == request.MapId && item.MapVersion == request.Version, cancellationToken);
-            if (target is null || target.State is not (MapState.Published or MapState.Active))
+            if (target is null || target.State is not (MapState.Published or MapState.Active or MapState.Archived))
             {
-                return AgvResult<MapActivationResultDto>.Fail(FailureCode.InvalidState, "Only published maps can be activated.");
+                return AgvResult<MapActivationResultDto>.Fail(FailureCode.InvalidState, "Only published or archived maps can be activated.");
             }
 
             var messages = await ValidateVersionAsync(db, target.MapId, target.MapVersion, cancellationToken);
@@ -216,16 +243,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             }
 
             await db.SaveChangesAsync(cancellationToken);
-            _events.GetEvent<PubSubEvent<ActiveMapChangedEvent>>().Publish(new ActiveMapChangedEvent
-            {
-                OldMapId = old?.MapId,
-                OldMapVersion = old?.MapVersion,
-                NewMapId = target.MapId,
-                NewMapVersion = target.MapVersion,
-                ChangedAt = now.DateTime,
-                OperatorId = request.Context.OperatorId,
-                Reason = request.Reason
-            });
+            PublishRuntimeMapEvents(old, target, now, request.Context.OperatorId, request.Reason);
 
             return AgvResult<MapActivationResultDto>.Ok(new MapActivationResultDto
             {
@@ -302,6 +320,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             db.MapNodes.RemoveRange(db.MapNodes.Where(node => node.MapId == version.MapId && node.MapVersion == version.MapVersion));
             db.MapEdges.RemoveRange(db.MapEdges.Where(edge => edge.MapId == version.MapId && edge.MapVersion == version.MapVersion));
+            db.MapAreas.RemoveRange(db.MapAreas.Where(area => area.MapId == version.MapId && area.MapVersion == version.MapVersion));
             db.MapLocationAliases.RemoveRange(db.MapLocationAliases.Where(alias => alias.MapId == version.MapId && alias.MapVersion == version.MapVersion));
             db.MapVersions.Remove(version);
             await db.SaveChangesAsync(cancellationToken);
@@ -383,6 +402,40 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 : AgvResult<MapImportResultDto>.Fail(saved.Code, saved.Message);
         }
 
+        private static Task<bool> HasBlockingTasksAsync(
+            AgvDispatcherDbContext db,
+            CancellationToken cancellationToken) =>
+            db.TaskOrders.AsNoTracking().AnyAsync(
+                task => task.State == TaskState.Running || task.State == TaskState.Pending,
+                cancellationToken);
+
+        private void PublishRuntimeMapEvents(
+            MapVersionEntity? old,
+            MapVersionEntity target,
+            DateTimeOffset changedAt,
+            string? operatorId,
+            string? reason)
+        {
+            _events.GetEvent<PubSubEvent<ActiveMapChangedEvent>>().Publish(new ActiveMapChangedEvent
+            {
+                OldMapId = old?.MapId,
+                OldMapVersion = old?.MapVersion,
+                NewMapId = target.MapId,
+                NewMapVersion = target.MapVersion,
+                ChangedAt = changedAt.DateTime,
+                OperatorId = operatorId,
+                Reason = reason
+            });
+
+            _events.GetEvent<PubSubEvent<MapPublishedEvent>>().Publish(new MapPublishedEvent
+            {
+                MapId = target.MapId,
+                MapVersion = target.MapVersion,
+                PublishedAt = changedAt.DateTime,
+                OperatorId = operatorId
+            });
+        }
+
         private static async Task<MapVersionEntity?> ResolveSourceVersionAsync(
             AgvDispatcherDbContext db,
             string? mapId,
@@ -434,6 +487,10 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 .Where(edge => edge.MapId == version.MapId && edge.MapVersion == version.MapVersion)
                 .OrderBy(edge => edge.EdgeId)
                 .ToArrayAsync(cancellationToken);
+            var areas = await db.MapAreas.AsNoTracking()
+                .Where(area => area.MapId == version.MapId && area.MapVersion == version.MapVersion)
+                .OrderBy(area => area.AreaId)
+                .ToArrayAsync(cancellationToken);
             var aliases = await db.MapLocationAliases.AsNoTracking()
                 .Where(alias => alias.MapId == version.MapId && alias.MapVersion == version.MapVersion && alias.IsEnabled)
                 .ToArrayAsync(cancellationToken);
@@ -444,6 +501,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                 Version = version.MapVersion,
                 Nodes = nodes.Select(ToDtoNode).ToArray(),
                 Edges = edges.Select(ToDtoEdge).ToArray(),
+                Areas = areas.Select(ToDtoArea).ToArray(),
                 VendorNodeMappings = aliases.Select(alias => new VendorNodeMappingDto
                 {
                     VendorCode = !string.IsNullOrWhiteSpace(alias.Brand) ? alias.Brand! : alias.AliasType,
@@ -467,48 +525,61 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             var edges = await db.MapEdges.AsNoTracking()
                 .Where(edge => edge.MapId == mapId && edge.MapVersion == mapVersion)
                 .ToArrayAsync(cancellationToken);
+            var areas = await db.MapAreas.AsNoTracking()
+                .Where(area => area.MapId == mapId && area.MapVersion == mapVersion)
+                .ToArrayAsync(cancellationToken);
             var aliases = await db.MapLocationAliases.AsNoTracking()
                 .Where(alias => alias.MapId == mapId && alias.MapVersion == mapVersion && alias.IsEnabled)
                 .ToArrayAsync(cancellationToken);
 
-            if (string.IsNullOrWhiteSpace(mapId)) messages.Add("MapId is required.");
-            if (string.IsNullOrWhiteSpace(mapVersion)) messages.Add("MapVersion is required.");
-            if (nodes.Length == 0) messages.Add("At least one node is required.");
-            if (edges.Length == 0) messages.Add("At least one edge is required.");
+            if (string.IsNullOrWhiteSpace(mapId)) messages.Add("P0 Map: MapId is required.");
+            if (string.IsNullOrWhiteSpace(mapVersion)) messages.Add("P0 Map: MapVersion is required.");
+            if (nodes.Length == 0) messages.Add("P0 Map: At least one node is required.");
+            if (edges.Length == 0) messages.Add("P0 Map: At least one edge is required.");
             messages.AddRange(nodes.GroupBy(node => node.NodeId, StringComparer.OrdinalIgnoreCase)
                 .Where(group => group.Count() > 1)
-                .Select(group => $"Duplicate node IDs are not allowed: {group.Key}."));
+                .Select(group => $"P0 Node {group.Key}: Duplicate node IDs are not allowed."));
             messages.AddRange(nodes.GroupBy(node => node.NodeCode, StringComparer.OrdinalIgnoreCase)
                 .Where(group => !string.IsNullOrWhiteSpace(group.Key) && group.Count() > 1)
-                .Select(group => $"Duplicate node codes are not allowed: {group.Key}."));
+                .Select(group => $"P0 NodeCode {group.Key}: Duplicate node codes are not allowed."));
             messages.AddRange(edges.GroupBy(edge => edge.EdgeId, StringComparer.OrdinalIgnoreCase)
                 .Where(group => group.Count() > 1)
-                .Select(group => $"Duplicate edge IDs are not allowed: {group.Key}."));
+                .Select(group => $"P0 Edge {group.Key}: Duplicate edge IDs are not allowed."));
+            messages.AddRange(areas.GroupBy(area => area.AreaId, StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() > 1)
+                .Select(group => $"P0 Area {group.Key}: Duplicate area IDs are not allowed."));
 
             var nodeIds = nodes.ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
+            var areaIds = areas.Select(area => area.AreaId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var node in nodes.Where(node => !string.IsNullOrWhiteSpace(node.AreaCode) && areas.Length > 0 && !areaIds.Contains(node.AreaCode)))
+            {
+                messages.Add($"P0 Node {node.NodeId}: References missing area '{node.AreaCode}'.");
+            }
+
             foreach (var edge in edges)
             {
-                if (!nodeIds.ContainsKey(edge.FromNodeId)) messages.Add($"Edge '{edge.EdgeId}' FromNodeId '{edge.FromNodeId}' does not exist.");
-                if (!nodeIds.ContainsKey(edge.ToNodeId)) messages.Add($"Edge '{edge.EdgeId}' ToNodeId '{edge.ToNodeId}' does not exist.");
-                if (string.Equals(edge.FromNodeId, edge.ToNodeId, StringComparison.OrdinalIgnoreCase)) messages.Add($"Edge '{edge.EdgeId}' cannot point to itself.");
-                if (edge.Length <= 0) messages.Add($"Edge '{edge.EdgeId}' length must be greater than 0.");
-                if (edge.MaxSpeed <= 0) messages.Add($"Edge '{edge.EdgeId}' max speed must be greater than 0.");
+                if (!nodeIds.ContainsKey(edge.FromNodeId)) messages.Add($"P0 Edge {edge.EdgeId}: FromNodeId '{edge.FromNodeId}' does not exist.");
+                if (!nodeIds.ContainsKey(edge.ToNodeId)) messages.Add($"P0 Edge {edge.EdgeId}: ToNodeId '{edge.ToNodeId}' does not exist.");
+                if (string.Equals(edge.FromNodeId, edge.ToNodeId, StringComparison.OrdinalIgnoreCase)) messages.Add($"P0 Edge {edge.EdgeId}: Cannot point to itself.");
+                if (edge.Length <= 0) messages.Add($"P0 Edge {edge.EdgeId}: Length must be greater than 0.");
+                if (edge.MaxSpeed <= 0) messages.Add($"P0 Edge {edge.EdgeId}: Max speed must be greater than 0.");
+                if (!string.IsNullOrWhiteSpace(edge.AreaCode) && areas.Length > 0 && !areaIds.Contains(edge.AreaCode)) messages.Add($"P0 Edge {edge.EdgeId}: References missing area '{edge.AreaCode}'.");
             }
 
             foreach (var node in nodes.Where(node => !node.IsEnabled))
             {
                 if (edges.Any(edge => edge.IsEnabled && (edge.FromNodeId == node.NodeId || edge.ToNodeId == node.NodeId)))
                 {
-                    messages.Add($"Disabled node '{node.NodeId}' cannot be used by enabled edges.");
+                    messages.Add($"P0 Node {node.NodeId}: Disabled node cannot be used by enabled edges.");
                 }
             }
 
             messages.AddRange(aliases.GroupBy(alias => new { VendorCode = alias.Brand ?? alias.AliasType, alias.AliasValue })
                 .Where(group => group.Select(alias => alias.NodeId).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
-                .Select(group => $"Alias '{group.Key.VendorCode}/{group.Key.AliasValue}' maps to multiple nodes."));
+                .Select(group => $"P0 VendorMapping {group.Key.VendorCode}/{group.Key.AliasValue}: Maps to multiple nodes."));
             messages.AddRange(aliases.GroupBy(alias => new { alias.NodeId, VendorCode = alias.Brand ?? alias.AliasType })
                 .Where(group => group.Select(alias => alias.AliasValue).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
-                .Select(group => $"Node '{group.Key.NodeId}' has multiple enabled aliases for vendor '{group.Key.VendorCode}'."));
+                .Select(group => $"P0 Node {group.Key.NodeId}: Has multiple enabled aliases for vendor '{group.Key.VendorCode}'."));
 
             return messages;
         }
@@ -545,9 +616,22 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             Cost = source.Cost,
             IsEnabled = source.IsEnabled,
             AreaCode = source.AreaCode,
+            EdgeType = source.EdgeType,
             AllowedBrands = source.AllowedBrands,
             MaxVehicleFlow = source.MaxVehicleFlow,
             Remark = source.Remark
+        };
+
+        private static MapArea CopyArea(MapArea source, string mapId, string mapVersion) => new()
+        {
+            AreaId = source.AreaId,
+            MapId = mapId,
+            MapVersion = mapVersion,
+            AreaName = source.AreaName,
+            AreaType = source.AreaType,
+            IsEnabled = source.IsEnabled,
+            BoundaryJson = source.BoundaryJson,
+            Properties = new Dictionary<string, string>(source.Properties, StringComparer.OrdinalIgnoreCase)
         };
 
         private static MapLocationAlias CopyAlias(MapLocationAlias source, string mapId, string mapVersion) => new()
@@ -575,22 +659,53 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             Heading = source.Angle ?? 0,
             AreaCode = source.AreaId ?? string.Empty,
             IsEnabled = source.Enabled,
+            ParkingCapacity = GetInt(source.Properties, "Capacity", 1),
+            AllowedBrands = GetString(source.Properties, "AllowedBrands"),
+            RequiredCapabilities = (VehicleCapability)GetInt(source.Properties, "RequiredCapabilities", 0),
             Tags = new Dictionary<string, string>(source.Properties, StringComparer.OrdinalIgnoreCase)
         };
 
-        private static MapEdge ToModelEdge(MapEdgeDto source, string mapId, string mapVersion) => new()
+        private static MapEdge ToModelEdge(MapEdgeDto source, string mapId, string mapVersion)
         {
-            EdgeId = source.EdgeId,
+            var reverse = GetBool(source.Properties, "ReverseOnly", false);
+            return new MapEdge
+            {
+                EdgeId = source.EdgeId,
+                MapId = mapId,
+                MapVersion = mapVersion,
+                FromNodeId = reverse ? source.ToNodeId : source.FromNodeId,
+                ToNodeId = reverse ? source.FromNodeId : source.ToNodeId,
+                Direction = !source.Enabled
+                    ? LegacyEdgeDirection.Closed
+                    : source.Direction == ContractEdgeDirection.Bidirectional
+                        ? LegacyEdgeDirection.Bidirectional
+                        : reverse ? LegacyEdgeDirection.ReverseOnly : LegacyEdgeDirection.ForwardOnly,
+                Length = source.Distance,
+                MaxSpeed = source.SpeedLimit ?? 1,
+                Cost = (int)Math.Max(1, Math.Round(source.Cost)),
+                AreaCode = source.AreaId ?? string.Empty,
+                IsEnabled = source.Enabled,
+                EdgeType = (int)source.EdgeType,
+                AllowedBrands = GetString(source.Properties, "AllowedBrands"),
+                MaxVehicleFlow = GetInt(source.Properties, "MaxVehicleFlow", 1),
+                Remark = GetString(source.Properties, "Remark")
+            };
+        }
+
+        private static MapArea ToModelArea(MapAreaDto source, string mapId, string mapVersion) => new()
+        {
+            AreaId = source.AreaId,
             MapId = mapId,
             MapVersion = mapVersion,
-            FromNodeId = source.FromNodeId,
-            ToNodeId = source.ToNodeId,
-            Direction = source.Direction == ContractEdgeDirection.Bidirectional ? LegacyEdgeDirection.Bidirectional : LegacyEdgeDirection.ForwardOnly,
-            Length = source.Distance,
-            MaxSpeed = source.SpeedLimit ?? 1,
-            Cost = (int)Math.Max(1, Math.Round(source.Cost)),
-            AreaCode = source.AreaId ?? string.Empty,
-            IsEnabled = source.Enabled
+            AreaName = source.AreaName,
+            AreaType = source.AreaType,
+            IsEnabled = source.Enabled,
+            BoundaryJson = JsonSerializer.Serialize(source.BoundaryPoints.Select(point => new MapPointDto
+            {
+                X = point.X,
+                Y = point.Y
+            })),
+            Properties = new Dictionary<string, string>(source.Properties, StringComparer.OrdinalIgnoreCase)
         };
 
         private static MapLocationAlias ToAlias(VendorNodeMappingDto source, string mapId, string mapVersion) => new()
@@ -616,21 +731,86 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             Angle = source.Heading,
             AreaId = source.AreaCode,
             Enabled = source.IsEnabled,
-            Properties = source.Tags
+            Properties = BuildNodeProperties(source)
         };
 
         private static MapEdgeDto ToDtoEdge(MapEdge source) => new()
         {
             EdgeId = source.EdgeId,
-            FromNodeId = source.FromNodeId,
-            ToNodeId = source.ToNodeId,
+            FromNodeId = source.Direction == LegacyEdgeDirection.ReverseOnly ? source.ToNodeId : source.FromNodeId,
+            ToNodeId = source.Direction == LegacyEdgeDirection.ReverseOnly ? source.FromNodeId : source.ToNodeId,
             Direction = source.Direction == LegacyEdgeDirection.Bidirectional ? ContractEdgeDirection.Bidirectional : ContractEdgeDirection.OneWay,
             Distance = source.Length,
             SpeedLimit = source.MaxSpeed,
             Cost = source.Cost,
             AreaId = source.AreaCode,
-            Enabled = source.IsEnabled
+            Enabled = source.IsEnabled && source.Direction != LegacyEdgeDirection.Closed,
+            EdgeType = Enum.IsDefined(typeof(MapEdgeType), source.EdgeType) ? (MapEdgeType)source.EdgeType : MapEdgeType.Normal,
+            Properties = BuildEdgeProperties(source)
         };
+
+        private static MapAreaDto ToDtoArea(MapArea source) => new()
+        {
+            AreaId = source.AreaId,
+            AreaName = source.AreaName,
+            AreaType = source.AreaType,
+            BoundaryPoints = DeserializeBoundary(source.BoundaryJson),
+            Enabled = source.IsEnabled,
+            Properties = new Dictionary<string, string>(source.Properties, StringComparer.OrdinalIgnoreCase)
+        };
+
+        private static Dictionary<string, string> BuildNodeProperties(MapNode source)
+        {
+            var properties = new Dictionary<string, string>(source.Tags, StringComparer.OrdinalIgnoreCase)
+            {
+                ["Capacity"] = source.ParkingCapacity.ToString(),
+                ["AllowedBrands"] = source.AllowedBrands,
+                ["RequiredCapabilities"] = ((int)source.RequiredCapabilities).ToString()
+            };
+            return properties;
+        }
+
+        private static Dictionary<string, string> BuildEdgeProperties(MapEdge source)
+        {
+            var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["AllowedBrands"] = source.AllowedBrands,
+                ["MaxVehicleFlow"] = source.MaxVehicleFlow.ToString(),
+                ["Remark"] = source.Remark
+            };
+            if (source.Direction == LegacyEdgeDirection.ReverseOnly)
+            {
+                properties["ReverseOnly"] = "true";
+            }
+
+            return properties;
+        }
+
+        private static IReadOnlyList<MapPointDto> DeserializeBoundary(string boundaryJson)
+        {
+            if (string.IsNullOrWhiteSpace(boundaryJson))
+            {
+                return Array.Empty<MapPointDto>();
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<MapPointDto[]>(boundaryJson) ?? Array.Empty<MapPointDto>();
+            }
+            catch
+            {
+                return Array.Empty<MapPointDto>();
+            }
+        }
+
+        private static string GetString(IReadOnlyDictionary<string, string> properties, string key, string defaultValue = "") =>
+            properties.TryGetValue(key, out var value) ? value : defaultValue;
+
+        private static int GetInt(IReadOnlyDictionary<string, string> properties, string key, int defaultValue) =>
+            properties.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) ? parsed : defaultValue;
+
+        private static bool GetBool(IReadOnlyDictionary<string, string> properties, string key, bool defaultValue) =>
+            properties.TryGetValue(key, out var value) && bool.TryParse(value, out var parsed) ? parsed : defaultValue;
 
         private static LegacyMapNodeType ToLegacyNodeType(ContractNodeType nodeType) => nodeType switch
         {

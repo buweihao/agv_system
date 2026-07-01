@@ -468,18 +468,25 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// </summary>
         private bool PassesPreSaveValidation()
         {
-            SaveCurrentDraft(showMessage: false);
+            if (!SaveCurrentDraft(showMessage: false))
+            {
+                System.Windows.MessageBox.Show(
+                    "保存草稿失败，已中止后续校验。请检查当前地图数据或稍后重试。",
+                    "保存草稿失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                return false;
+            }
+
             var validation = _mapManagementService.ValidateDraftAsync(new ValidateMapDraftRequest
             {
                 Context = new RequestContext(),
                 DraftId = CurrentDraftId
             }).GetAwaiter().GetResult();
 
-            var firstError = validation.Data?.Messages.FirstOrDefault(message => message.StartsWith("P0", StringComparison.OrdinalIgnoreCase));
-            if (firstError != null)
+            if (!validation.Success || validation.Data?.IsValid != true)
             {
+                var firstError = validation.Data?.Messages.FirstOrDefault() ?? validation.Message;
                 System.Windows.MessageBox.Show(
-                    $"保存失败：地图数据存在错误，已中止保存。\n{firstError}",
+                    $"保存前校验未通过：地图数据存在错误。\n{firstError}",
                     "保存前校验未通过", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 return false;
             }
@@ -495,12 +502,22 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         {
             ValidationResults.Clear();
 
-            SaveCurrentDraft(showMessage: false);
+            if (!SaveCurrentDraft(showMessage: true))
+            {
+                return;
+            }
+
             var validation = await _mapManagementService.ValidateDraftAsync(new ValidateMapDraftRequest
             {
                 Context = new RequestContext(),
                 DraftId = CurrentDraftId
             });
+
+            if (!validation.Success)
+            {
+                System.Windows.MessageBox.Show($"校验失败：{validation.Message}", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                return;
+            }
 
             var messages = validation.Data?.Messages ?? Array.Empty<string>();
             foreach (var result in ToLegacyValidationResults(messages))
@@ -572,11 +589,16 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             try
             {
-                SaveCurrentDraft(showMessage: false);
+                if (!SaveCurrentDraft(showMessage: true))
+                {
+                    return;
+                }
+
                 var export = await _mapManagementService.ExportMapAsync(new ExportMapRequest
                 {
                     Context = new RequestContext(),
                     MapId = CurrentMapId,
+                    Version = CurrentDraftId,
                     Format = "json"
                 });
                 if (!export.Success || export.Data is null)
@@ -608,7 +630,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             if (!string.IsNullOrWhiteSpace(CurrentDraftId))
             {
-                SaveCurrentDraft(showMessage: false);
+                if (!SaveCurrentDraft(showMessage: true))
+                {
+                    return;
+                }
             }
 
             var result = _mapManagementService.CreateDraftAsync(new CreateMapDraftRequest
@@ -625,7 +650,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             ApplyDraft(result.Data);
             ClearEditorForBlankDraft();
-            SaveCurrentDraft(showMessage: false);
+            if (!SaveCurrentDraft(showMessage: true))
+            {
+                return;
+            }
+
             System.Windows.MessageBox.Show("已创建空白地图草稿。当前运行地图未切换，原地图已保留，后续发布才会切换运行地图。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
@@ -641,47 +670,68 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         }
         private void SaveCurrentDraft()
         {
-            SaveCurrentDraft(showMessage: true);
+            _ = SaveCurrentDraft(showMessage: true);
         }
 
         /// <summary>
         /// 保存草稿只更新编辑草稿，不影响当前运行图，也不会触发地图发布事件。
         /// </summary>
-        private void SaveCurrentDraft(bool showMessage)
+        private bool SaveCurrentDraft(bool showMessage)
         {
-            var draft = EnsureDraft();
-            if (!draft.Success || string.IsNullOrWhiteSpace(CurrentDraftId))
+            try
+            {
+                var draft = EnsureDraft();
+                if (draft.Success
+                    && draft.Data is not null
+                    && !string.Equals(CurrentDraftId, draft.Data.DraftId, StringComparison.OrdinalIgnoreCase))
+                {
+                    ApplyDraftMetadata(draft.Data);
+                }
+
+                if (!draft.Success || string.IsNullOrWhiteSpace(CurrentDraftId))
+                {
+                    if (showMessage)
+                    {
+                        System.Windows.MessageBox.Show($"保存草稿失败：{draft.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+
+                    return false;
+                }
+
+                var save = _mapManagementService.SaveDraftAsync(new SaveMapDraftRequest
+                {
+                    Context = new RequestContext(),
+                    DraftId = CurrentDraftId,
+                    Map = BuildSnapshotFromEditor(),
+                    Comment = "UI save draft"
+                }).GetAwaiter().GetResult();
+
+                if (!save.Success || save.Data is null)
+                {
+                    if (showMessage)
+                    {
+                        System.Windows.MessageBox.Show($"保存草稿失败：{save.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+
+                    return false;
+                }
+
+                ApplyDraftMetadata(save.Data);
+                if (showMessage)
+                {
+                    System.Windows.MessageBox.Show("地图草稿已保存，当前运行地图未切换。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
             {
                 if (showMessage)
                 {
-                    System.Windows.MessageBox.Show($"保存草稿失败：{draft.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBox.Show($"保存草稿失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
 
-                return;
-            }
-
-            var save = _mapManagementService.SaveDraftAsync(new SaveMapDraftRequest
-            {
-                Context = new RequestContext(),
-                DraftId = CurrentDraftId,
-                Map = BuildSnapshotFromEditor(),
-                Comment = "UI save draft"
-            }).GetAwaiter().GetResult();
-
-            if (!save.Success || save.Data is null)
-            {
-                if (showMessage)
-                {
-                    System.Windows.MessageBox.Show($"保存草稿失败：{save.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-
-                return;
-            }
-
-            ApplyDraftMetadata(save.Data);
-            if (showMessage)
-            {
-                System.Windows.MessageBox.Show("地图草稿已保存，当前运行地图未切换。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
             }
         }
 
@@ -690,7 +740,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// </summary>
         private void PublishCurrentDraft()
         {
-            SaveCurrentDraft(showMessage: false);
+            if (!SaveCurrentDraft(showMessage: true))
+            {
+                return;
+            }
+
             var validation = _mapManagementService.ValidateDraftAsync(new ValidateMapDraftRequest
             {
                 Context = new RequestContext(),
@@ -767,8 +821,31 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             }
 
             CurrentMapVersion = rollback.Data.Version;
+            var draft = _mapManagementService.CreateDraftAsync(new CreateMapDraftRequest
+            {
+                Context = new RequestContext(),
+                MapName = $"{CurrentMapName}-回滚草稿",
+                SourceMapId = rollback.Data.MapId,
+                SourceVersion = rollback.Data.Version
+            }).GetAwaiter().GetResult();
+
+            if (!draft.Success || draft.Data is null)
+            {
+                LoadVersions();
+                System.Windows.MessageBox.Show(
+                    $"已回滚到版本 {rollback.Data.Version}，但创建回滚草稿失败：{draft.Message}",
+                    "回滚完成，草稿同步失败",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            ApplyDraft(draft.Data);
             LoadVersions();
-            System.Windows.MessageBox.Show($"已回滚到版本 {rollback.Data.Version}。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+            SelectedMapVersion = MapVersions.FirstOrDefault(version =>
+                string.Equals(version.MapId, rollback.Data.MapId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(version.Version, rollback.Data.Version, StringComparison.OrdinalIgnoreCase));
+            System.Windows.MessageBox.Show($"已回滚到版本 {rollback.Data.Version}，并已基于该版本创建新的编辑草稿。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private AgvResult<MapDraftDto> EnsureDraft()
@@ -833,23 +910,47 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         private void LoadVersions()
         {
+            var previousMapId = SelectedMapVersion?.MapId;
+            var previousVersion = SelectedMapVersion?.Version;
+
             MapVersions.Clear();
-            var versions = _mapManagementService.GetMapVersionsAsync(new GetMapVersionsRequest
-            {
-                Context = new RequestContext(),
-                MapId = CurrentMapId
-            }).GetAwaiter().GetResult();
+            // Rollback is a running-map switch, so the candidate list must span all
+            // published map ids. Otherwise rolling back to MAIN/v1 hides later maps
+            // that were published under another MapId.
+            var versions = LoadVersionDtos(null);
 
-            if (versions.Data is null)
-            {
-                return;
-            }
-
-            foreach (var version in versions.Data)
+            foreach (var version in versions
+                .Where(IsRollbackCandidate)
+                .OrderByDescending(version => version.IsCurrent)
+                .ThenByDescending(version => version.PublishedAt))
             {
                 MapVersions.Add(version);
             }
+
+            var selected = MapVersions.FirstOrDefault(version => version.IsCurrent)
+                ?? MapVersions.FirstOrDefault(version =>
+                    string.Equals(version.MapId, previousMapId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(version.Version, previousVersion, StringComparison.OrdinalIgnoreCase))
+                ?? MapVersions.FirstOrDefault();
+
+            SelectedMapVersion = selected;
         }
+
+        private IReadOnlyList<MapVersionDto> LoadVersionDtos(string? mapId)
+        {
+            var versions = _mapManagementService.GetMapVersionsAsync(new GetMapVersionsRequest
+            {
+                Context = new RequestContext(),
+                MapId = mapId
+            }).GetAwaiter().GetResult();
+
+            return versions.Success && versions.Data is not null
+                ? versions.Data
+                : Array.Empty<MapVersionDto>();
+        }
+
+        private static bool IsRollbackCandidate(MapVersionDto version) =>
+            version.State is MapState.Published or MapState.Active or MapState.Archived;
 
         private ContractMap.MapSnapshotDto BuildSnapshotFromEditor()
         {
@@ -915,18 +1016,21 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             };
         }
 
-        private static ContractMap.MapEdgeDto ToContractEdge(MapEdge edge)
+        private ContractMap.MapEdgeDto ToContractEdge(MapEdge edge)
         {
+            var distance = ResolveEdgeDistance(edge);
+            var cost = edge.Cost > 0 ? edge.Cost : Math.Max(1, (int)Math.Round(distance));
+
             return new ContractMap.MapEdgeDto
             {
                 EdgeId = edge.EdgeId,
                 FromNodeId = edge.FromNodeId,
                 ToNodeId = edge.ToNodeId,
-                Distance = edge.Length,
+                Distance = distance,
                 Direction = edge.Direction == EdgeDirection.Bidirectional
                     ? ContractMap.MapEdgeDirection.Bidirectional
                     : ContractMap.MapEdgeDirection.OneWay,
-                Cost = edge.Cost,
+                Cost = cost,
                 SpeedLimit = edge.MaxSpeed,
                 AreaId = string.IsNullOrWhiteSpace(edge.AreaCode) ? null : edge.AreaCode,
                 Enabled = edge.IsEnabled && edge.Direction != EdgeDirection.Closed,
@@ -937,6 +1041,43 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                     ["Remark"] = edge.Remark
                 }
             };
+        }
+
+        private double ResolveEdgeDistance(MapEdge edge)
+        {
+            if (edge.Length > 0)
+            {
+                return edge.Length;
+            }
+
+            var from = Nodes.FirstOrDefault(node =>
+                string.Equals(node.NodeId, edge.FromNodeId, StringComparison.OrdinalIgnoreCase));
+            var to = Nodes.FirstOrDefault(node =>
+                string.Equals(node.NodeId, edge.ToNodeId, StringComparison.OrdinalIgnoreCase));
+            if (from is null || to is null)
+            {
+                return 0;
+            }
+
+            var dx = to.Position.X - from.Position.X;
+            var dy = to.Position.Y - from.Position.Y;
+            var pixelDistance = Math.Sqrt(dx * dx + dy * dy);
+            if (pixelDistance <= 0)
+            {
+                return 0;
+            }
+
+            var pixelsPerMeter = Settings.PixelsPerMeter <= 0 ? 1 : Settings.PixelsPerMeter;
+            var distance = pixelDistance / pixelsPerMeter;
+
+            // Repair old drafts created before canvas-created edges wrote their physical length.
+            edge.Length = distance;
+            if (edge.Cost <= 0)
+            {
+                edge.Cost = Math.Max(1, (int)Math.Round(distance));
+            }
+
+            return distance;
         }
 
         private static ContractMap.VendorNodeMappingDto ToContractMapping(MapLocationAlias alias)
@@ -1008,7 +1149,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         {
             foreach (var message in messages)
             {
-                var isError = message.StartsWith("P0", StringComparison.OrdinalIgnoreCase);
+                var isError = IsValidationError(message);
                 yield return new MapValidationResult
                 {
                     Level = isError ? MapValidationLevel.Error : MapValidationLevel.Warning,
@@ -1017,6 +1158,16 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                     Message = message
                 };
             }
+        }
+
+        private static bool IsValidationError(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            return !message.StartsWith("P1", StringComparison.OrdinalIgnoreCase);
         }
 
         private void RaiseEditorCounts()

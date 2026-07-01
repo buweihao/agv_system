@@ -75,6 +75,15 @@ namespace AgvDispatcher.Core.Interfaces
         Task DeleteAsync(string aliasId);
     }
 
+    public interface IMapAreaRepository
+    {
+        Task<IReadOnlyList<MapArea>> GetAllAsync(string mapId, string mapVersion);
+
+        Task SaveAsync(MapArea area);
+
+        Task DeleteAsync(string mapId, string mapVersion, string areaId);
+    }
+
     public interface ITaskTemplateRepository
     {
         Task<IReadOnlyList<TaskTemplateConfig>> GetAllAsync();

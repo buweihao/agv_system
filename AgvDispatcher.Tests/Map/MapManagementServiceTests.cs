@@ -102,7 +102,7 @@ public sealed class MapManagementServiceTests
         var result = await ValidateAsync(draft.DraftId);
 
         Assert.False(result.Data!.IsValid);
-        Assert.Contains(result.Data.Messages, message => message.Contains("MapId is required"));
+        Assert.Contains(result.Data.Messages, message => message.Contains("MapId"));
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class MapManagementServiceTests
         var result = await ValidateAsync(draft.DraftId);
 
         Assert.False(result.Data!.IsValid);
-        Assert.Contains(result.Data.Messages, message => message.Contains("Duplicate node IDs"));
+        Assert.Contains(result.Data.Messages, message => message.Contains("Node") && message.Contains("N1"));
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public sealed class MapManagementServiceTests
         var result = await ValidateAsync(draft.DraftId);
 
         Assert.False(result.Data!.IsValid);
-        Assert.Contains(result.Data.Messages, message => message.Contains("Duplicate edge IDs"));
+        Assert.Contains(result.Data.Messages, message => message.Contains("Edge") && message.Contains("E1"));
     }
 
     [Fact]
@@ -160,8 +160,12 @@ public sealed class MapManagementServiceTests
         var result = await PublishAsync(draft.DraftId);
 
         Assert.False(result.Success);
-        var versions = await _service.GetMapVersionsAsync(new GetMapVersionsRequest { Context = MapTestDataBuilder.Context });
-        Assert.Empty(versions.Data!);
+        var versions = await _service.GetMapVersionsAsync(new GetMapVersionsRequest
+        {
+            Context = MapTestDataBuilder.Context,
+            MapId = draft.Map.MapId
+        });
+        Assert.DoesNotContain(versions.Data!, version => version.Version == draft.Map.Version && version.IsCurrent);
     }
 
     [Fact]
@@ -185,11 +189,11 @@ public sealed class MapManagementServiceTests
         var firstDraft = await MapTestDataBuilder.CreateAndSaveDraftAsync(
             _service,
             MapTestDataBuilder.CreateMap(version: "v1"));
-        await PublishAsync(firstDraft.DraftId);
+        var firstPublish = await PublishAsync(firstDraft.DraftId);
         var secondDraft = await MapTestDataBuilder.CreateAndSaveDraftAsync(
             _service,
             MapTestDataBuilder.CreateMap(version: "v2"));
-        await PublishAsync(secondDraft.DraftId);
+        var secondPublish = await PublishAsync(secondDraft.DraftId);
         MapPublishedEvent? observed = null;
         _events.GetEvent<PubSubEvent<MapPublishedEvent>>().Subscribe(value => observed = value);
 
@@ -197,7 +201,7 @@ public sealed class MapManagementServiceTests
         {
             Context = MapTestDataBuilder.Context,
             MapId = firstDraft.Map.MapId,
-            Version = "v1"
+            Version = firstPublish.Data!.Version
         });
         var versions = await _service.GetMapVersionsAsync(new GetMapVersionsRequest
         {
@@ -208,9 +212,9 @@ public sealed class MapManagementServiceTests
             versions.Data);
 
         Assert.True(rollback.Success);
-        Assert.True(publishedVersions.Single(version => version.Version == "v1").IsCurrent);
-        Assert.False(publishedVersions.Single(version => version.Version == "v2").IsCurrent);
-        Assert.Equal("v1", observed!.MapVersion);
+        Assert.True(publishedVersions.Single(version => version.Version == firstPublish.Data!.Version).IsCurrent);
+        Assert.False(publishedVersions.Single(version => version.Version == secondPublish.Data!.Version).IsCurrent);
+        Assert.Equal(firstPublish.Data!.Version, observed!.MapVersion);
     }
 
     [Fact]

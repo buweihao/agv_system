@@ -71,7 +71,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         /// <summary>路线方向显示项：保留枚举值，界面显示中文说明。</summary>
         public IReadOnlyList<EnumDisplayItem<EdgeDirection>> EdgeDirectionOptions { get; } =
-            Enum.GetValues<EdgeDirection>()
+            new[] { EdgeDirection.Bidirectional, EdgeDirection.ForwardOnly }
                 .Select(value => new EnumDisplayItem<EdgeDirection>(value, FormatEdgeDirection(value)))
                 .ToList();
 
@@ -670,13 +670,16 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         }
         private void SaveCurrentDraft()
         {
-            _ = SaveCurrentDraft(showMessage: true);
+            _ = SaveCurrentDraft(showMessage: true, validateAfterSave: true);
         }
 
         /// <summary>
         /// 保存草稿只更新编辑草稿，不影响当前运行图，也不会触发地图发布事件。
         /// </summary>
         private bool SaveCurrentDraft(bool showMessage)
+            => SaveCurrentDraft(showMessage, validateAfterSave: false);
+
+        private bool SaveCurrentDraft(bool showMessage, bool validateAfterSave)
         {
             try
             {
@@ -717,9 +720,20 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 }
 
                 ApplyDraftMetadata(save.Data);
+                DraftValidationSummary? validationSummary = null;
+                if (validateAfterSave)
+                {
+                    validationSummary = RefreshDraftValidationResults(showMessage: false);
+                }
+
                 if (showMessage)
                 {
-                    System.Windows.MessageBox.Show("地图草稿已保存，当前运行地图未切换。", "成功", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var message = validateAfterSave && validationSummary is null
+                        ? "地图草稿已保存，但自动校验失败。当前运行地图未切换。"
+                        : validationSummary is null
+                            ? "地图草稿已保存，当前运行地图未切换。"
+                            : $"地图草稿已保存，并已完成校验。\nError={validationSummary.ErrorCount}, Warning={validationSummary.WarningCount}, Total={validationSummary.TotalCount}\n当前运行地图未切换。";
+                    System.Windows.MessageBox.Show(message, "成功", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
 
                 return true;
@@ -734,6 +748,40 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 return false;
             }
         }
+
+        private DraftValidationSummary? RefreshDraftValidationResults(bool showMessage)
+        {
+            ValidationResults.Clear();
+            var validation = _mapManagementService.ValidateDraftAsync(new ValidateMapDraftRequest
+            {
+                Context = new RequestContext(),
+                DraftId = CurrentDraftId
+            }).GetAwaiter().GetResult();
+
+            if (!validation.Success)
+            {
+                if (showMessage)
+                {
+                    System.Windows.MessageBox.Show($"校验失败：{validation.Message}", "校验失败", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                }
+
+                return null;
+            }
+
+            var messages = validation.Data?.Messages ?? Array.Empty<string>();
+            foreach (var result in ToLegacyValidationResults(messages))
+            {
+                ValidationResults.Add(result);
+            }
+
+            IsValidationResultsVisible = true;
+            return new DraftValidationSummary(
+                ValidationResults.Count(x => x.Level == MapValidationLevel.Error),
+                ValidationResults.Count(x => x.Level == MapValidationLevel.Warning),
+                ValidationResults.Count);
+        }
+
+        private sealed record DraftValidationSummary(int ErrorCount, int WarningCount, int TotalCount);
 
         /// <summary>
         /// 发布草稿会切换当前运行图，服务层发布 MapPublishedEvent 通知其他模块重新读取 IMapService。
@@ -1220,7 +1268,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private static string FormatEdgeDirection(EdgeDirection direction) => direction switch
         {
             EdgeDirection.Bidirectional => "Bidirectional（双向）",
-            EdgeDirection.ForwardOnly => "ForwardOnly（正向单行）",
+            EdgeDirection.ForwardOnly => "OneWay（单向）",
             EdgeDirection.ReverseOnly => "ReverseOnly（反向单行）",
             EdgeDirection.Closed => "Closed（静态封闭）",
             _ => $"{direction}（未知方向）"

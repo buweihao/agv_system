@@ -315,6 +315,7 @@ PRAGMA foreign_keys=ON;");
             {
                 EnsureReferenceMapDisplayNames(db);
                 EnsureReferenceMapAreas(db);
+                EnsureReferenceMapVersion(db);
                 MarkReferenceSeedInitialized(db);
                 return;
             }
@@ -327,11 +328,13 @@ PRAGMA foreign_keys=ON;");
             if (IsReferenceSeedInitialized(db) && !hasLegacyDemoMap)
             {
                 RemoveOrphanMainMapContentWhenNodesAreEmpty(db);
+                EnsureReferenceMapVersion(db);
                 return;
             }
 
             if (hasCurrentMapContent && !hasLegacyDemoMap)
             {
+                EnsureReferenceMapVersion(db);
                 MarkReferenceSeedInitialized(db);
                 return;
             }
@@ -352,7 +355,56 @@ PRAGMA foreign_keys=ON;");
             db.MapAreas.AddRange(CreateMapAreas());
             db.MapLocationAliases.AddRange(CreateMapLocationAliases());
             db.ChargeStations.AddRange(CreateChargeStations());
+            EnsureReferenceMapVersion(db);
             MarkReferenceSeedInitialized(db);
+        }
+
+        private static void EnsureReferenceMapVersion(AgvDispatcherDbContext db)
+        {
+            var hasMainV1Content = db.MapNodes.Any(node => node.MapId == "MAIN" && node.MapVersion == "v1")
+                || db.ChangeTracker.Entries<MapNode>().Any(entry => entry.Entity.MapId == "MAIN" && entry.Entity.MapVersion == "v1")
+                || db.MapEdges.Any(edge => edge.MapId == "MAIN" && edge.MapVersion == "v1")
+                || db.ChangeTracker.Entries<MapEdge>().Any(entry => entry.Entity.MapId == "MAIN" && entry.Entity.MapVersion == "v1");
+            if (!hasMainV1Content)
+            {
+                return;
+            }
+
+            var existing = db.MapVersions.FirstOrDefault(version => version.MapId == "MAIN" && version.MapVersion == "v1")
+                ?? db.ChangeTracker.Entries<MapVersionEntity>()
+                    .Select(entry => entry.Entity)
+                    .FirstOrDefault(version => version.MapId == "MAIN" && version.MapVersion == "v1");
+            var hasActiveVersion = db.MapVersions.Any(version => version.IsActive || version.State == MapState.Active)
+                || db.ChangeTracker.Entries<MapVersionEntity>().Any(entry => entry.Entity.IsActive || entry.Entity.State == MapState.Active);
+            var now = DateTimeOffset.Now;
+
+            if (existing is null)
+            {
+                db.MapVersions.Add(new MapVersionEntity
+                {
+                    MapId = "MAIN",
+                    MapVersion = "v1",
+                    Name = "AGV静态参考地图",
+                    State = hasActiveVersion ? MapState.Archived : MapState.Active,
+                    IsActive = !hasActiveVersion,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                    PublishedAt = now,
+                    ActivatedAt = hasActiveVersion ? null : now,
+                    Description = "系统初始化参考地图版本。"
+                });
+                return;
+            }
+
+            existing.Name = string.IsNullOrWhiteSpace(existing.Name) ? "AGV静态参考地图" : existing.Name;
+            existing.PublishedAt ??= now;
+            existing.UpdatedAt = now;
+            if (!hasActiveVersion || existing.IsActive || existing.State == MapState.Active)
+            {
+                existing.State = MapState.Active;
+                existing.IsActive = true;
+                existing.ActivatedAt ??= now;
+            }
         }
 
         private static void RemoveOrphanMainMapContentWhenNodesAreEmpty(AgvDispatcherDbContext db)

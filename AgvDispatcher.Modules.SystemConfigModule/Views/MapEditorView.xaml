@@ -748,6 +748,26 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <ItemsControl ItemsSource="{Binding EditorEdges}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Canvas />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Polyline
+                                IsHitTestVisible="False"
+                                Points="{Binding ReverseArrowPoints}"
+                                Stroke="{Binding Stroke}"
+                                StrokeEndLineCap="Round"
+                                StrokeLineJoin="Round"
+                                StrokeStartLineCap="Round"
+                                StrokeThickness="2" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
                 <ItemsControl ItemsSource="{Binding EditorStations}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>

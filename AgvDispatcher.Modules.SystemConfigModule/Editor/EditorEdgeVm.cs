@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Models;
 using Prism.Mvvm;
@@ -90,6 +90,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
                     RaisePropertyChanged();
                     RaiseStyleChanged();
                     RaisePropertyChanged(nameof(ArrowPoints));
+                    RaisePropertyChanged(nameof(ReverseArrowPoints));
                 }
             }
         }
@@ -174,12 +175,43 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
                 double nx = -uy, ny = ux;                 // 单位法向
                 double mx = (ax + bx) / 2, my = (ay + by) / 2; // 中点
                 const double wing = 8, half = 6;
+                if (Model.Direction == EdgeDirection.Bidirectional)
+                {
+                    mx = ax + dx * 0.6;
+                    my = ay + dy * 0.6;
+                }
 
                 // 反向边：箭头指向起点
                 if (Model.Direction == EdgeDirection.ReverseOnly)
                 {
                     ux = -ux; uy = -uy;
                 }
+
+                double tipX = mx + ux * 4, tipY = my + uy * 4;
+                double baseX = tipX - ux * wing, baseY = tipY - uy * wing;
+                double w1x = baseX + nx * half, w1y = baseY + ny * half;
+                double w2x = baseX - nx * half, w2y = baseY - ny * half;
+                return $"{w1x:0.##},{w1y:0.##} {tipX:0.##},{tipY:0.##} {w2x:0.##},{w2y:0.##}";
+            }
+        }
+
+        public string? ReverseArrowPoints
+        {
+            get
+            {
+                if (Model.Direction != EdgeDirection.Bidirectional) return null;
+
+                double ax = X1, ay = Y1, bx = X2, by = Y2;
+                double dx = bx - ax, dy = by - ay;
+                var len = Math.Sqrt(dx * dx + dy * dy);
+                if (len < 1e-6) return null;
+
+                double ux = -dx / len, uy = -dy / len;
+                double nx = -uy, ny = ux;
+                double mx = (ax + bx) / 2, my = (ay + by) / 2;
+                const double wing = 8, half = 6;
+                mx = ax + dx * 0.4;
+                my = ay + dy * 0.4;
 
                 double tipX = mx + ux * 4, tipY = my + uy * 4;
                 double baseX = tipX - ux * wing, baseY = tipY - uy * wing;
@@ -196,6 +228,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
             RaisePropertyChanged(nameof(X2));
             RaisePropertyChanged(nameof(Y2));
             RaisePropertyChanged(nameof(ArrowPoints));
+            RaisePropertyChanged(nameof(ReverseArrowPoints));
         }
 
         private void RaiseStyleChanged()

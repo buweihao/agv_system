@@ -607,10 +607,6 @@
                     <Button
                         Command="{Binding SaveDraftCommand}"
                         Content="保存草稿"
-                        Style="{StaticResource PrimaryActionButtonStyle}" />
-                    <Button
-                        Command="{Binding ValidateCommand}"
-                        Content="校验"
                         Style="{StaticResource WarningActionButtonStyle}" />
                     <Button
                         Command="{Binding PublishDraftCommand}"

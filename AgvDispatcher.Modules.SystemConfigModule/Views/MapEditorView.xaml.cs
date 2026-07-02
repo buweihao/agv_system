@@ -36,6 +36,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
         private bool _isPanning;
         private bool _isPanMode;
         private Point _panStart;
+        private DateTime _lastReadoutAt = DateTime.MinValue;
+        private DateTime _lastSelectionPreviewAt = DateTime.MinValue;
 
         private readonly List<Point> _polygonPoints = new();
 
@@ -118,6 +120,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
 
             if (Vm.AreaDrawMode is AreaDrawMode.Rectangle or AreaDrawMode.EncloseElements or AreaDrawMode.DeleteElements)
             {
+                Vm.ClearBulkHighlights();
                 Vm.SelectedEditorNode = null;
                 Vm.SelectedEditorEdge = null;
                 Vm.SelectedEditorStation = null;
@@ -133,6 +136,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
 
             if (!Vm.IsConnectMode && !Vm.IsPlaceStationMode)
             {
+                Vm.ClearBulkHighlights();
                 Vm.SelectedEditorNode = null;
                 Vm.SelectedEditorEdge = null;
                 Vm.SelectedEditorStation = null;
@@ -146,7 +150,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
         {
             if (Vm == null) return;
             var p = e.GetPosition(_canvas);
-            Vm.UpdateReadout(p.X, p.Y);
+            if (ShouldRunThrottled(ref _lastReadoutAt, 33))
+            {
+                Vm.UpdateReadout(p.X, p.Y);
+            }
 
             if (_isPanning)
             {
@@ -169,6 +176,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
             if (_isBoxSelecting)
             {
                 UpdateSelectionBox(p);
+                if (!ShouldRunThrottled(ref _lastSelectionPreviewAt, 33))
+                {
+                    return;
+                }
+
                 if (Vm.AreaDrawMode == AreaDrawMode.EncloseElements)
                 {
                     Vm.PreviewEnclosedElements(_boxStart.X, _boxStart.Y, p.X, p.Y);
@@ -176,6 +188,10 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 else if (Vm.AreaDrawMode == AreaDrawMode.DeleteElements)
                 {
                     Vm.PreviewDeleteElements(_boxStart.X, _boxStart.Y, p.X, p.Y);
+                }
+                else if (!Vm.IsConnectMode && !Vm.IsPlaceStationMode)
+                {
+                    Vm.PreviewEnclosedElements(_boxStart.X, _boxStart.Y, p.X, p.Y);
                 }
             }
 
@@ -229,6 +245,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 }
 
                 var rect = CurrentSelectionRect();
+                Vm.PreviewEnclosedElements(rect.Left, rect.Top, rect.Right, rect.Bottom);
                 foreach (var n in Vm.EditorNodes)
                 {
                     if (rect.Contains(new Point(n.X, n.Y)))
@@ -273,6 +290,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 return;
             }
 
+            Vm.ClearBulkHighlights();
             Vm.SelectedEditorNode = node;
             _dragNode = node;
             _dragStartCanvas = e.GetPosition(_canvas);
@@ -312,6 +330,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
             if (Vm == null) return;
             if (sender is FrameworkElement fe && fe.DataContext is EditorEdgeVm edge && !Vm.IsConnectMode && !Vm.IsPlaceStationMode && Vm.AreaDrawMode == AreaDrawMode.None)
             {
+                Vm.ClearBulkHighlights();
                 Vm.SelectedEditorEdge = edge;
                 e.Handled = true;
             }
@@ -322,6 +341,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
             if (Vm == null) return;
             if (sender is FrameworkElement fe && fe.DataContext is EditorStationVm station && !Vm.IsConnectMode && !Vm.IsPlaceStationMode && Vm.AreaDrawMode == AreaDrawMode.None)
             {
+                Vm.ClearBulkHighlights();
                 Vm.SelectedEditorStation = station;
                 e.Handled = true;
             }
@@ -332,6 +352,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
             if (Vm == null) return;
             if (sender is FrameworkElement fe && fe.DataContext is EditorAreaVm area && !Vm.IsConnectMode && !Vm.IsPlaceStationMode && Vm.AreaDrawMode == AreaDrawMode.None)
             {
+                Vm.ClearBulkHighlights();
                 Vm.SelectedEditorArea = area;
                 e.Handled = true;
             }
@@ -407,6 +428,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
         {
             _isBoxSelecting = true;
             _boxStart = start;
+            _lastSelectionPreviewAt = DateTime.MinValue;
             Canvas.SetLeft(_selectionBox, _boxStart.X);
             Canvas.SetTop(_selectionBox, _boxStart.Y);
             _selectionBox.Width = 0;
@@ -476,6 +498,18 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
             _canvasScale.ScaleY *= factor;
             _canvasTranslate.X = (_canvasTranslate.X - pos.X) * factor + pos.X;
             _canvasTranslate.Y = (_canvasTranslate.Y - pos.Y) * factor + pos.Y;
+        }
+
+        private static bool ShouldRunThrottled(ref DateTime lastRunAt, int intervalMilliseconds)
+        {
+            var now = DateTime.UtcNow;
+            if ((now - lastRunAt).TotalMilliseconds < intervalMilliseconds)
+            {
+                return false;
+            }
+
+            lastRunAt = now;
+            return true;
         }
     }
 }

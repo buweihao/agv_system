@@ -7,11 +7,15 @@ namespace AgvDispatcher.DebugDashboard.Services;
 public sealed class MockVehicleWindowService : IMockVehicleWindowService
 {
     private readonly IMockSimulationService _mockSimulationService;
+    private readonly IMockScenarioController _mockScenarioController;
     private readonly Dictionary<string, MockVehicleDetailWindow> _windows = new(StringComparer.OrdinalIgnoreCase);
 
-    public MockVehicleWindowService(IMockSimulationService mockSimulationService)
+    public MockVehicleWindowService(
+        IMockSimulationService mockSimulationService,
+        IMockScenarioController mockScenarioController)
     {
         _mockSimulationService = mockSimulationService;
+        _mockScenarioController = mockScenarioController;
     }
 
     public void ShowVehicle(string vehicleId)
@@ -27,7 +31,7 @@ public sealed class MockVehicleWindowService : IMockVehicleWindowService
             return;
         }
 
-        var viewModel = new MockVehicleDetailViewModel(vehicleId, _mockSimulationService);
+        var viewModel = new MockVehicleDetailViewModel(vehicleId, _mockSimulationService, _mockScenarioController);
         var window = new MockVehicleDetailWindow
         {
             DataContext = viewModel,

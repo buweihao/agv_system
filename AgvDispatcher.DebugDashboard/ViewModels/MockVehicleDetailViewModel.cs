@@ -11,6 +11,7 @@ namespace AgvDispatcher.DebugDashboard.ViewModels;
 public sealed class MockVehicleDetailViewModel : BindableBase, IDisposable
 {
     private readonly IMockSimulationService _mockSimulationService;
+    private readonly IMockScenarioController _mockScenarioController;
     private VehicleStatusSnapshot? _snapshot;
     private string _vehicleId;
     private string _brand = string.Empty;
@@ -27,10 +28,14 @@ public sealed class MockVehicleDetailViewModel : BindableBase, IDisposable
     private DateTime? _reportedAt;
     private string _statusMessage = "Ready";
 
-    public MockVehicleDetailViewModel(string vehicleId, IMockSimulationService mockSimulationService)
+    public MockVehicleDetailViewModel(
+        string vehicleId,
+        IMockSimulationService mockSimulationService,
+        IMockScenarioController mockScenarioController)
     {
         _vehicleId = vehicleId;
         _mockSimulationService = mockSimulationService;
+        _mockScenarioController = mockScenarioController;
         RobotStates = Enum.GetValues<RobotState>();
         LoadStates = Enum.GetValues<VehicleLoadState>();
 
@@ -49,6 +54,12 @@ public sealed class MockVehicleDetailViewModel : BindableBase, IDisposable
             ActiveAlarmMessage = string.IsNullOrWhiteSpace(ActiveAlarmMessage) ? "Mock fault" : ActiveAlarmMessage
         }));
         ClearFaultCommand = new DelegateCommand(() => Update(new MockVehicleUpdate { VehicleId = VehicleId, HasAlarm = false, State = RobotState.Idle, IsOnline = true }));
+        ArriveNextNodeCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.ArriveNextNodeAsync(VehicleId)).ConfigureAwait(true));
+        RetryWaitingTaskCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.RetryWaitingTaskAsync(VehicleId)).ConfigureAwait(true));
+        ReleaseCurrentOccupancyCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.ReleaseCurrentOccupancyAsync(VehicleId)).ConfigureAwait(true));
 
         _mockSimulationService.VehiclesChanged += OnVehiclesChanged;
         RefreshFromService();
@@ -73,6 +84,12 @@ public sealed class MockVehicleDetailViewModel : BindableBase, IDisposable
     public DelegateCommand SetFaultCommand { get; }
 
     public DelegateCommand ClearFaultCommand { get; }
+
+    public DelegateCommand ArriveNextNodeCommand { get; }
+
+    public DelegateCommand RetryWaitingTaskCommand { get; }
+
+    public DelegateCommand ReleaseCurrentOccupancyCommand { get; }
 
     public string VehicleId
     {
@@ -189,6 +206,20 @@ public sealed class MockVehicleDetailViewModel : BindableBase, IDisposable
     {
         _mockSimulationService.UpsertVehicle(update);
         StatusMessage = $"Updated at {DateTime.Now:HH:mm:ss}";
+    }
+
+    private async Task RunScenarioActionAsync(Func<Task<MockScenarioOperationResult>> action)
+    {
+        try
+        {
+            var result = await action().ConfigureAwait(true);
+            StatusMessage = result.Message;
+            RefreshFromService();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
     }
 
     private void OnVehiclesChanged(object? sender, EventArgs e)

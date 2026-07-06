@@ -312,6 +312,112 @@
                 </Grid>
             </TabItem>
 
+            <TabItem Header="演示场景">
+                <Grid Margin="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="360"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}" Margin="0,0,10,0">
+                        <StackPanel>
+                            <TextBlock Text="场景选择"
+                                       Foreground="White"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,12"/>
+                            <ComboBox ItemsSource="{Binding ScenarioOptions}"
+                                      SelectedItem="{Binding SelectedScenario}"
+                                      DisplayMemberPath="Name"
+                                      Height="32"
+                                      Margin="0,0,0,12"/>
+                            <TextBlock Text="{Binding SelectedScenario.Description}"
+                                       Foreground="#8FA8BF"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,16"/>
+
+                            <TextBlock Text="当前会话"
+                                       Foreground="White"
+                                       FontWeight="SemiBold"
+                                       Margin="0,4,0,8"/>
+                            <TextBlock Text="{Binding ScenarioRouteSummary}"
+                                       Foreground="#D8E8F8"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding ScenarioTaskAId, StringFormat=A车任务：{0}}"
+                                       Foreground="#8FA8BF"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding ScenarioTaskBId, StringFormat=B车任务：{0}}"
+                                       Foreground="#8FA8BF"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding ScenarioManualBlockResource, StringFormat=封路资源：{0}}"
+                                       Foreground="#8FA8BF"
+                                       TextWrapping="Wrap"/>
+                            <CheckBox Content="人工封路生效"
+                                      IsChecked="{Binding IsScenarioManualBlockActive, Mode=OneWay}"
+                                      IsEnabled="False"
+                                      Foreground="#D8E8F8"
+                                      Margin="0,8,0,16"/>
+
+                            <WrapPanel>
+                                <Button Content="初始化场景"
+                                        Command="{Binding InitializeScenarioCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="启动车A"
+                                        Command="{Binding StartVehicleACommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="启动车B"
+                                        Command="{Binding StartVehicleBCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="车A到达"
+                                        Command="{Binding VehicleAArriveNextNodeCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="车B重试"
+                                        Command="{Binding VehicleBRetryWaitingTaskCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="人工封路"
+                                        Command="{Binding ManualBlockScenarioCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="人工解封"
+                                        Command="{Binding ManualUnblockScenarioCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="重置场景"
+                                        Command="{Binding ResetScenarioCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <DataGrid Grid.Column="1"
+                              Style="{StaticResource DashboardDataGridStyle}"
+                              ItemsSource="{Binding ScenarioLogs}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="时间" Binding="{Binding Time, StringFormat=HH:mm:ss.fff}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                            <DataGridTextColumn Header="步骤" Binding="{Binding Step}" ElementStyle="{StaticResource CellTextStyle}" Width="160"/>
+                            <DataGridTextColumn Header="结果" Binding="{Binding Result}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
+                            <DataGridTextColumn Header="详情" Binding="{Binding Details}" ElementStyle="{StaticResource CellTextStyle}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
             <TabItem Header="Okapi 协议">
                 <Grid Margin="8">
                     <Grid.RowDefinitions>

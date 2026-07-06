@@ -128,6 +128,9 @@
                             <Button Content="Idle" Command="{Binding SetIdleCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
                             <Button Content="Fault" Command="{Binding SetFaultCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
                             <Button Content="Clear" Command="{Binding ClearFaultCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="到达" Command="{Binding ArriveNextNodeCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="重试" Command="{Binding RetryWaitingTaskCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
+                            <Button Content="释放" Command="{Binding ReleaseCurrentOccupancyCommand}" Width="76" Height="30" Margin="0,0,8,8"/>
                         </WrapPanel>
                     </StackPanel>
                 </Border>

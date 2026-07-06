@@ -18,6 +18,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 {
     private readonly IDebugSnapshotService _debugSnapshotService;
     private readonly IMockVehicleWindowService _mockVehicleWindowService;
+    private readonly IMockScenarioController _mockScenarioController;
     private readonly DispatcherTimer _timer;
     private DebugSnapshotDto _snapshot = new();
     private bool _isRefreshing;
@@ -29,16 +30,47 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private TaskRow? _selectedTask;
     private RouteReservationRow? _selectedRouteReservation;
     private OkapiProtocolTraceRecord? _selectedOkapiRecord;
+    private MockScenarioOption? _selectedScenario;
+    private string _scenarioName = string.Empty;
+    private string _scenarioVehicleAId = string.Empty;
+    private string _scenarioVehicleBId = string.Empty;
+    private string _scenarioTaskAId = string.Empty;
+    private string _scenarioTaskBId = string.Empty;
+    private string _scenarioRouteSummary = string.Empty;
+    private string _scenarioManualBlockResource = string.Empty;
+    private bool _isScenarioManualBlockActive;
 
     public DebugDashboardViewModel(
         IDebugSnapshotService debugSnapshotService,
-        IMockVehicleWindowService mockVehicleWindowService)
+        IMockVehicleWindowService mockVehicleWindowService,
+        IMockScenarioController mockScenarioController)
     {
         _debugSnapshotService = debugSnapshotService;
         _mockVehicleWindowService = mockVehicleWindowService;
+        _mockScenarioController = mockScenarioController;
         RefreshCommand = new DelegateCommand(async () => await RefreshAsync().ConfigureAwait(true), () => !IsRefreshing);
         OpenVehicleWindowCommand = new DelegateCommand<VehicleRow?>(OpenVehicleWindow);
+        InitializeScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.InitializeScenarioAsync(SelectedScenario?.Key ?? string.Empty)).ConfigureAwait(true));
+        StartVehicleACommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.StartVehicleAsync(MockScenarioVehicleSlot.VehicleA)).ConfigureAwait(true));
+        StartVehicleBCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.StartVehicleAsync(MockScenarioVehicleSlot.VehicleB)).ConfigureAwait(true));
+        VehicleAArriveNextNodeCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.ArriveNextNodeAsync(ScenarioVehicleAId)).ConfigureAwait(true));
+        VehicleBRetryWaitingTaskCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.RetryWaitingTaskAsync(ScenarioVehicleBId)).ConfigureAwait(true));
+        ManualBlockScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.BlockScenarioResourceAsync()).ConfigureAwait(true));
+        ManualUnblockScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.UnblockScenarioResourceAsync()).ConfigureAwait(true));
+        ResetScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.ResetScenarioAsync()).ConfigureAwait(true));
+        ScenarioOptions = _mockScenarioController.GetScenarios();
+        _selectedScenario = ScenarioOptions.FirstOrDefault();
         RefreshIntervals = new[] { 1, 2, 5 };
+        _mockScenarioController.ScenarioChanged += OnScenarioChanged;
+        ApplyScenarioState(_mockScenarioController.CurrentState);
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(_selectedRefreshIntervalSeconds) };
         _timer.Tick += async (_, _) => await RefreshAsync().ConfigureAwait(true);
         _timer.Start();
@@ -49,7 +81,25 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 
     public DelegateCommand<VehicleRow?> OpenVehicleWindowCommand { get; }
 
+    public DelegateCommand InitializeScenarioCommand { get; }
+
+    public DelegateCommand StartVehicleACommand { get; }
+
+    public DelegateCommand StartVehicleBCommand { get; }
+
+    public DelegateCommand VehicleAArriveNextNodeCommand { get; }
+
+    public DelegateCommand VehicleBRetryWaitingTaskCommand { get; }
+
+    public DelegateCommand ManualBlockScenarioCommand { get; }
+
+    public DelegateCommand ManualUnblockScenarioCommand { get; }
+
+    public DelegateCommand ResetScenarioCommand { get; }
+
     public IReadOnlyList<int> RefreshIntervals { get; }
+
+    public IReadOnlyList<MockScenarioOption> ScenarioOptions { get; }
 
     public ObservableCollection<TaskRow> Tasks { get; } = new();
 
@@ -66,6 +116,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     public ObservableCollection<RouteReservationRow> SelectedTaskReservations { get; } = new();
 
     public ObservableCollection<OkapiProtocolTraceRecord> OkapiProtocolRecords { get; } = new();
+
+    public ObservableCollection<MockScenarioStepLog> ScenarioLogs { get; } = new();
 
     public bool IsRefreshing
     {
@@ -151,6 +203,60 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         set => SetProperty(ref _selectedOkapiRecord, value);
     }
 
+    public MockScenarioOption? SelectedScenario
+    {
+        get => _selectedScenario;
+        set => SetProperty(ref _selectedScenario, value);
+    }
+
+    public string ScenarioName
+    {
+        get => _scenarioName;
+        private set => SetProperty(ref _scenarioName, value);
+    }
+
+    public string ScenarioVehicleAId
+    {
+        get => _scenarioVehicleAId;
+        private set => SetProperty(ref _scenarioVehicleAId, value);
+    }
+
+    public string ScenarioVehicleBId
+    {
+        get => _scenarioVehicleBId;
+        private set => SetProperty(ref _scenarioVehicleBId, value);
+    }
+
+    public string ScenarioTaskAId
+    {
+        get => _scenarioTaskAId;
+        private set => SetProperty(ref _scenarioTaskAId, value);
+    }
+
+    public string ScenarioTaskBId
+    {
+        get => _scenarioTaskBId;
+        private set => SetProperty(ref _scenarioTaskBId, value);
+    }
+
+    public string ScenarioRouteSummary
+    {
+        get => _scenarioRouteSummary;
+        private set => SetProperty(ref _scenarioRouteSummary, value);
+    }
+
+    public string ScenarioManualBlockResource
+    {
+        get => _scenarioManualBlockResource;
+        private set => SetProperty(ref _scenarioManualBlockResource, value);
+    }
+
+    public bool IsScenarioManualBlockActive
+    {
+        get => _isScenarioManualBlockActive;
+        private set => SetProperty(ref _isScenarioManualBlockActive, value);
+    }
+
     public int TaskCount { get; private set; }
     public int RunningTaskCount { get; private set; }
     public int WaitingForTrafficTaskCount { get; private set; }
@@ -192,6 +298,51 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     public void Dispose()
     {
         _timer.Stop();
+        _mockScenarioController.ScenarioChanged -= OnScenarioChanged;
+    }
+
+    private async Task RunScenarioActionAsync(Func<Task<MockScenarioOperationResult>> action)
+    {
+        try
+        {
+            var result = await action().ConfigureAwait(true);
+            StatusMessage = result.Message;
+            ApplyScenarioState(_mockScenarioController.CurrentState);
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private void OnScenarioChanged(object? sender, EventArgs e)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            ApplyScenarioState(_mockScenarioController.CurrentState);
+            return;
+        }
+
+        dispatcher.BeginInvoke(() => ApplyScenarioState(_mockScenarioController.CurrentState));
+    }
+
+    private void ApplyScenarioState(MockScenarioState state)
+    {
+        ScenarioName = state.ScenarioName;
+        ScenarioVehicleAId = state.VehicleAId;
+        ScenarioVehicleBId = state.VehicleBId;
+        ScenarioTaskAId = state.TaskAId ?? string.Empty;
+        ScenarioTaskBId = state.TaskBId ?? string.Empty;
+        ScenarioRouteSummary = string.IsNullOrWhiteSpace(state.SourceA)
+            ? "场景尚未初始化"
+            : $"A车：{state.SourceA} -> {state.Target}；B车：{state.SourceB} -> {state.Target}";
+        ScenarioManualBlockResource = state.ManualBlockResource is null
+            ? string.Empty
+            : $"{state.ManualBlockResource.ResourceType}:{state.ManualBlockResource.ResourceId}";
+        IsScenarioManualBlockActive = state.IsManualBlockActive;
+        Replace(ScenarioLogs, state.Logs);
     }
 
     private void UpdateTimer()

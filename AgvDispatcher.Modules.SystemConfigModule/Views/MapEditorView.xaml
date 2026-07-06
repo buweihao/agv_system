@@ -1094,6 +1094,13 @@
                                 IsReadOnly="True"
                                 Text="{Binding ToNodeId, Mode=OneWay}" />
                         </Grid>
+                        <TextBlock Style="{StaticResource PropLabel}" Text="路线成本" />
+                        <TextBox
+                            Padding="6,4"
+                            Background="#11243A"
+                            BorderThickness="0"
+                            Foreground="#DCEFFF"
+                            Text="{Binding Model.Cost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Style="{StaticResource PropLabel}" Text="方向" />
                         <ComboBox
                             DisplayMemberPath="DisplayName"

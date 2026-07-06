@@ -877,6 +877,10 @@
                                 Header="约束品牌" />
                             <DataGridTextColumn
                                 Width="0.8*"
+                                Binding="{Binding Cost}"
+                                Header="Cost" />
+                            <DataGridTextColumn
+                                Width="0.8*"
                                 Binding="{Binding MaxSpeed}"
                                 Header="限速(m/s)" />
                             <DataGridTextColumn

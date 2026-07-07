@@ -23,10 +23,12 @@ public sealed class DispatchOrchestrationCoreContractTests
             typeof(CancelDispatchTaskRequest),
             typeof(GetDispatchExecutionRequest),
             typeof(RetryWaitingDispatchRequest),
+            typeof(ReplanDispatchTaskRequest),
             typeof(DispatchExecutionDto),
             typeof(StartDispatchTaskResultDto),
             typeof(AdvanceDispatchRouteResultDto),
             typeof(RetryWaitingDispatchResultDto),
+            typeof(ReplanDispatchTaskResultDto),
             typeof(DispatchExecutionState),
             typeof(DispatchOrchestrationFailureCode),
             typeof(DispatchOrchestrationEventType),
@@ -45,7 +47,8 @@ public sealed class DispatchOrchestrationCoreContractTests
             typeof(AdvanceDispatchRouteRequest),
             typeof(CancelDispatchTaskRequest),
             typeof(GetDispatchExecutionRequest),
-            typeof(RetryWaitingDispatchRequest)
+            typeof(RetryWaitingDispatchRequest),
+            typeof(ReplanDispatchTaskRequest)
         };
 
         Assert.All(requestTypes, type => Assert.True(typeof(IAgvRequest).IsAssignableFrom(type)));
@@ -57,6 +60,7 @@ public sealed class DispatchOrchestrationCoreContractTests
         var start = new StartDispatchTaskRequest();
         var advance = new AdvanceDispatchRouteRequest();
         var cancel = new CancelDispatchTaskRequest();
+        var replan = new ReplanDispatchTaskRequest();
 
         Assert.Equal(2, start.RollingWindowSize);
         Assert.Equal(1, start.MaxReplanCount);
@@ -65,6 +69,33 @@ public sealed class DispatchOrchestrationCoreContractTests
         Assert.True(cancel.ReleaseReservation);
         Assert.True(cancel.SendCancelCommand);
         Assert.True(new RetryWaitingDispatchRequest().SendVehicleCommand);
+        Assert.True(replan.AvoidOccupiedResources);
+        Assert.True(replan.ReleaseOldReservation);
+        Assert.True(replan.AcquireFirstWindow);
+        Assert.Empty(replan.ForbiddenEdgeIds);
+        Assert.Empty(replan.ForbiddenNodeIds);
+    }
+
+    [Fact]
+    public async Task ReplanTask_CanBeImplementedByTestFake()
+    {
+        IDispatchOrchestrationService service = new FakeReplanDispatchOrchestrationService();
+
+        var result = await service.ReplanTaskAsync(new ReplanDispatchTaskRequest
+        {
+            TaskId = "TASK-A",
+            VehicleId = "AGV-A",
+            CurrentNodeId = "N2",
+            CurrentSegmentSequence = 1,
+            Reason = "test"
+        });
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal("TASK-A", result.Data!.TaskId);
+        Assert.Equal("AGV-A", result.Data.VehicleId);
+        Assert.Equal("old-plan", result.Data.OldPlanId);
+        Assert.Equal("new-plan", result.Data.NewPlanId);
+        Assert.True(result.Data.RouteChanged);
     }
 
     [Fact]
@@ -85,5 +116,34 @@ public sealed class DispatchOrchestrationCoreContractTests
         };
 
         Assert.All(expected, state => Assert.True(Enum.IsDefined(state)));
+    }
+
+    private sealed class FakeReplanDispatchOrchestrationService : IDispatchOrchestrationService
+    {
+        public Task<AgvResult<StartDispatchTaskResultDto>> StartTaskAsync(StartDispatchTaskRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgvResult<RetryWaitingDispatchResultDto>> RetryWaitingTaskAsync(RetryWaitingDispatchRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgvResult<AdvanceDispatchRouteResultDto>> AdvanceRouteAsync(AdvanceDispatchRouteRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgvResult> CompleteTaskAsync(CompleteDispatchTaskRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgvResult> CancelTaskAsync(CancelDispatchTaskRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgvResult<DispatchExecutionDto>> GetExecutionAsync(GetDispatchExecutionRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgvResult<IReadOnlyList<DispatchExecutionDto>>> GetActiveExecutionsAsync(GetDispatchExecutionsRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<AgvResult<ReplanDispatchTaskResultDto>> ReplanTaskAsync(
+            ReplanDispatchTaskRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(AgvResult<ReplanDispatchTaskResultDto>.Ok(new ReplanDispatchTaskResultDto
+            {
+                TaskId = request.TaskId,
+                VehicleId = request.VehicleId,
+                OldPlanId = "old-plan",
+                NewPlanId = "new-plan",
+                OldReservationId = "old-reservation",
+                NewReservationId = "new-reservation",
+                RouteChanged = true,
+                FirstWindowLocked = true,
+                Message = request.Reason
+            }));
+        }
     }
 }

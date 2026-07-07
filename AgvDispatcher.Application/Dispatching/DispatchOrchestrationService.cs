@@ -8,6 +8,7 @@ using AgvDispatcher.Core.Contracts.Dispatching.Models;
 using AgvDispatcher.Core.Contracts.Dispatching.Requests;
 using AgvDispatcher.Core.Contracts.Dispatching.Results;
 using AgvDispatcher.Core.Contracts.Map;
+using AgvDispatcher.Core.Contracts.Planning.Constraints;
 using AgvDispatcher.Core.Contracts.Planning.Interfaces;
 using AgvDispatcher.Core.Contracts.Planning.Requests;
 using AgvDispatcher.Core.Contracts.Planning.Results;
@@ -599,6 +600,262 @@ namespace AgvDispatcher.Application.Dispatching
         }
 
         /// <inheritdoc />
+        public Task<AgvResult<ReplanDispatchTaskResultDto>> ReplanTaskAsync(
+            ReplanDispatchTaskRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ReplanTaskCoreAsync(request, cancellationToken);
+        }
+
+        private async Task<AgvResult<ReplanDispatchTaskResultDto>> ReplanTaskCoreAsync(
+            ReplanDispatchTaskRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (request is null ||
+                string.IsNullOrWhiteSpace(request.TaskId) ||
+                string.IsNullOrWhiteSpace(request.VehicleId) ||
+                string.IsNullOrWhiteSpace(request.CurrentNodeId))
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.InvalidRequest,
+                    "A task id, vehicle id, and current node are required.");
+            }
+
+            if (!_executions.TryGetValue(request.TaskId, out var execution))
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.TaskNotFound,
+                    "The dispatch execution was not found.");
+            }
+
+            if (!string.Equals(execution.VehicleId, request.VehicleId, StringComparison.OrdinalIgnoreCase))
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.VehicleNotFound,
+                    "The vehicle does not own this dispatch execution.");
+            }
+
+            var task = _taskService.GetTask(request.TaskId);
+            if (task is null)
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.TaskNotFound,
+                    $"Task '{request.TaskId}' was not found.");
+            }
+
+            if (string.IsNullOrWhiteSpace(task.TargetNodeId))
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.InvalidRequest,
+                    "The task target node is required for replanning.");
+            }
+
+            var oldPlanId = execution.PlanId;
+            var oldReservationId = execution.ReservationId;
+            var mapResult = _mapService.GetCurrentMap(new GetMapSnapshotRequest { Context = request.Context });
+            if (!mapResult.Success || mapResult.Data is null)
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.MapUnavailable,
+                    mapResult.Message);
+            }
+
+            var map = mapResult.Data;
+            execution = CopyExecution(
+                execution,
+                state: DispatchExecutionState.Replanning,
+                mapId: map.MapId,
+                mapVersion: map.Version,
+                currentNodeId: request.CurrentNodeId,
+                currentSegmentSequence: request.CurrentSegmentSequence);
+            SaveExecution(execution, DispatchOrchestrationEventType.ReplanRequired, request.Reason);
+
+            var trafficResult = await _trafficControlService
+                .GetTrafficSnapshotAsync(request.Context, cancellationToken)
+                .ConfigureAwait(false);
+            if (!trafficResult.Success || trafficResult.Data is null)
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.InternalError,
+                    trafficResult.Message);
+            }
+
+            var trafficConstraint = DispatchTrafficConstraintMapper.Map(
+                trafficResult.Data,
+                task.TaskId,
+                request.VehicleId);
+            var constraint = MergeReplanConstraint(trafficConstraint, request);
+            var planResult = await _pathPlanner.PlanAsync(new PathPlanRequest
+            {
+                Context = request.Context,
+                MapSnapshot = map,
+                VehicleId = request.VehicleId,
+                StartNodeId = request.CurrentNodeId,
+                TargetNodeId = task.TargetNodeId,
+                Constraint = constraint
+            }, cancellationToken).ConfigureAwait(false);
+
+            if (!planResult.Success || planResult.Data is null)
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.PathPlanningFailed,
+                    planResult.Message);
+            }
+
+            var plan = planResult.Data;
+            if (!plan.IsReachable || plan.Segments is null)
+            {
+                execution = CopyExecution(
+                    execution,
+                    state: DispatchExecutionState.Replanning,
+                    lastFailureCode: DispatchOrchestrationFailureCode.ReplanRequired.ToString(),
+                    lastFailureMessage: $"No route is reachable from {request.CurrentNodeId} to {task.TargetNodeId}.");
+                SaveExecution(execution, DispatchOrchestrationEventType.ReplanRequired, execution.LastFailureMessage);
+                return AgvResult<ReplanDispatchTaskResultDto>.Ok(new ReplanDispatchTaskResultDto
+                {
+                    Execution = execution,
+                    TaskId = task.TaskId,
+                    VehicleId = request.VehicleId,
+                    OldPlanId = oldPlanId,
+                    OldReservationId = oldReservationId,
+                    RequiresReplan = true,
+                    Message = execution.LastFailureMessage
+                });
+            }
+
+            string[] oldRouteEdges = Array.Empty<string>();
+            if (!string.IsNullOrWhiteSpace(oldReservationId))
+            {
+                var oldReservation = await _routeReservationService.GetReservationAsync(
+                    new GetRouteReservationRequest
+                    {
+                        Context = request.Context,
+                        ReservationId = oldReservationId
+                    },
+                    cancellationToken).ConfigureAwait(false);
+                if (oldReservation.Success && oldReservation.Data is not null)
+                {
+                    oldRouteEdges = oldReservation.Data.Segments
+                        .Select(segment => segment.Segment.EdgeId)
+                        .ToArray();
+                }
+
+                if (request.ReleaseOldReservation)
+                {
+                    var releaseResult = await _routeReservationService.ReleaseReservationAsync(
+                        new ReleaseRouteReservationRequest
+                        {
+                            Context = request.Context,
+                            ReservationId = oldReservationId,
+                            Reason = $"Release before dispatch replan: {request.Reason}"
+                        },
+                        cancellationToken).ConfigureAwait(false);
+                    if (!releaseResult.Success)
+                    {
+                        return Fail<ReplanDispatchTaskResultDto>(
+                            DispatchOrchestrationFailureCode.RouteReservationFailed,
+                            releaseResult.Message);
+                    }
+                }
+            }
+
+            var reservationResult = await _routeReservationService.CreateReservationAsync(
+                new CreateRouteReservationRequest
+                {
+                    Context = request.Context,
+                    TaskId = task.TaskId,
+                    VehicleId = request.VehicleId,
+                    PlanId = plan.PlanId,
+                    MapId = map.MapId,
+                    MapVersion = map.Version,
+                    Segments = plan.Segments,
+                    RollingWindowSize = execution.RollingWindowSize > 0 ? execution.RollingWindowSize : 1
+                },
+                cancellationToken).ConfigureAwait(false);
+            if (!reservationResult.Success || reservationResult.Data is null)
+            {
+                return Fail<ReplanDispatchTaskResultDto>(
+                    DispatchOrchestrationFailureCode.RouteReservationFailed,
+                    reservationResult.Message);
+            }
+
+            var reservationId = reservationResult.Data.ReservationId;
+            var acquiredFirstWindow = false;
+            var shouldWait = false;
+            var requiresReplan = false;
+            var message = "Task route replanned.";
+            if (request.AcquireFirstWindow)
+            {
+                var lockResult = await _routeReservationService.AcquireNextWindowAsync(
+                    new AcquireNextRouteWindowRequest
+                    {
+                        Context = request.Context,
+                        ReservationId = reservationId,
+                        CurrentNodeId = request.CurrentNodeId,
+                        CurrentSegmentSequence = 0,
+                        RollingWindowSize = execution.RollingWindowSize > 0 ? execution.RollingWindowSize : 1
+                    },
+                    cancellationToken).ConfigureAwait(false);
+                acquiredFirstWindow = lockResult.Success && lockResult.Data?.Acquired == true;
+                shouldWait = lockResult.Data?.ShouldWait == true;
+                requiresReplan = lockResult.Data?.RequiresReplan == true;
+                message = lockResult.Data?.Message ?? lockResult.Message ?? message;
+                if (!lockResult.Success && lockResult.Data is null)
+                {
+                    return Fail<ReplanDispatchTaskResultDto>(
+                        DispatchOrchestrationFailureCode.FirstWindowAcquireFailed,
+                        lockResult.Message);
+                }
+            }
+
+            var nextState = requiresReplan
+                ? DispatchExecutionState.Replanning
+                : shouldWait
+                    ? DispatchExecutionState.WaitingForTraffic
+                    : DispatchExecutionState.Running;
+            execution = CopyExecution(
+                execution,
+                state: nextState,
+                planId: plan.PlanId,
+                reservationId: reservationId,
+                currentNodeId: request.CurrentNodeId,
+                currentSegmentSequence: 0,
+                lastFailureCode: string.Empty,
+                lastFailureMessage: string.Empty);
+            if (nextState == DispatchExecutionState.Running)
+            {
+                _taskService.AssignVehicle(task.TaskId, request.VehicleId);
+                _taskService.UpdateTaskState(task.TaskId, TaskState.Running);
+            }
+
+            SaveExecution(
+                execution,
+                requiresReplan
+                    ? DispatchOrchestrationEventType.ReplanRequired
+                    : shouldWait
+                        ? DispatchOrchestrationEventType.WaitingForTraffic
+                        : DispatchOrchestrationEventType.TaskReplanned,
+                message);
+
+            return AgvResult<ReplanDispatchTaskResultDto>.Ok(new ReplanDispatchTaskResultDto
+            {
+                Execution = execution,
+                TaskId = task.TaskId,
+                VehicleId = request.VehicleId,
+                OldPlanId = oldPlanId,
+                NewPlanId = plan.PlanId,
+                OldReservationId = oldReservationId,
+                NewReservationId = reservationId,
+                RouteChanged = RouteChanged(oldRouteEdges, plan.Segments.Select(segment => segment.EdgeId)),
+                FirstWindowLocked = acquiredFirstWindow,
+                RequiresReplan = requiresReplan,
+                ShouldWait = shouldWait,
+                Message = message
+            });
+        }
+
+        /// <inheritdoc />
         public async Task<AgvResult> CancelTaskAsync(
             CancelDispatchTaskRequest request,
             CancellationToken cancellationToken = default)
@@ -984,6 +1241,42 @@ namespace AgvDispatcher.Application.Dispatching
 
         private static string FirstNonEmpty(string? first, string? second) =>
             !string.IsNullOrWhiteSpace(first) ? first : second ?? string.Empty;
+
+        private static PathPlanConstraint MergeReplanConstraint(
+            PathPlanConstraint trafficConstraint,
+            ReplanDispatchTaskRequest request)
+        {
+            var forbiddenNodes = ToSet(trafficConstraint.ForbiddenNodeIds);
+            forbiddenNodes.UnionWith(request.ForbiddenNodeIds.Where(id => !string.IsNullOrWhiteSpace(id)));
+            var forbiddenEdges = ToSet(trafficConstraint.ForbiddenEdgeIds);
+            forbiddenEdges.UnionWith(request.ForbiddenEdgeIds.Where(id => !string.IsNullOrWhiteSpace(id)));
+
+            return new PathPlanConstraint
+            {
+                ForbiddenNodeIds = forbiddenNodes,
+                ForbiddenEdgeIds = forbiddenEdges,
+                OccupiedNodeIds = trafficConstraint.OccupiedNodeIds,
+                OccupiedEdgeIds = trafficConstraint.OccupiedEdgeIds,
+                ReservedNodeIds = trafficConstraint.ReservedNodeIds,
+                ReservedEdgeIds = trafficConstraint.ReservedEdgeIds,
+                AvoidOccupiedResources = request.AvoidOccupiedResources,
+                AvoidReservedResources = request.AvoidOccupiedResources,
+                AllowReverse = trafficConstraint.AllowReverse,
+                AllowTemporaryBlockedPass = trafficConstraint.AllowTemporaryBlockedPass
+            };
+        }
+
+        private static HashSet<string> ToSet(IEnumerable<string>? values) =>
+            values is null
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(values, StringComparer.OrdinalIgnoreCase);
+
+        private static bool RouteChanged(
+            IEnumerable<string> oldEdgeIds,
+            IEnumerable<string> newEdgeIds)
+        {
+            return !oldEdgeIds.SequenceEqual(newEdgeIds, StringComparer.OrdinalIgnoreCase);
+        }
 
         private static DispatchExecutionDto CopyExecution(
             DispatchExecutionDto source,

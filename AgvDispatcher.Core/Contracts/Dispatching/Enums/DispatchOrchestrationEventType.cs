@@ -31,6 +31,8 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Enums
         WaitingForTraffic,
         /// <summary>The execution requires a new path plan.</summary>
         ReplanRequired,
+        /// <summary>The task route was replanned.</summary>
+        TaskReplanned,
         /// <summary>The task completed.</summary>
         TaskCompleted,
         /// <summary>The task began cancellation.</summary>

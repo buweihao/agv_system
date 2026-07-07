@@ -105,7 +105,84 @@ public sealed class MockFleetSimulationScenarioTests
         Assert.Contains(step.Events, item =>
             item.EventType == MockSimulationEventType.ReplanRequired &&
             item.VehicleId == "AGV-B");
-        Assert.Equal(MockVehicleSimulationState.TimedOut, fixture.Engine.GetVehicleState("AGV-B")!.State);
+        Assert.Equal(MockVehicleSimulationState.Replanning, fixture.Engine.GetVehicleState("AGV-B")!.State);
+    }
+
+    [Fact]
+    public async Task WaitingTimeout_ShouldCallReplanTask()
+    {
+        var fixture = MockSimulationFixture.Create(MockSimulationMaps.CreateSameTargetAlternativeMap());
+        await fixture.Engine.InitializeAsync(SameTargetAlternativeScenario(new MockSimulationOptions
+        {
+            RollingWindowSize = 2,
+            WaitTimeout = TimeSpan.Zero,
+            RetryInterval = TimeSpan.Zero,
+            MaxRetryCount = 0,
+            OnTimeoutPolicy = MockSimulationTimeoutPolicy.RetryOnly
+        }));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.WaitingTimedOut &&
+            item.VehicleId == "AGV-B");
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.TaskReplanned &&
+            item.VehicleId == "AGV-B");
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.ResourceLocked &&
+            item.VehicleId == "AGV-B");
+    }
+
+    [Fact]
+    public async Task WaitingTimeout_ReplanSuccess_ShouldResumeRunning()
+    {
+        var fixture = MockSimulationFixture.Create(MockSimulationMaps.CreateSameTargetAlternativeMap());
+        await fixture.Engine.InitializeAsync(SameTargetAlternativeScenario(new MockSimulationOptions
+        {
+            RollingWindowSize = 2,
+            WaitTimeout = TimeSpan.Zero,
+            RetryInterval = TimeSpan.Zero,
+            MaxRetryCount = 0,
+            OnTimeoutPolicy = MockSimulationTimeoutPolicy.RetryOnly
+        }));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Equal(MockVehicleSimulationState.Running, fixture.Engine.GetVehicleState("AGV-B")!.State);
+        Assert.Equal(TaskState.Running, fixture.Tasks.GetTask("TASK-B")!.State);
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E-P2-Y"));
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E-Y-Q"));
+    }
+
+    [Fact]
+    public async Task WaitingTimeout_ReplanNoRoute_ShouldRemainReplanning()
+    {
+        var fixture = MockSimulationFixture.Create(MockSimulationMaps.CreateSameTargetMap());
+        await fixture.Engine.InitializeAsync(SameTargetScenario(new MockSimulationOptions
+        {
+            RollingWindowSize = 2,
+            WaitTimeout = TimeSpan.Zero,
+            RetryInterval = TimeSpan.Zero,
+            MaxRetryCount = 0,
+            OnTimeoutPolicy = MockSimulationTimeoutPolicy.RetryOnly
+        }));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.ReplanRequired &&
+            item.VehicleId == "AGV-B");
+        Assert.DoesNotContain(step.Events, item =>
+            item.EventType == MockSimulationEventType.TaskReplanned &&
+            item.VehicleId == "AGV-B");
+        Assert.Equal(MockVehicleSimulationState.Replanning, fixture.Engine.GetVehicleState("AGV-B")!.State);
     }
 
     [Fact]
@@ -160,34 +237,81 @@ public sealed class MockFleetSimulationScenarioTests
     }
 
     [Fact]
-    public async Task DisabledMapEdge_ShouldMarkCurrentRouteInvalid()
+    public async Task DisabledMapEdge_ShouldTriggerReplan()
     {
         var mutableMap = MockSimulationMaps.CreateMutableMapWithDisableEdgeSupport();
-        mutableMap.DisableEdge("E-S-A");
-        var fixture = MockSimulationFixture.Create(mutableMap.Snapshot);
+        var fixture = MockSimulationFixture.Create(mutableMap);
         await fixture.Engine.InitializeAsync(AlternativeRouteScenario(new MockSimulationOptions
         {
-            RollingWindowSize = 1,
+            RollingWindowSize = 2,
             WaitTimeout = TimeSpan.Zero,
             RetryInterval = TimeSpan.Zero,
             MaxRetryCount = 1
         }));
         Assert.True((await fixture.Engine.StartTaskAsync("AGV-A", "TASK-A")).Succeeded);
-        var blocked = await fixture.Traffic.BlockResourcesAsync(new TrafficBlockRequest
-        {
-            Context = Context,
-            Resources = new[]
-            {
-                new TrafficResourceKey { ResourceType = TrafficResourceType.Edge, ResourceId = "E-B-C" }
-            },
-            Reason = "Mock map edge disabled while current route is active"
-        });
-        Assert.True(blocked.Success, blocked.Message);
+        mutableMap.DisableEdge("E-A-T");
 
         var step = await fixture.Engine.StepAsync();
 
         Assert.True(step.Succeeded, step.Message);
-        Assert.Contains(step.Events, item => item.EventType == MockSimulationEventType.ReplanRequired);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.ReplanRequired &&
+            item.VehicleId == "AGV-A" &&
+            item.ResourceId == "E-A-T");
+    }
+
+    [Fact]
+    public async Task DisabledMapEdge_ReplanShouldAvoidDisabledEdge()
+    {
+        var mutableMap = MockSimulationMaps.CreateMutableMapWithDisableEdgeSupport();
+        var fixture = MockSimulationFixture.Create(mutableMap);
+        await fixture.Engine.InitializeAsync(AlternativeRouteScenario(new MockSimulationOptions
+        {
+            RollingWindowSize = 2,
+            WaitTimeout = TimeSpan.Zero,
+            RetryInterval = TimeSpan.Zero,
+            MaxRetryCount = 1
+        }));
+        Assert.True((await fixture.Engine.StartTaskAsync("AGV-A", "TASK-A")).Succeeded);
+        mutableMap.DisableEdge("E-A-T");
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.TaskReplanned &&
+            item.VehicleId == "AGV-A");
+        Assert.Equal(MockVehicleSimulationState.Running, fixture.Engine.GetVehicleState("AGV-A")!.State);
+        Assert.Equal(TrafficResourceState.Free, await EdgeStateAsync(fixture.Traffic, "E-A-T"));
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E-S-B"));
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E-B-C"));
+
+        var reservationId = fixture.Engine.GetVehicleState("AGV-A")!.ReservationId;
+        var reservation = await fixture.Reservations.GetReservationAsync(
+            new GetRouteReservationRequest { Context = Context, ReservationId = reservationId! });
+        Assert.True(reservation.Success, reservation.Message);
+        Assert.DoesNotContain(reservation.Data!.Segments, item =>
+            item.Segment.EdgeId.Equals("E-A-T", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task DisabledMapEdge_NoAlternative_ShouldRemainReplanning()
+    {
+        var mutableMap = new MutableMockMap(MockSimulationMaps.CreateLinearMap());
+        var fixture = MockSimulationFixture.Create(mutableMap);
+        await fixture.Engine.InitializeAsync(LinearScenario());
+        Assert.True((await fixture.Engine.StartTaskAsync("AGV-A", "TASK-A")).Succeeded);
+        mutableMap.DisableEdge("E2");
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.ReplanRequired &&
+            item.VehicleId == "AGV-A");
+        Assert.DoesNotContain(step.Events, item =>
+            item.EventType == MockSimulationEventType.TaskReplanned &&
+            item.VehicleId == "AGV-A");
         Assert.Equal(MockVehicleSimulationState.Replanning, fixture.Engine.GetVehicleState("AGV-A")!.State);
     }
 
@@ -204,6 +328,24 @@ public sealed class MockFleetSimulationScenarioTests
         Tasks = new[]
         {
             SimulationTask("TASK-A", "P1", "D", "AGV-A"),
+            SimulationTask("TASK-B", "P2", "D", "AGV-B")
+        },
+        Options = options ?? DefaultOptions(2)
+    };
+
+    private static MockSimulationScenario SameTargetAlternativeScenario(MockSimulationOptions? options = null) => new()
+    {
+        ScenarioId = "same-target-alternative",
+        Name = "Waiting vehicle can replan to an alternative route",
+        MapSnapshot = MockSimulationMaps.CreateSameTargetAlternativeMap(),
+        Vehicles = new[]
+        {
+            Vehicle("AGV-A", "P1"),
+            Vehicle("AGV-B", "P2")
+        },
+        Tasks = new[]
+        {
+            SimulationTask("TASK-A", "P1", "Z", "AGV-A"),
             SimulationTask("TASK-B", "P2", "D", "AGV-B")
         },
         Options = options ?? DefaultOptions(2)

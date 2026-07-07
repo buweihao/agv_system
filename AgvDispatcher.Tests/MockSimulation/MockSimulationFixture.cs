@@ -25,6 +25,16 @@ internal sealed record MockSimulationFixture(
 {
     public static MockSimulationFixture Create(MapSnapshotDto map)
     {
+        return Create(new FakeMapService(() => map));
+    }
+
+    public static MockSimulationFixture Create(MutableMockMap map)
+    {
+        return Create(new FakeMapService(() => map.Snapshot));
+    }
+
+    private static MockSimulationFixture Create(FakeMapService mapService)
+    {
         var tasks = new FakeTaskService();
         var store = new FakeVehicleStateStore();
         var vehicles = new FakeVehicleService(store);
@@ -34,12 +44,12 @@ internal sealed record MockSimulationFixture(
             tasks,
             vehicles,
             new FakeDispatchScoringService(),
-            new FakeMapService(map),
+            mapService,
             new DijkstraPathPlanner(),
             traffic,
             reservations,
             new FakeVehicleAdapterManager());
-        var engine = new MockFleetSimulationEngine(dispatch, tasks, store, reservations, traffic);
+        var engine = new MockFleetSimulationEngine(dispatch, tasks, store, reservations, traffic, mapService);
         return new MockSimulationFixture(engine, dispatch, tasks, store, traffic, reservations);
     }
 
@@ -195,24 +205,24 @@ internal sealed record MockSimulationFixture(
 
     private sealed class FakeMapService : IMapService
     {
-        private readonly MapSnapshotDto _map;
+        private readonly Func<MapSnapshotDto> _mapProvider;
 
-        public FakeMapService(MapSnapshotDto map)
+        public FakeMapService(Func<MapSnapshotDto> mapProvider)
         {
-            _map = map;
+            _mapProvider = mapProvider;
         }
 
-        public AgvResult<MapSnapshotDto> GetCurrentMap(GetMapSnapshotRequest request) => AgvResult<MapSnapshotDto>.Ok(_map);
-        public AgvResult<IReadOnlyList<MapNodeDto>> GetNodes(GetMapSnapshotRequest request) => AgvResult<IReadOnlyList<MapNodeDto>>.Ok(_map.Nodes);
-        public AgvResult<IReadOnlyList<MapEdgeDto>> GetEdges(GetMapSnapshotRequest request) => AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(_map.Edges);
-        public AgvResult<MapNodeDto> GetNode(GetMapNodeRequest request) => AgvResult<MapNodeDto>.Ok(_map.Nodes.First(item => item.NodeId == request.NodeId));
-        public AgvResult<MapEdgeDto> GetEdge(GetMapEdgeRequest request) => AgvResult<MapEdgeDto>.Ok(_map.Edges.First(item => item.EdgeId == request.EdgeId));
-        public AgvResult<bool> NodeExists(GetMapNodeRequest request) => AgvResult<bool>.Ok(_map.Nodes.Any(item => item.NodeId == request.NodeId));
-        public AgvResult<bool> EdgeExists(GetMapEdgeRequest request) => AgvResult<bool>.Ok(_map.Edges.Any(item => item.EdgeId == request.EdgeId));
+        public AgvResult<MapSnapshotDto> GetCurrentMap(GetMapSnapshotRequest request) => AgvResult<MapSnapshotDto>.Ok(_mapProvider());
+        public AgvResult<IReadOnlyList<MapNodeDto>> GetNodes(GetMapSnapshotRequest request) => AgvResult<IReadOnlyList<MapNodeDto>>.Ok(_mapProvider().Nodes);
+        public AgvResult<IReadOnlyList<MapEdgeDto>> GetEdges(GetMapSnapshotRequest request) => AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(_mapProvider().Edges);
+        public AgvResult<MapNodeDto> GetNode(GetMapNodeRequest request) => AgvResult<MapNodeDto>.Ok(_mapProvider().Nodes.First(item => item.NodeId == request.NodeId));
+        public AgvResult<MapEdgeDto> GetEdge(GetMapEdgeRequest request) => AgvResult<MapEdgeDto>.Ok(_mapProvider().Edges.First(item => item.EdgeId == request.EdgeId));
+        public AgvResult<bool> NodeExists(GetMapNodeRequest request) => AgvResult<bool>.Ok(_mapProvider().Nodes.Any(item => item.NodeId == request.NodeId));
+        public AgvResult<bool> EdgeExists(GetMapEdgeRequest request) => AgvResult<bool>.Ok(_mapProvider().Edges.Any(item => item.EdgeId == request.EdgeId));
         public AgvResult<IReadOnlyList<MapEdgeDto>> GetOutgoingEdges(GetOutgoingEdgesRequest request) =>
-            AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(_map.Edges.Where(item => item.FromNodeId == request.NodeId).ToArray());
+            AgvResult<IReadOnlyList<MapEdgeDto>>.Ok(_mapProvider().Edges.Where(item => item.FromNodeId == request.NodeId).ToArray());
         public AgvResult<IReadOnlyList<MapNodeDto>> GetNodesByType(GetNodesByTypeRequest request) =>
-            AgvResult<IReadOnlyList<MapNodeDto>>.Ok(_map.Nodes.Where(item => item.NodeType == request.NodeType).ToArray());
+            AgvResult<IReadOnlyList<MapNodeDto>>.Ok(_mapProvider().Nodes.Where(item => item.NodeType == request.NodeType).ToArray());
         public AgvResult<string> GetVendorNodeCode(GetVendorNodeCodeRequest request) =>
             AgvResult<string>.Fail(FailureCode.VendorNodeMappingNotFound, "Not configured");
         public AgvResult<string> GetSystemNodeId(GetSystemNodeIdRequest request) =>
@@ -281,6 +291,24 @@ internal static class MockSimulationMaps
             Edge("E-S-B", "S", "B"),
             Edge("E-B-C", "B", "C"),
             Edge("E-C-T", "C", "T")
+        }
+    };
+
+    public static MapSnapshotDto CreateSameTargetAlternativeMap() => new()
+    {
+        MapId = "MAP-SAME-TARGET-ALTERNATIVE",
+        MapName = "Locked edge with alternative route",
+        Version = "1.0",
+        Nodes = new[] { Node("P1"), Node("P2"), Node("X"), Node("Z"), Node("Y"), Node("Q"), Node("D") },
+        Edges = new[]
+        {
+            Edge("E-P1-X", "P1", "X"),
+            Edge("E-P2-X", "P2", "X"),
+            Edge("E-X-Z", "X", "Z"),
+            Edge("E-Z-D", "Z", "D"),
+            Edge("E-P2-Y", "P2", "Y"),
+            Edge("E-Y-Q", "Y", "Q"),
+            Edge("E-Q-D", "Q", "D")
         }
     };
 

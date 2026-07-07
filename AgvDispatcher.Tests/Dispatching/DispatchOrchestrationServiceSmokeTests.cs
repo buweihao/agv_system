@@ -397,6 +397,91 @@ public sealed class DispatchOrchestrationServiceSmokeTests
         Assert.Single(fixture.Adapter.Commands);
     }
 
+    [Fact]
+    public async Task ReplanTask_ShouldCreateNewPlanAndReservation()
+    {
+        var fixture = CreateFixture(map: CreateAlternativeRouteMap());
+        var started = await fixture.Service.StartTaskAsync(StartRequest(rollingWindowSize: 1));
+        Assert.True(started.Success);
+
+        var result = await fixture.Service.ReplanTaskAsync(new ReplanDispatchTaskRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001",
+            VehicleId = "AGV-001",
+            CurrentNodeId = "N1",
+            CurrentSegmentSequence = 0,
+            Reason = "Avoid locked direct edge",
+            ForbiddenEdgeIds = new[] { "E1" }
+        });
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(DispatchExecutionState.Running, result.Data!.Execution.State);
+        Assert.NotEqual(started.Data!.PlanId, result.Data.NewPlanId);
+        Assert.NotEqual(started.Data.ReservationId, result.Data.NewReservationId);
+        Assert.True(result.Data.RouteChanged);
+        Assert.True(result.Data.FirstWindowLocked);
+        Assert.False(result.Data.ShouldWait);
+        Assert.False(result.Data.RequiresReplan);
+        Assert.Equal(TrafficResourceState.Locked, await GetEdgeStateAsync(fixture.Traffic, "E3"));
+    }
+
+    [Fact]
+    public async Task ReplanTask_ShouldReleaseOldReservation()
+    {
+        var fixture = CreateFixture(map: CreateAlternativeRouteMap());
+        var started = await fixture.Service.StartTaskAsync(StartRequest(rollingWindowSize: 1));
+        Assert.True(started.Success);
+        Assert.Equal(TrafficResourceState.Locked, await GetEdgeStateAsync(fixture.Traffic, "E1"));
+
+        var result = await fixture.Service.ReplanTaskAsync(new ReplanDispatchTaskRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001",
+            VehicleId = "AGV-001",
+            CurrentNodeId = "N1",
+            Reason = "Release old direct route",
+            ForbiddenEdgeIds = new[] { "E1" },
+            ReleaseOldReservation = true
+        });
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(started.Data!.ReservationId, result.Data!.OldReservationId);
+        Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E1"));
+        var activeReservations = await fixture.Reservations.GetActiveReservationsAsync(
+            new GetRouteReservationsRequest { Context = Context });
+        Assert.True(activeReservations.Success, activeReservations.Message);
+        Assert.DoesNotContain(activeReservations.Data!, item => item.ReservationId == started.Data.ReservationId);
+        Assert.Contains(activeReservations.Data!, item => item.ReservationId == result.Data.NewReservationId);
+    }
+
+    [Fact]
+    public async Task ReplanTask_WhenNoRoute_ShouldRemainReplanning()
+    {
+        var fixture = CreateFixture(map: CreateLinearMap());
+        var started = await fixture.Service.StartTaskAsync(StartRequest(rollingWindowSize: 1));
+        Assert.True(started.Success);
+
+        var result = await fixture.Service.ReplanTaskAsync(new ReplanDispatchTaskRequest
+        {
+            Context = Context,
+            TaskId = "TASK-001",
+            VehicleId = "AGV-001",
+            CurrentNodeId = "N1",
+            CurrentSegmentSequence = 0,
+            Reason = "Direct edge disabled and no alternative exists",
+            ForbiddenEdgeIds = new[] { "E1" }
+        });
+
+        Assert.True(result.Success, result.Message);
+        Assert.True(result.Data!.RequiresReplan);
+        Assert.False(result.Data.FirstWindowLocked);
+        Assert.Null(result.Data.NewPlanId);
+        Assert.Null(result.Data.NewReservationId);
+        Assert.Equal(DispatchExecutionState.Replanning, result.Data.Execution.State);
+        Assert.Equal(DispatchOrchestrationFailureCode.ReplanRequired.ToString(), result.Data.Execution.LastFailureCode);
+    }
+
     private static StartDispatchTaskRequest StartRequest(int rollingWindowSize = 1) => new()
     {
         Context = Context,
@@ -419,6 +504,25 @@ public sealed class DispatchOrchestrationServiceSmokeTests
             Edge("E1", "N1", "N2"),
             Edge("E2", "N2", "N3"),
             Edge("E3", "N3", "N4")
+        }
+    };
+
+    private static MapSnapshotDto CreateAlternativeRouteMap() => new()
+    {
+        MapId = "DISPATCH-REPLAN-MAP",
+        MapName = "N1 to N4 alternative map",
+        Version = "1.0",
+        Nodes = new[]
+        {
+            Node("N1"), Node("N2"), Node("N3"), Node("N4"), Node("N5")
+        },
+        Edges = new[]
+        {
+            Edge("E1", "N1", "N2"),
+            Edge("E2", "N2", "N4"),
+            Edge("E3", "N1", "N3"),
+            Edge("E4", "N3", "N5"),
+            Edge("E5", "N5", "N4")
         }
     };
 

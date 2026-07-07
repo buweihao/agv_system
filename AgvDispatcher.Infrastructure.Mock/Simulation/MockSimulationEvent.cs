@@ -50,6 +50,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
         VehicleFaulted = 120,
         RetryAttempted = 130,
         VehicleRecovered = 140,
+        TaskReplanned = 150,
         SimulationFailed = 900,
         NoOp = 1000
     }

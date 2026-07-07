@@ -226,6 +226,7 @@ public sealed class DebugSnapshotServiceTests
     {
         public Task<AgvResult<StartDispatchTaskResultDto>> StartTaskAsync(StartDispatchTaskRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<AgvResult<RetryWaitingDispatchResultDto>> RetryWaitingTaskAsync(RetryWaitingDispatchRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<AgvResult<ReplanDispatchTaskResultDto>> ReplanTaskAsync(ReplanDispatchTaskRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<AgvResult<AdvanceDispatchRouteResultDto>> AdvanceRouteAsync(AdvanceDispatchRouteRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<AgvResult> CompleteTaskAsync(CompleteDispatchTaskRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<AgvResult> CancelTaskAsync(CancelDispatchTaskRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();

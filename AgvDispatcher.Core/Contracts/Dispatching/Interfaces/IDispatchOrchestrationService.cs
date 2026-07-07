@@ -31,6 +31,13 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Interfaces
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Replans a dispatch execution from the vehicle's current position to the task target.
+        /// </summary>
+        Task<AgvResult<ReplanDispatchTaskResultDto>> ReplanTaskAsync(
+            ReplanDispatchTaskRequest request,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Advances a running route by releasing passed resources and optionally acquiring the next window.
         /// </summary>
         Task<AgvResult<AdvanceDispatchRouteResultDto>> AdvanceRouteAsync(

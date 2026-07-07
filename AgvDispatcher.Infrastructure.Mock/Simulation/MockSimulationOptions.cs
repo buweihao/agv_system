@@ -10,6 +10,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
         public int MaxRetryCount { get; init; } = 3;
 
+        public MockSimulationTimeoutPolicy OnTimeoutPolicy { get; init; } =
+            MockSimulationTimeoutPolicy.RetryOnly;
+
         public bool AutoStartTasks { get; init; }
 
         public void Validate()
@@ -41,7 +44,21 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             WaitTimeout = WaitTimeout,
             RetryInterval = RetryInterval,
             MaxRetryCount = MaxRetryCount,
+            OnTimeoutPolicy = OnTimeoutPolicy,
             AutoStartTasks = AutoStartTasks
         };
+    }
+
+    public enum MockSimulationTimeoutPolicy
+    {
+        RetryOnly = 0,
+        FailTask = 1
+    }
+
+    public enum MockFaultPolicy
+    {
+        HoldResources = 0,
+        ReleaseReservation = 1,
+        FailTaskAndRelease = 2
     }
 }

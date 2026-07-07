@@ -5,6 +5,7 @@ using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Services;
 using AgvDispatcher.Infrastructure.Mock.Planning;
 using AgvDispatcher.Infrastructure.Mock.Reservations;
+using AgvDispatcher.Infrastructure.Mock.Simulation;
 using AgvDispatcher.Infrastructure.Mock.Traffic;
 using Prism.Ioc;
 
@@ -27,6 +28,8 @@ namespace AgvDispatcher.Infrastructure.Mock
             containerRegistry.RegisterSingleton<ITaskConfigService, MockTaskConfigService>();
             containerRegistry.RegisterSingleton<ITrafficControlService, MockTrafficControlService>();
             containerRegistry.RegisterSingleton<IRouteReservationService, MockRouteReservationService>();
+            containerRegistry.RegisterInstance(new MockSimulationOptions());
+            containerRegistry.RegisterSingleton<IMockFleetSimulationEngine, MockFleetSimulationEngine>();
         }
     }
 }

@@ -340,25 +340,214 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             };
         }
 
+        public async Task<MockSimulationTickResult> CancelTaskAsync(
+            string taskId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_dispatchOrchestrationService is null || _vehicleStateStore is null || _trafficControlService is null)
+            {
+                return Failure("Cancellation dependencies were not supplied to the simulation engine.", taskId: taskId);
+            }
+
+            var dispatchTaskId = ResolveCreatedTaskId(taskId);
+            var vehicle = FindVehicleByTask(dispatchTaskId);
+            var cancel = await _dispatchOrchestrationService.CancelTaskAsync(
+                new CancelDispatchTaskRequest
+                {
+                    Context = Context("CancelTask"),
+                    TaskId = dispatchTaskId,
+                    Reason = "Mock simulation task cancellation",
+                    ReleaseReservation = true,
+                    SendCancelCommand = true
+                },
+                cancellationToken).ConfigureAwait(false);
+            if (!cancel.Success)
+            {
+                return Failure(cancel.Message, vehicle?.VehicleId, dispatchTaskId);
+            }
+
+            if (vehicle is not null)
+            {
+                await ReleaseVehicleResourcesAsync(vehicle.VehicleId, dispatchTaskId, cancellationToken)
+                    .ConfigureAwait(false);
+                var updated = CopyVehicle(
+                    vehicle,
+                    state: MockVehicleSimulationState.Idle,
+                    currentTaskId: string.Empty,
+                    waitingSince: null,
+                    lastRetryAt: null);
+                lock (_syncRoot)
+                {
+                    _vehicles[vehicle.VehicleId] = updated;
+                }
+
+                UpsertVehicleSnapshot(updated, RobotState.Idle, null, hasAlarm: false);
+            }
+
+            return new MockSimulationTickResult
+            {
+                Tick = CurrentTick,
+                Succeeded = true,
+                Events = new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = CurrentTick,
+                        EventType = MockSimulationEventType.TaskCanceled,
+                        VehicleId = vehicle?.VehicleId,
+                        TaskId = dispatchTaskId,
+                        Message = "Mock simulation task was canceled."
+                    }
+                },
+                VehicleStates = GetVehicleStates()
+            };
+        }
+
+        public async Task<MockSimulationTickResult> InjectFaultAsync(
+            string vehicleId,
+            MockFaultPolicy faultPolicy,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_vehicleStateStore is null)
+            {
+                return Failure("Vehicle state dependency was not supplied to the simulation engine.", vehicleId);
+            }
+
+            MockVehicleRuntimeState vehicle;
+            lock (_syncRoot)
+            {
+                if (!_vehicles.TryGetValue(vehicleId, out var current))
+                {
+                    return Failure($"Vehicle '{vehicleId}' was not found in the current simulation.", vehicleId);
+                }
+
+                vehicle = current.Clone();
+            }
+
+            var taskId = vehicle.CurrentTaskId;
+            if ((faultPolicy is MockFaultPolicy.ReleaseReservation or MockFaultPolicy.FailTaskAndRelease) &&
+                !string.IsNullOrWhiteSpace(taskId))
+            {
+                await ReleaseExecutionReservationAsync(taskId!, cancellationToken).ConfigureAwait(false);
+                await ReleaseVehicleResourcesAsync(vehicle.VehicleId, taskId!, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (faultPolicy == MockFaultPolicy.FailTaskAndRelease &&
+                _taskService is not null &&
+                !string.IsNullOrWhiteSpace(taskId))
+            {
+                _taskService.UpdateTaskState(taskId!, TaskState.Failed, "Mock simulation vehicle fault.");
+            }
+
+            var updated = CopyVehicle(
+                vehicle,
+                state: MockVehicleSimulationState.Fault,
+                currentTaskId: taskId,
+                waitingSince: null,
+                lastRetryAt: null);
+            updated = CopyFault(updated, hasFault: true, faultCode: faultPolicy.ToString());
+            lock (_syncRoot)
+            {
+                _vehicles[vehicle.VehicleId] = updated;
+            }
+
+            UpsertVehicleSnapshot(
+                updated,
+                RobotState.Fault,
+                string.IsNullOrWhiteSpace(taskId) ? null : taskId,
+                hasAlarm: true,
+                alarmCode: faultPolicy.ToString(),
+                alarmMessage: $"Mock simulation fault policy: {faultPolicy}");
+
+            return new MockSimulationTickResult
+            {
+                Tick = CurrentTick,
+                Succeeded = true,
+                Events = new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = CurrentTick,
+                        EventType = MockSimulationEventType.VehicleFaulted,
+                        VehicleId = vehicle.VehicleId,
+                        TaskId = taskId,
+                        Message = $"Vehicle fault injected with policy {faultPolicy}."
+                    }
+                },
+                VehicleStates = GetVehicleStates()
+            };
+        }
+
+        public Task<MockSimulationTickResult> RecoverVehicleAsync(
+            string vehicleId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_vehicleStateStore is null)
+            {
+                return Task.FromResult(Failure("Vehicle state dependency was not supplied to the simulation engine.", vehicleId));
+            }
+
+            MockVehicleRuntimeState updated;
+            lock (_syncRoot)
+            {
+                if (!_vehicles.TryGetValue(vehicleId, out var vehicle))
+                {
+                    return Task.FromResult(Failure($"Vehicle '{vehicleId}' was not found in the current simulation.", vehicleId));
+                }
+
+                updated = CopyFault(
+                    CopyVehicle(
+                        vehicle,
+                        state: MockVehicleSimulationState.Idle,
+                        currentTaskId: string.Empty,
+                        waitingSince: null,
+                        lastRetryAt: null),
+                    hasFault: false,
+                    faultCode: null);
+                _vehicles[vehicleId] = updated;
+            }
+
+            UpsertVehicleSnapshot(updated, RobotState.Idle, null, hasAlarm: false);
+            return Task.FromResult(new MockSimulationTickResult
+            {
+                Tick = CurrentTick,
+                Succeeded = true,
+                Events = new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = CurrentTick,
+                        EventType = MockSimulationEventType.VehicleRecovered,
+                        VehicleId = vehicleId,
+                        Message = "Vehicle recovered from mock fault."
+                    }
+                },
+                VehicleStates = GetVehicleStates()
+            });
+        }
+
         public Task<MockSimulationTickResult> StepAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            MockVehicleRuntimeState[] runningVehicles;
+            MockVehicleRuntimeState[] activeVehicles;
             long tick;
             lock (_syncRoot)
             {
                 _tick++;
                 tick = _tick;
-                runningVehicles = _vehicles.Values
-                    .Where(vehicle => vehicle.State == MockVehicleSimulationState.Running &&
+                activeVehicles = _vehicles.Values
+                    .Where(vehicle => IsTickManagedState(vehicle.State) &&
                                       !string.IsNullOrWhiteSpace(vehicle.CurrentTaskId))
                     .OrderBy(vehicle => vehicle.VehicleId, StringComparer.OrdinalIgnoreCase)
                     .Select(vehicle => vehicle.Clone())
                     .ToArray();
             }
 
-            if (runningVehicles.Length == 0)
+            if (activeVehicles.Length == 0)
             {
                 return Task.FromResult(new MockSimulationTickResult
                 {
@@ -386,19 +575,28 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 return Task.FromResult(Failure("Route stepping dependencies were not supplied to the simulation engine."));
             }
 
-            return StepRunningVehiclesAsync(runningVehicles, tick, cancellationToken);
+            return StepActiveVehiclesAsync(activeVehicles, tick, cancellationToken);
         }
 
-        private async Task<MockSimulationTickResult> StepRunningVehiclesAsync(
-            IReadOnlyList<MockVehicleRuntimeState> runningVehicles,
+        private async Task<MockSimulationTickResult> StepActiveVehiclesAsync(
+            IReadOnlyList<MockVehicleRuntimeState> activeVehicles,
             long tick,
             CancellationToken cancellationToken)
         {
             var events = new List<MockSimulationEvent>();
             var succeeded = true;
 
-            foreach (var vehicle in runningVehicles)
+            foreach (var vehicle in activeVehicles)
             {
+                if (vehicle.State == MockVehicleSimulationState.WaitingForTraffic)
+                {
+                    var retry = await RetryWaitingVehicleAsync(vehicle, tick, cancellationToken)
+                        .ConfigureAwait(false);
+                    succeeded &= retry.Succeeded;
+                    events.AddRange(retry.Events);
+                    continue;
+                }
+
                 var taskId = vehicle.CurrentTaskId!;
                 var execution = await _dispatchOrchestrationService!.GetExecutionAsync(
                     new GetDispatchExecutionRequest
@@ -602,6 +800,19 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     });
                 }
 
+                if (advance.Data.RequiresReplan)
+                {
+                    events.Add(new MockSimulationEvent
+                    {
+                        Tick = tick,
+                        EventType = MockSimulationEventType.ReplanRequired,
+                        VehicleId = vehicle.VehicleId,
+                        TaskId = taskId,
+                        ResourceId = segment.EdgeId,
+                        Message = advance.Data.Message ?? "Current route requires replan."
+                    });
+                }
+
                 if (isFinalSegment)
                 {
                     events.Add(new MockSimulationEvent
@@ -625,6 +836,283 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             };
         }
 
+        private async Task<MockSimulationTickResult> RetryWaitingVehicleAsync(
+            MockVehicleRuntimeState vehicle,
+            long tick,
+            CancellationToken cancellationToken)
+        {
+            var taskId = vehicle.CurrentTaskId!;
+            var options = CurrentScenario?.Options ?? new MockSimulationOptions();
+            var now = DateTimeOffset.Now;
+            var waitingSince = vehicle.WaitingSince ?? now;
+            if (now - waitingSince < options.WaitTimeout)
+            {
+                return new MockSimulationTickResult
+                {
+                    Tick = tick,
+                    Succeeded = true,
+                    Events = new[]
+                    {
+                        new MockSimulationEvent
+                        {
+                            Tick = tick,
+                            EventType = MockSimulationEventType.WaitingForTraffic,
+                            VehicleId = vehicle.VehicleId,
+                            TaskId = taskId,
+                            ResourceId = vehicle.ReservationId,
+                            Message = "Vehicle is waiting for traffic; timeout has not elapsed."
+                        }
+                    }
+                };
+            }
+
+            if (vehicle.LastRetryAt.HasValue && now - vehicle.LastRetryAt.Value < options.RetryInterval)
+            {
+                return new MockSimulationTickResult
+                {
+                    Tick = tick,
+                    Succeeded = true,
+                    Events = new[]
+                    {
+                        new MockSimulationEvent
+                        {
+                            Tick = tick,
+                            EventType = MockSimulationEventType.WaitingForTraffic,
+                            VehicleId = vehicle.VehicleId,
+                            TaskId = taskId,
+                            ResourceId = vehicle.ReservationId,
+                            Message = "Vehicle is waiting for the next retry interval."
+                        }
+                    }
+                };
+            }
+
+            if (vehicle.WaitRetryCount >= options.MaxRetryCount)
+            {
+                return HandleWaitingTimeoutLimit(vehicle, taskId, tick, options);
+            }
+
+            var retry = await _dispatchOrchestrationService!.RetryWaitingTaskAsync(
+                new RetryWaitingDispatchRequest
+                {
+                    Context = Context("StepRetryWaiting"),
+                    TaskId = taskId,
+                    SendVehicleCommand = true
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            if (!retry.Success || retry.Data is null)
+            {
+                return new MockSimulationTickResult
+                {
+                    Tick = tick,
+                    Succeeded = false,
+                    Events = new[] { FailureEvent(tick, vehicle.VehicleId, taskId, retry.Message) }
+                };
+            }
+
+            if (retry.Data.FirstWindowLocked)
+            {
+                var updated = CopyVehicle(
+                    vehicle,
+                    state: MockVehicleSimulationState.Running,
+                    currentTaskId: taskId,
+                    reservationId: retry.Data.ReservationId,
+                    planId: retry.Data.PlanId,
+                    waitingSince: null,
+                    lastRetryAt: now,
+                    waitRetryCount: vehicle.WaitRetryCount + 1);
+                lock (_syncRoot)
+                {
+                    _vehicles[vehicle.VehicleId] = updated;
+                }
+
+                _vehicleStateStore!.UpsertStatus(new VehicleStatusSnapshot
+                {
+                    VehicleId = updated.VehicleId,
+                    Brand = updated.Brand,
+                    State = RobotState.Running,
+                    BatteryLevel = updated.BatteryLevel,
+                    Location = updated.CurrentNodeId,
+                    CurrentTaskId = taskId,
+                    IsOnline = updated.IsOnline,
+                    ReportedAt = DateTime.Now,
+                    Position = new MapPosition { NodeId = updated.CurrentNodeId },
+                    Telemetry = new Dictionary<string, string>
+                    {
+                        ["MockSimulationState"] = MockVehicleSimulationState.Running.ToString(),
+                        ["WaitRetryCount"] = (vehicle.WaitRetryCount + 1).ToString()
+                    }
+                });
+
+                return new MockSimulationTickResult
+                {
+                    Tick = tick,
+                    Succeeded = true,
+                    Events = new[]
+                    {
+                        new MockSimulationEvent
+                        {
+                            Tick = tick,
+                            EventType = MockSimulationEventType.TaskDispatchStarted,
+                            VehicleId = vehicle.VehicleId,
+                            TaskId = taskId,
+                            ResourceId = retry.Data.ReservationId,
+                            Message = retry.Data.Message ?? "Waiting dispatch acquired the first rolling window."
+                        },
+                        new MockSimulationEvent
+                        {
+                            Tick = tick,
+                            EventType = MockSimulationEventType.RetryAttempted,
+                            VehicleId = vehicle.VehicleId,
+                            TaskId = taskId,
+                            ResourceId = retry.Data.ReservationId,
+                            Message = "Waiting dispatch retry succeeded."
+                        }
+                    }
+                };
+            }
+
+            var waiting = CopyVehicle(
+                vehicle,
+                state: retry.Data.RequiresReplan
+                    ? MockVehicleSimulationState.Replanning
+                    : MockVehicleSimulationState.WaitingForTraffic,
+                currentTaskId: taskId,
+                reservationId: retry.Data.ReservationId,
+                planId: retry.Data.PlanId,
+                waitingSince: vehicle.WaitingSince ?? DateTimeOffset.Now,
+                lastRetryAt: now,
+                waitRetryCount: vehicle.WaitRetryCount + 1);
+            lock (_syncRoot)
+            {
+                _vehicles[vehicle.VehicleId] = waiting;
+            }
+
+            return new MockSimulationTickResult
+            {
+                Tick = tick,
+                Succeeded = true,
+                Events = new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = tick,
+                        EventType = MockSimulationEventType.RetryAttempted,
+                        VehicleId = vehicle.VehicleId,
+                        TaskId = taskId,
+                        ResourceId = retry.Data.ReservationId,
+                        Message = "Waiting dispatch retry attempted."
+                    },
+                    new MockSimulationEvent
+                    {
+                        Tick = tick,
+                        EventType = retry.Data.RequiresReplan
+                            ? MockSimulationEventType.ReplanRequired
+                            : MockSimulationEventType.WaitingForTraffic,
+                        VehicleId = vehicle.VehicleId,
+                        TaskId = taskId,
+                        ResourceId = retry.Data.ReservationId,
+                        Message = retry.Data.Message ?? "Vehicle is still waiting for traffic."
+                    }
+                }
+            };
+        }
+
+        private MockSimulationTickResult HandleWaitingTimeoutLimit(
+            MockVehicleRuntimeState vehicle,
+            string taskId,
+            long tick,
+            MockSimulationOptions options)
+        {
+            var terminalState = options.OnTimeoutPolicy == MockSimulationTimeoutPolicy.FailTask
+                ? MockVehicleSimulationState.Failed
+                : MockVehicleSimulationState.TimedOut;
+
+            if (options.OnTimeoutPolicy == MockSimulationTimeoutPolicy.FailTask)
+            {
+                _taskService!.UpdateTaskState(taskId, TaskState.Failed, "Mock simulation waiting timeout.");
+            }
+
+            var updated = CopyVehicle(
+                vehicle,
+                state: terminalState,
+                currentTaskId: taskId,
+                waitingSince: vehicle.WaitingSince,
+                lastRetryAt: vehicle.LastRetryAt,
+                waitRetryCount: vehicle.WaitRetryCount);
+            lock (_syncRoot)
+            {
+                _vehicles[vehicle.VehicleId] = updated;
+            }
+
+            _vehicleStateStore!.UpsertStatus(new VehicleStatusSnapshot
+            {
+                VehicleId = updated.VehicleId,
+                Brand = updated.Brand,
+                State = terminalState == MockVehicleSimulationState.Failed
+                    ? RobotState.Fault
+                    : RobotState.Idle,
+                BatteryLevel = updated.BatteryLevel,
+                Location = updated.CurrentNodeId,
+                CurrentTaskId = taskId,
+                IsOnline = updated.IsOnline,
+                HasAlarm = terminalState == MockVehicleSimulationState.Failed,
+                ActiveAlarmCode = terminalState == MockVehicleSimulationState.Failed ? "MOCK_WAIT_TIMEOUT" : null,
+                ActiveAlarmMessage = terminalState == MockVehicleSimulationState.Failed
+                    ? "Mock simulation waiting timeout."
+                    : null,
+                ReportedAt = DateTime.Now,
+                Position = new MapPosition { NodeId = updated.CurrentNodeId },
+                Telemetry = new Dictionary<string, string>
+                {
+                    ["MockSimulationState"] = terminalState.ToString(),
+                    ["WaitRetryCount"] = vehicle.WaitRetryCount.ToString()
+                }
+            });
+
+            return new MockSimulationTickResult
+            {
+                Tick = tick,
+                Succeeded = true,
+                Events = options.OnTimeoutPolicy == MockSimulationTimeoutPolicy.FailTask
+                    ? new[]
+                    {
+                        new MockSimulationEvent
+                        {
+                            Tick = tick,
+                            EventType = MockSimulationEventType.WaitingTimedOut,
+                            VehicleId = vehicle.VehicleId,
+                            TaskId = taskId,
+                            ResourceId = vehicle.ReservationId,
+                            Message = "Waiting dispatch exceeded retry limit; task failed."
+                        }
+                    }
+                    : new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = tick,
+                        EventType = MockSimulationEventType.WaitingTimedOut,
+                        VehicleId = vehicle.VehicleId,
+                        TaskId = taskId,
+                        ResourceId = vehicle.ReservationId,
+                        Message = "Waiting dispatch exceeded retry limit; vehicle marked timed out."
+                    },
+                    new MockSimulationEvent
+                    {
+                        Tick = tick,
+                        EventType = MockSimulationEventType.ReplanRequired,
+                        VehicleId = vehicle.VehicleId,
+                        TaskId = taskId,
+                        ResourceId = vehicle.ReservationId,
+                        Message = "Waiting timeout reached; running replan is required in the next phase."
+                    }
+                },
+                VehicleStates = GetVehicleStates()
+            };
+        }
+
         private IReadOnlyList<MockVehicleRuntimeState> GetVehicleStatesNoLock()
         {
             return _vehicles.Values
@@ -644,8 +1132,25 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             }
         }
 
+        private string ResolveCreatedTaskId(string taskId)
+        {
+            lock (_syncRoot)
+            {
+                return ResolveCreatedTaskIdNoLock(taskId);
+            }
+        }
+
         private string ResolveCreatedTaskIdNoLock(string taskId) =>
             _createdTaskIds.TryGetValue(taskId, out var createdTaskId) ? createdTaskId : taskId;
+
+        private MockVehicleRuntimeState? FindVehicleByTask(string taskId)
+        {
+            lock (_syncRoot)
+            {
+                return _vehicles.Values.FirstOrDefault(vehicle =>
+                    string.Equals(vehicle.CurrentTaskId, taskId, StringComparison.OrdinalIgnoreCase))?.Clone();
+            }
+        }
 
         private static MockSimulationTickResult Failure(
             string? message,
@@ -676,7 +1181,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             string? reservationId = null,
             string? planId = null,
             int? currentSegmentSequence = null,
-            DateTimeOffset? waitingSince = null) => new()
+            DateTimeOffset? waitingSince = null,
+            DateTimeOffset? lastRetryAt = null,
+            int? waitRetryCount = null) => new()
         {
             VehicleId = source.VehicleId,
             Brand = source.Brand,
@@ -689,11 +1196,37 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             ReservationId = reservationId ?? source.ReservationId,
             PlanId = planId ?? source.PlanId,
             WaitingSince = waitingSince,
-            WaitRetryCount = source.WaitRetryCount,
+            LastRetryAt = lastRetryAt ?? source.LastRetryAt,
+            WaitRetryCount = waitRetryCount ?? source.WaitRetryCount,
             BatteryLevel = source.BatteryLevel,
             IsOnline = source.IsOnline,
             HasFault = source.HasFault,
             FaultCode = source.FaultCode,
+            UpdatedAt = DateTimeOffset.Now
+        };
+
+        private static MockVehicleRuntimeState CopyFault(
+            MockVehicleRuntimeState source,
+            bool hasFault,
+            string? faultCode) => new()
+        {
+            VehicleId = source.VehicleId,
+            Brand = source.Brand,
+            State = source.State,
+            CurrentNodeId = source.CurrentNodeId,
+            CurrentEdgeId = source.CurrentEdgeId,
+            CurrentTaskId = source.CurrentTaskId,
+            TargetNodeId = source.TargetNodeId,
+            CurrentSegmentSequence = source.CurrentSegmentSequence,
+            ReservationId = source.ReservationId,
+            PlanId = source.PlanId,
+            WaitingSince = source.WaitingSince,
+            LastRetryAt = source.LastRetryAt,
+            WaitRetryCount = source.WaitRetryCount,
+            BatteryLevel = source.BatteryLevel,
+            IsOnline = source.IsOnline,
+            HasFault = hasFault,
+            FaultCode = faultCode,
             UpdatedAt = DateTimeOffset.Now
         };
 
@@ -721,5 +1254,87 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             TaskId = taskId,
             Message = string.IsNullOrWhiteSpace(message) ? "Simulation step failed." : message
         };
+
+        private static bool IsTickManagedState(MockVehicleSimulationState state) =>
+            state is MockVehicleSimulationState.Running or MockVehicleSimulationState.WaitingForTraffic;
+
+        private async Task ReleaseExecutionReservationAsync(
+            string taskId,
+            CancellationToken cancellationToken)
+        {
+            if (_dispatchOrchestrationService is null || _routeReservationService is null)
+            {
+                return;
+            }
+
+            var execution = await _dispatchOrchestrationService.GetExecutionAsync(
+                new GetDispatchExecutionRequest
+                {
+                    Context = Context("ReleaseFaultReservation"),
+                    TaskId = taskId
+                },
+                cancellationToken).ConfigureAwait(false);
+            if (execution.Success && !string.IsNullOrWhiteSpace(execution.Data?.ReservationId))
+            {
+                await _routeReservationService.ReleaseReservationAsync(
+                    new ReleaseRouteReservationRequest
+                    {
+                        Context = Context("ReleaseFaultReservation"),
+                        ReservationId = execution.Data.ReservationId,
+                        Reason = "Mock simulation fault release"
+                    },
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private async Task ReleaseVehicleResourcesAsync(
+            string vehicleId,
+            string taskId,
+            CancellationToken cancellationToken)
+        {
+            if (_trafficControlService is null)
+            {
+                return;
+            }
+
+            await _trafficControlService.ReleaseAsync(
+                new TrafficReleaseRequest
+                {
+                    Context = Context("ReleaseVehicleResources"),
+                    AgvId = vehicleId,
+                    TaskId = taskId,
+                    Reason = "Mock simulation resource release"
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private void UpsertVehicleSnapshot(
+            MockVehicleRuntimeState vehicle,
+            RobotState state,
+            string? taskId,
+            bool hasAlarm,
+            string? alarmCode = null,
+            string? alarmMessage = null)
+        {
+            _vehicleStateStore?.UpsertStatus(new VehicleStatusSnapshot
+            {
+                VehicleId = vehicle.VehicleId,
+                Brand = vehicle.Brand,
+                State = state,
+                BatteryLevel = vehicle.BatteryLevel,
+                Location = vehicle.CurrentNodeId,
+                CurrentTaskId = taskId,
+                IsOnline = vehicle.IsOnline,
+                HasAlarm = hasAlarm,
+                ActiveAlarmCode = alarmCode,
+                ActiveAlarmMessage = alarmMessage,
+                ReportedAt = DateTime.Now,
+                Position = new MapPosition { NodeId = vehicle.CurrentNodeId },
+                Telemetry = new Dictionary<string, string>
+                {
+                    ["MockSimulationState"] = vehicle.State.ToString()
+                }
+            });
+        }
     }
 }

@@ -105,6 +105,129 @@ public sealed class MockFleetSimulationEngineDispatchStartTests
     }
 
     [Fact]
+    public async Task SameTarget_SecondVehicleShouldWait()
+    {
+        var fixture = CreateFixture();
+        await fixture.Engine.InitializeAsync(CreateScenario(singleTask: false));
+        var started = await fixture.Engine.StartAllAsync();
+        Assert.True(started.Succeeded, started.Message);
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.WaitingForTraffic &&
+            item.VehicleId == "AGV-B");
+        Assert.DoesNotContain(step.Events, item =>
+            item.EventType == MockSimulationEventType.VehicleMoved &&
+            item.VehicleId == "AGV-B");
+
+        var vehicleA = fixture.Engine.GetVehicleState("AGV-A");
+        var vehicleB = fixture.Engine.GetVehicleState("AGV-B");
+        Assert.Equal(MockVehicleSimulationState.Running, vehicleA!.State);
+        Assert.Equal(MockVehicleSimulationState.WaitingForTraffic, vehicleB!.State);
+        Assert.Equal("P2", vehicleB.CurrentNodeId);
+        Assert.Equal(TaskState.Pending, fixture.Tasks.GetTask("TASK-B")!.State);
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E-X1-D1"));
+    }
+
+    [Fact]
+    public async Task SameTarget_AfterFirstCompletesSecondShouldContinue()
+    {
+        var fixture = CreateFixture();
+        await fixture.Engine.InitializeAsync(CreateScenario(singleTask: false));
+        var started = await fixture.Engine.StartAllAsync();
+        Assert.True(started.Succeeded, started.Message);
+        Assert.Equal(MockVehicleSimulationState.WaitingForTraffic, fixture.Engine.GetVehicleState("AGV-B")!.State);
+
+        await RunUntilIdleAsync(fixture.Engine, "AGV-A");
+
+        var vehicleB = fixture.Engine.GetVehicleState("AGV-B");
+        Assert.NotNull(vehicleB);
+        Assert.Equal(MockVehicleSimulationState.Running, vehicleB!.State);
+        Assert.Equal(TaskState.Running, fixture.Tasks.GetTask("TASK-B")!.State);
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.VehicleMoved &&
+            item.VehicleId == "AGV-B");
+        Assert.NotEqual("P2", fixture.Engine.GetVehicleState("AGV-B")!.CurrentNodeId);
+    }
+
+    [Fact]
+    public async Task WaitingVehicle_BeforeTimeout_ShouldRemainWaiting()
+    {
+        var fixture = CreateFixture();
+        await fixture.Engine.InitializeAsync(CreateScenario(
+            singleTask: false,
+            options: new MockSimulationOptions
+            {
+                RollingWindowSize = 2,
+                WaitTimeout = TimeSpan.FromHours(1),
+                RetryInterval = TimeSpan.Zero,
+                MaxRetryCount = 3
+            }));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.WaitingForTraffic &&
+            item.VehicleId == "AGV-B");
+        Assert.DoesNotContain(step.Events, item =>
+            item.EventType == MockSimulationEventType.RetryAttempted &&
+            item.VehicleId == "AGV-B");
+        var vehicleB = fixture.Engine.GetVehicleState("AGV-B");
+        Assert.Equal(MockVehicleSimulationState.WaitingForTraffic, vehicleB!.State);
+        Assert.Equal(0, vehicleB.WaitRetryCount);
+    }
+
+    [Fact]
+    public async Task WaitingVehicle_AfterTimeout_ShouldRetry()
+    {
+        var fixture = CreateFixture();
+        await fixture.Engine.InitializeAsync(CreateScenario(singleTask: false));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var finalStep = await RunUntilIdleAsync(fixture.Engine, "AGV-A");
+
+        Assert.True(finalStep.Succeeded, finalStep.Message);
+        Assert.Contains(finalStep.Events, item =>
+            item.EventType == MockSimulationEventType.RetryAttempted &&
+            item.VehicleId == "AGV-B");
+        Assert.Equal(MockVehicleSimulationState.Running, fixture.Engine.GetVehicleState("AGV-B")!.State);
+    }
+
+    [Fact]
+    public async Task WaitingVehicle_ExceedsMaxRetry_ShouldFailOrRemainTimedOut()
+    {
+        var fixture = CreateFixture();
+        await fixture.Engine.InitializeAsync(CreateScenario(
+            singleTask: false,
+            options: new MockSimulationOptions
+            {
+                RollingWindowSize = 2,
+                WaitTimeout = TimeSpan.Zero,
+                RetryInterval = TimeSpan.Zero,
+                MaxRetryCount = 0,
+                OnTimeoutPolicy = MockSimulationTimeoutPolicy.FailTask
+            }));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.WaitingTimedOut &&
+            item.VehicleId == "AGV-B");
+        Assert.Equal(MockVehicleSimulationState.Failed, fixture.Engine.GetVehicleState("AGV-B")!.State);
+        Assert.Equal(TaskState.Failed, fixture.Tasks.GetTask("TASK-B")!.State);
+    }
+
+    [Fact]
     public async Task StepSingleVehicle_ShouldMoveToNextNode()
     {
         var fixture = CreateLinearFixture();
@@ -206,6 +329,74 @@ public sealed class MockFleetSimulationEngineDispatchStartTests
         Assert.Empty(activeReservations.Data!);
     }
 
+    [Fact]
+    public async Task CancelTask_ShouldReleaseAllResources()
+    {
+        var fixture = CreateLinearFixture();
+        await fixture.Engine.InitializeAsync(CreateLinearScenario());
+        Assert.True((await fixture.Engine.StartTaskAsync("AGV-A", "TASK-A")).Succeeded);
+        Assert.True((await fixture.Engine.StepAsync()).Succeeded);
+
+        var result = await fixture.Engine.CancelTaskAsync("TASK-A");
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains(result.Events, item => item.EventType == MockSimulationEventType.TaskCanceled);
+        Assert.Equal(TaskState.Cancelled, fixture.Tasks.GetTask("TASK-A")!.State);
+        Assert.Equal(MockVehicleSimulationState.Idle, fixture.Engine.GetVehicleState("AGV-A")!.State);
+        Assert.Equal(RobotState.Idle, fixture.VehicleStateStore.GetVehicle("AGV-A")!.State);
+        Assert.Equal(TrafficResourceState.Free, await EdgeStateAsync(fixture.Traffic, "E1"));
+        Assert.Equal(TrafficResourceState.Free, await EdgeStateAsync(fixture.Traffic, "E2"));
+        Assert.Equal(TrafficResourceState.Free, await EdgeStateAsync(fixture.Traffic, "E3"));
+        Assert.Equal(TrafficResourceState.Free, await NodeStateAsync(fixture.Traffic, "N2"));
+
+        var activeReservations = await fixture.Reservations.GetActiveReservationsAsync(
+            new GetRouteReservationsRequest { Context = Context });
+        Assert.True(activeReservations.Success, activeReservations.Message);
+        Assert.Empty(activeReservations.Data!);
+    }
+
+    [Fact]
+    public async Task FaultVehicle_HoldResources_ShouldBlockOtherVehicle()
+    {
+        var fixture = CreateFixture();
+        await fixture.Engine.InitializeAsync(CreateScenario(singleTask: false));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var fault = await fixture.Engine.InjectFaultAsync("AGV-A", MockFaultPolicy.HoldResources);
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(fault.Succeeded, fault.Message);
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Contains(fault.Events, item => item.EventType == MockSimulationEventType.VehicleFaulted);
+        Assert.Equal(MockVehicleSimulationState.Fault, fixture.Engine.GetVehicleState("AGV-A")!.State);
+        Assert.Equal(MockVehicleSimulationState.WaitingForTraffic, fixture.Engine.GetVehicleState("AGV-B")!.State);
+        Assert.Equal(TaskState.Pending, fixture.Tasks.GetTask("TASK-B")!.State);
+        Assert.Equal(TrafficResourceState.Locked, await EdgeStateAsync(fixture.Traffic, "E-X1-D1"));
+    }
+
+    [Fact]
+    public async Task FaultVehicle_ReleaseReservation_ShouldAllowOtherVehicleAfterRetry()
+    {
+        var fixture = CreateFixture();
+        await fixture.Engine.InitializeAsync(CreateScenario(singleTask: false));
+        Assert.True((await fixture.Engine.StartAllAsync()).Succeeded);
+
+        var fault = await fixture.Engine.InjectFaultAsync("AGV-A", MockFaultPolicy.ReleaseReservation);
+        var step = await fixture.Engine.StepAsync();
+
+        Assert.True(fault.Succeeded, fault.Message);
+        Assert.True(step.Succeeded, step.Message);
+        Assert.Equal(MockVehicleSimulationState.Fault, fixture.Engine.GetVehicleState("AGV-A")!.State);
+        Assert.Equal(MockVehicleSimulationState.Running, fixture.Engine.GetVehicleState("AGV-B")!.State);
+        Assert.Equal(TaskState.Running, fixture.Tasks.GetTask("TASK-B")!.State);
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.RetryAttempted &&
+            item.VehicleId == "AGV-B");
+        Assert.Contains(step.Events, item =>
+            item.EventType == MockSimulationEventType.TaskDispatchStarted &&
+            item.VehicleId == "AGV-B");
+    }
+
     private static Fixture CreateFixture()
     {
         var tasks = new FakeTaskService();
@@ -222,7 +413,7 @@ public sealed class MockFleetSimulationEngineDispatchStartTests
             traffic,
             reservations,
             new FakeVehicleAdapterManager());
-        var engine = new MockFleetSimulationEngine(dispatch, tasks, store);
+        var engine = new MockFleetSimulationEngine(dispatch, tasks, store, reservations, traffic);
         return new Fixture(engine, dispatch, tasks, store, traffic, reservations);
     }
 
@@ -246,7 +437,9 @@ public sealed class MockFleetSimulationEngineDispatchStartTests
         return new Fixture(engine, dispatch, tasks, store, traffic, reservations);
     }
 
-    private static MockSimulationScenario CreateScenario(bool singleTask) => new()
+    private static MockSimulationScenario CreateScenario(
+        bool singleTask,
+        MockSimulationOptions? options = null) => new()
     {
         ScenarioId = "dispatch-start",
         Name = "Dispatch start",
@@ -296,7 +489,13 @@ public sealed class MockFleetSimulationEngineDispatchStartTests
                     AssignedVehicleId = "AGV-B"
                 }
             },
-        Options = new MockSimulationOptions { RollingWindowSize = 2 }
+        Options = options ?? new MockSimulationOptions
+        {
+            RollingWindowSize = 2,
+            WaitTimeout = TimeSpan.Zero,
+            RetryInterval = TimeSpan.Zero,
+            MaxRetryCount = 3
+        }
     };
 
     private static MockSimulationScenario CreateLinearScenario() => new()

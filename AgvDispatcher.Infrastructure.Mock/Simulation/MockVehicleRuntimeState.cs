@@ -24,6 +24,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
         public DateTimeOffset? WaitingSince { get; init; }
 
+        public DateTimeOffset? LastRetryAt { get; init; }
+
         public int WaitRetryCount { get; init; }
 
         public double BatteryLevel { get; init; } = 100;
@@ -49,6 +51,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             ReservationId = ReservationId,
             PlanId = PlanId,
             WaitingSince = WaitingSince,
+            LastRetryAt = LastRetryAt,
             WaitRetryCount = WaitRetryCount,
             BatteryLevel = BatteryLevel,
             IsOnline = IsOnline,
@@ -68,6 +71,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
         Completed = 50,
         Canceled = 60,
         Fault = 70,
-        Failed = 80
+        Failed = 80,
+        TimedOut = 90
     }
 }

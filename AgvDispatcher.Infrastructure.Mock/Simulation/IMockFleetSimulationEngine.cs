@@ -19,6 +19,19 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
         Task<MockSimulationTickResult> StartAllAsync(CancellationToken cancellationToken = default);
 
+        Task<MockSimulationTickResult> CancelTaskAsync(
+            string taskId,
+            CancellationToken cancellationToken = default);
+
+        Task<MockSimulationTickResult> InjectFaultAsync(
+            string vehicleId,
+            MockFaultPolicy faultPolicy,
+            CancellationToken cancellationToken = default);
+
+        Task<MockSimulationTickResult> RecoverVehicleAsync(
+            string vehicleId,
+            CancellationToken cancellationToken = default);
+
         Task<MockSimulationTickResult> StepAsync(CancellationToken cancellationToken = default);
     }
 }

@@ -29,9 +29,11 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _createdTaskIds =
             new(StringComparer.OrdinalIgnoreCase);
+        private readonly Queue<MockSimulationEvent> _recentEvents = new();
 
         private MockSimulationScenario? _currentScenario;
         private long _tick;
+        private const int MaxRecentEventCount = 200;
 
         public MockFleetSimulationEngine()
         {
@@ -85,6 +87,17 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             }
         }
 
+        public long CurrentTick
+        {
+            get
+            {
+                lock (_syncRoot)
+                {
+                    return _tick;
+                }
+            }
+        }
+
         public IReadOnlyList<MockVehicleRuntimeState> GetVehicleStates()
         {
             lock (_syncRoot)
@@ -111,6 +124,19 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             }
         }
 
+        public IReadOnlyList<MockSimulationEvent> GetRecentEvents(int maxCount = 100)
+        {
+            lock (_syncRoot)
+            {
+                var take = Math.Clamp(maxCount, 0, MaxRecentEventCount);
+                return _recentEvents
+                    .Reverse()
+                    .Take(take)
+                    .Reverse()
+                    .ToArray();
+            }
+        }
+
         public Task<MockSimulationTickResult> InitializeAsync(
             MockSimulationScenario scenario,
             CancellationToken cancellationToken = default)
@@ -125,6 +151,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 _tick = 0;
                 _vehicles.Clear();
                 _createdTaskIds.Clear();
+                _recentEvents.Clear();
 
                 foreach (var task in scenario.Tasks)
                 {
@@ -187,7 +214,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     });
                 }
 
-                return Task.FromResult(new MockSimulationTickResult
+                var result = new MockSimulationTickResult
                 {
                     Tick = _tick,
                     Succeeded = true,
@@ -200,7 +227,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                             vehicle.CurrentNodeId))
                         .ToArray(),
                     VehicleStates = GetVehicleStatesNoLock()
-                });
+                };
+                RecordSimulationResultNoLock(result);
+                return Task.FromResult(result);
             }
         }
 
@@ -231,7 +260,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 }
 
                 var scenarioTask = _currentScenario.Tasks.FirstOrDefault(task =>
-                    string.Equals(task.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(task.TaskId, taskId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(ResolveCreatedTaskIdNoLock(task.TaskId), taskId, StringComparison.OrdinalIgnoreCase));
                 if (scenarioTask is null)
                 {
                     return Failure($"Task '{taskId}' was not found in the current simulation.");
@@ -239,7 +269,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
                 scenario = _currentScenario.Clone();
                 vehicle = currentVehicle.Clone();
-                dispatchTaskId = ResolveCreatedTaskIdNoLock(taskId);
+                dispatchTaskId = ResolveCreatedTaskIdNoLock(scenarioTask.TaskId);
             }
 
             var start = await _dispatchOrchestrationService.StartTaskAsync(
@@ -298,26 +328,68 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 }
             });
 
-            return new MockSimulationTickResult
+            return RecordSimulationResult(new MockSimulationTickResult
             {
                 Tick = CurrentTick,
                 Succeeded = true,
                 Message = start.Data.Message ?? start.Message,
-                Events = new[]
+                Events = CreateStartEvents(
+                    CurrentTick,
+                    start.Data.FirstWindowLocked,
+                    vehicleId,
+                    dispatchTaskId,
+                    start.Data.ReservationId,
+                    start.Data.Message ?? start.Message),
+                VehicleStates = GetVehicleStates()
+            });
+        }
+
+        private static IReadOnlyList<MockSimulationEvent> CreateStartEvents(
+            long tick,
+            bool firstWindowLocked,
+            string vehicleId,
+            string taskId,
+            string? reservationId,
+            string message)
+        {
+            if (!firstWindowLocked)
+            {
+                return new[]
                 {
                     new MockSimulationEvent
                     {
-                        Tick = CurrentTick,
-                        EventType = start.Data.FirstWindowLocked
-                            ? MockSimulationEventType.TaskDispatchStarted
-                            : MockSimulationEventType.WaitingForTraffic,
+                        Tick = tick,
+                        EventType = MockSimulationEventType.WaitingForTraffic,
                         VehicleId = vehicleId,
-                        TaskId = dispatchTaskId,
-                        ResourceId = start.Data.ReservationId,
-                        Message = start.Data.Message ?? start.Message
+                        TaskId = taskId,
+                        ResourceId = reservationId,
+                        Message = message
                     }
+                };
+            }
+
+            return new[]
+            {
+                new MockSimulationEvent
+                {
+                    Tick = tick,
+                    EventType = MockSimulationEventType.TaskDispatchStarted,
+                    VehicleId = vehicleId,
+                    TaskId = taskId,
+                    ResourceId = reservationId,
+                    Message = message
                 },
-                VehicleStates = GetVehicleStates()
+                new MockSimulationEvent
+                {
+                    Tick = tick,
+                    EventType = MockSimulationEventType.ResourceLocked,
+                    VehicleId = vehicleId,
+                    TaskId = taskId,
+                    ResourceId = reservationId,
+                    NewReservationId = reservationId,
+                    Reason = "First rolling window locked",
+                    Message = "First rolling window was locked."
+                }
             };
         }
 
@@ -346,14 +418,14 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 }
             }
 
-            return new MockSimulationTickResult
+            return RecordSimulationResult(new MockSimulationTickResult
             {
                 Tick = CurrentTick,
                 Succeeded = succeeded,
                 Message = string.Join("; ", messages),
                 Events = events,
                 VehicleStates = GetVehicleStates()
-            };
+            });
         }
 
         public async Task<MockSimulationTickResult> CancelTaskAsync(
@@ -401,7 +473,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 UpsertVehicleSnapshot(updated, RobotState.Idle, null, hasAlarm: false);
             }
 
-            return new MockSimulationTickResult
+            return RecordSimulationResult(new MockSimulationTickResult
             {
                 Tick = CurrentTick,
                 Succeeded = true,
@@ -417,7 +489,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     }
                 },
                 VehicleStates = GetVehicleStates()
-            };
+            });
         }
 
         public async Task<MockSimulationTickResult> InjectFaultAsync(
@@ -477,7 +549,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 alarmCode: faultPolicy.ToString(),
                 alarmMessage: $"Mock simulation fault policy: {faultPolicy}");
 
-            return new MockSimulationTickResult
+            return RecordSimulationResult(new MockSimulationTickResult
             {
                 Tick = CurrentTick,
                 Succeeded = true,
@@ -493,7 +565,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     }
                 },
                 VehicleStates = GetVehicleStates()
-            };
+            });
         }
 
         public Task<MockSimulationTickResult> RecoverVehicleAsync(
@@ -527,7 +599,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             }
 
             UpsertVehicleSnapshot(updated, RobotState.Idle, null, hasAlarm: false);
-            return Task.FromResult(new MockSimulationTickResult
+            return Task.FromResult(RecordSimulationResult(new MockSimulationTickResult
             {
                 Tick = CurrentTick,
                 Succeeded = true,
@@ -542,10 +614,10 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     }
                 },
                 VehicleStates = GetVehicleStates()
-            });
+            }));
         }
 
-        public Task<MockSimulationTickResult> StepAsync(CancellationToken cancellationToken = default)
+        public async Task<MockSimulationTickResult> StepAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -565,7 +637,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
             if (activeVehicles.Length == 0)
             {
-                return Task.FromResult(new MockSimulationTickResult
+                return RecordSimulationResult(new MockSimulationTickResult
                 {
                     Tick = tick,
                     Succeeded = true,
@@ -588,10 +660,11 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 _routeReservationService is null ||
                 _trafficControlService is null)
             {
-                return Task.FromResult(Failure("Route stepping dependencies were not supplied to the simulation engine."));
+                return Failure("Route stepping dependencies were not supplied to the simulation engine.");
             }
 
-            return StepActiveVehiclesAsync(activeVehicles, tick, cancellationToken);
+            var result = await StepActiveVehiclesAsync(activeVehicles, tick, cancellationToken).ConfigureAwait(false);
+            return RecordSimulationResult(result);
         }
 
         private async Task<MockSimulationTickResult> StepActiveVehiclesAsync(
@@ -1768,17 +1841,6 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 .ToArray();
         }
 
-        private long CurrentTick
-        {
-            get
-            {
-                lock (_syncRoot)
-                {
-                    return _tick;
-                }
-            }
-        }
-
         private string ResolveCreatedTaskId(string taskId)
         {
             lock (_syncRoot)
@@ -1799,24 +1861,49 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             }
         }
 
-        private static MockSimulationTickResult Failure(
+        private MockSimulationTickResult Failure(
             string? message,
             string? vehicleId = null,
-            string? taskId = null) => new()
+            string? taskId = null) => RecordSimulationResult(new MockSimulationTickResult
         {
+            Tick = CurrentTick,
             Succeeded = false,
             Message = string.IsNullOrWhiteSpace(message) ? "Simulation operation failed." : message,
             Events = new[]
             {
                 new MockSimulationEvent
                 {
+                    Tick = CurrentTick,
                     EventType = MockSimulationEventType.SimulationFailed,
                     VehicleId = vehicleId,
                     TaskId = taskId,
                     Message = string.IsNullOrWhiteSpace(message) ? "Simulation operation failed." : message
                 }
             }
-        };
+        });
+
+        private MockSimulationTickResult RecordSimulationResult(MockSimulationTickResult result)
+        {
+            lock (_syncRoot)
+            {
+                RecordSimulationResultNoLock(result);
+            }
+
+            return result;
+        }
+
+        private void RecordSimulationResultNoLock(MockSimulationTickResult result)
+        {
+            foreach (var simulationEvent in result.Events)
+            {
+                _recentEvents.Enqueue(simulationEvent);
+            }
+
+            while (_recentEvents.Count > MaxRecentEventCount)
+            {
+                _recentEvents.Dequeue();
+            }
+        }
 
         private static MockVehicleRuntimeState CopyVehicle(
             MockVehicleRuntimeState source,

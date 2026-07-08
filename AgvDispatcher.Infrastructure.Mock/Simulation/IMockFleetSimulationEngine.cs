@@ -4,9 +4,13 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
     {
         MockSimulationScenario? CurrentScenario { get; }
 
+        long CurrentTick { get; }
+
         IReadOnlyList<MockVehicleRuntimeState> GetVehicleStates();
 
         MockVehicleRuntimeState? GetVehicleState(string vehicleId);
+
+        IReadOnlyList<MockSimulationEvent> GetRecentEvents(int maxCount = 100);
 
         Task<MockSimulationTickResult> InitializeAsync(
             MockSimulationScenario scenario,

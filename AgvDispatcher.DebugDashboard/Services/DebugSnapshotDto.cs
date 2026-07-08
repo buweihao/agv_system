@@ -3,6 +3,7 @@ using AgvDispatcher.Core.Contracts.Reservations.Models;
 using AgvDispatcher.Core.Contracts.Traffic.Models;
 using AgvDispatcher.Core.Models;
 using AgvDispatcher.Infrastructure.Okapi;
+using AgvDispatcher.Infrastructure.Mock.Simulation;
 
 namespace AgvDispatcher.DebugDashboard.Services;
 
@@ -24,5 +25,24 @@ public sealed class DebugSnapshotDto
 
     public IReadOnlyList<OkapiProtocolTraceRecord> OkapiProtocolRecords { get; init; } = Array.Empty<OkapiProtocolTraceRecord>();
 
+    public MockSimulationSnapshotDto MockSimulation { get; init; } = new();
+
     public IReadOnlyList<string> DiagnosticMessages { get; init; } = Array.Empty<string>();
+}
+
+public sealed class MockSimulationSnapshotDto
+{
+    public string ScenarioId { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
+
+    public long Tick { get; init; }
+
+    public string Options { get; init; } = string.Empty;
+
+    public IReadOnlyList<MockVehicleRuntimeState> Vehicles { get; init; } =
+        Array.Empty<MockVehicleRuntimeState>();
+
+    public IReadOnlyList<MockSimulationEvent> RecentEvents { get; init; } =
+        Array.Empty<MockSimulationEvent>();
 }

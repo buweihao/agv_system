@@ -10,6 +10,14 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
         public int MaxRetryCount { get; init; } = 3;
 
+        public bool ReplanOnLockedResource { get; init; }
+
+        public bool ReplanOnBlockedResource { get; init; } = true;
+
+        public bool PreferWaitingOverReplan { get; init; } = true;
+
+        public int MaxReplanCount { get; init; } = 3;
+
         public MockSimulationTimeoutPolicy OnTimeoutPolicy { get; init; } =
             MockSimulationTimeoutPolicy.RetryOnly;
 
@@ -36,6 +44,11 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             {
                 throw new ArgumentOutOfRangeException(nameof(MaxRetryCount), "MaxRetryCount cannot be negative.");
             }
+
+            if (MaxReplanCount < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(MaxReplanCount), "MaxReplanCount cannot be negative.");
+            }
         }
 
         public MockSimulationOptions Clone() => new()
@@ -44,6 +57,10 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             WaitTimeout = WaitTimeout,
             RetryInterval = RetryInterval,
             MaxRetryCount = MaxRetryCount,
+            ReplanOnLockedResource = ReplanOnLockedResource,
+            ReplanOnBlockedResource = ReplanOnBlockedResource,
+            PreferWaitingOverReplan = PreferWaitingOverReplan,
+            MaxReplanCount = MaxReplanCount,
             OnTimeoutPolicy = OnTimeoutPolicy,
             AutoStartTasks = AutoStartTasks
         };

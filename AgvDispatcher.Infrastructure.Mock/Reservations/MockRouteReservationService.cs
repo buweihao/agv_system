@@ -387,8 +387,6 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
                         {
                             Context = request.Context,
                             ReservationId = group.Key,
-                            AgvId = reservation.VehicleId,
-                            TaskId = reservation.TaskId,
                             Resources = DistinctResources(group.SelectMany(item => item.Segment.Resources)),
                             Reason = request.Reason
                         },

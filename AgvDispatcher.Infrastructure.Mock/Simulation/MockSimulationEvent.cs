@@ -16,6 +16,16 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
         public string? ResourceId { get; init; }
 
+        public string? OldPlanId { get; init; }
+
+        public string? NewPlanId { get; init; }
+
+        public string? OldReservationId { get; init; }
+
+        public string? NewReservationId { get; init; }
+
+        public string? Reason { get; init; }
+
         public string Message { get; init; } = string.Empty;
 
         public static MockSimulationEvent VehicleInitialized(
@@ -51,6 +61,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
         RetryAttempted = 130,
         VehicleRecovered = 140,
         TaskReplanned = 150,
+        RouteInvalidated = 160,
+        ReplanFailed = 170,
+        ReplanSkipped = 180,
         SimulationFailed = 900,
         NoOp = 1000
     }

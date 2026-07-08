@@ -28,6 +28,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
 
         public int WaitRetryCount { get; init; }
 
+        public int ReplanCount { get; init; }
+
         public double BatteryLevel { get; init; } = 100;
 
         public bool IsOnline { get; init; } = true;
@@ -53,6 +55,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             WaitingSince = WaitingSince,
             LastRetryAt = LastRetryAt,
             WaitRetryCount = WaitRetryCount,
+            ReplanCount = ReplanCount,
             BatteryLevel = BatteryLevel,
             IsOnline = IsOnline,
             HasFault = HasFault,

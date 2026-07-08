@@ -4,9 +4,11 @@ using AgvDispatcher.Core.Contracts.Dispatching.Interfaces;
 using AgvDispatcher.Core.Contracts.Dispatching.Requests;
 using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
+using AgvDispatcher.Core.Contracts.Reservations.Models;
 using AgvDispatcher.Core.Contracts.Reservations.Requests;
 using AgvDispatcher.Core.Contracts.Traffic.Enums;
 using AgvDispatcher.Core.Contracts.Traffic.Interfaces;
+using AgvDispatcher.Core.Contracts.Traffic.Models;
 using AgvDispatcher.Core.Contracts.Traffic.Requests;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Interfaces;
@@ -247,7 +249,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     TaskId = dispatchTaskId,
                     PreferredVehicleId = vehicleId,
                     RollingWindowSize = scenario.Options.RollingWindowSize,
-                    MaxReplanCount = 0,
+                    MaxReplanCount = scenario.Options.MaxReplanCount,
                     SendVehicleCommand = true
                 },
                 cancellationToken).ConfigureAwait(false);
@@ -657,6 +659,21 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     continue;
                 }
 
+                var trafficConflict = await ReplanIfReservationTrafficBlockedAsync(
+                    vehicle,
+                    taskId,
+                    execution.Data.CurrentSegmentSequence,
+                    reservation.Data,
+                    tick,
+                    CurrentScenario?.Options ?? new MockSimulationOptions(),
+                    cancellationToken).ConfigureAwait(false);
+                if (trafficConflict is not null)
+                {
+                    succeeded &= trafficConflict.Succeeded;
+                    events.AddRange(trafficConflict.Events);
+                    continue;
+                }
+
                 var next = reservation.Data.Segments
                     .Where(segment => !segment.IsReleased &&
                                       segment.Segment.Sequence > execution.Data.CurrentSegmentSequence)
@@ -872,6 +889,18 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             var taskId = vehicle.CurrentTaskId!;
             var options = CurrentScenario?.Options ?? new MockSimulationOptions();
             var now = DateTimeOffset.Now;
+            var immediateReplan = await ReplanIfWaitingConflictPolicyRequiresAsync(
+                vehicle,
+                taskId,
+                tick,
+                options,
+                now,
+                cancellationToken).ConfigureAwait(false);
+            if (immediateReplan is not null)
+            {
+                return immediateReplan;
+            }
+
             var waitingSince = vehicle.WaitingSince ?? now;
             if (now - waitingSince < options.WaitTimeout)
             {
@@ -1092,6 +1121,12 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             IReadOnlyList<string>? forbiddenEdgeIds = null,
             IReadOnlyList<string>? forbiddenNodeIds = null)
         {
+            var options = CurrentScenario?.Options ?? new MockSimulationOptions();
+            if (vehicle.ReplanCount >= options.MaxReplanCount)
+            {
+                return HandleReplanLimitExceeded(vehicle, taskId, tick, options);
+            }
+
             var replan = await _dispatchOrchestrationService!.ReplanTaskAsync(
                 new ReplanDispatchTaskRequest
                 {
@@ -1116,12 +1151,24 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     Tick = tick,
                     Succeeded = false,
                     Events = prefixEvents
-                        .Append(FailureEvent(tick, vehicle.VehicleId, taskId, replan.Message))
+                        .Append(new MockSimulationEvent
+                        {
+                            Tick = tick,
+                            EventType = MockSimulationEventType.ReplanFailed,
+                            VehicleId = vehicle.VehicleId,
+                            TaskId = taskId,
+                            ResourceId = vehicle.ReservationId,
+                            OldPlanId = vehicle.PlanId,
+                            OldReservationId = vehicle.ReservationId,
+                            Reason = reason,
+                            Message = replan.Message ?? "Replan failed."
+                        })
                         .ToArray()
                 };
             }
 
             var data = replan.Data;
+            var replanCount = vehicle.ReplanCount + 1;
             var nextState = data.RequiresReplan
                 ? MockVehicleSimulationState.Replanning
                 : data.ShouldWait
@@ -1137,7 +1184,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     ? vehicle.WaitingSince ?? now
                     : null,
                 lastRetryAt: now,
-                waitRetryCount: waitRetryCount);
+                waitRetryCount: waitRetryCount,
+                replanCount: replanCount);
             lock (_syncRoot)
             {
                 _vehicles[vehicle.VehicleId] = updated;
@@ -1155,10 +1203,15 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 events.Add(new MockSimulationEvent
                 {
                     Tick = tick,
-                    EventType = MockSimulationEventType.ReplanRequired,
+                    EventType = MockSimulationEventType.ReplanFailed,
                     VehicleId = vehicle.VehicleId,
                     TaskId = taskId,
                     ResourceId = data.OldReservationId,
+                    OldPlanId = data.OldPlanId,
+                    NewPlanId = data.NewPlanId,
+                    OldReservationId = data.OldReservationId,
+                    NewReservationId = data.NewReservationId,
+                    Reason = reason,
                     Message = data.Message ?? "Replan could not produce a runnable route."
                 });
             }
@@ -1171,6 +1224,11 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     VehicleId = vehicle.VehicleId,
                     TaskId = taskId,
                     ResourceId = data.NewReservationId,
+                    OldPlanId = data.OldPlanId,
+                    NewPlanId = data.NewPlanId,
+                    OldReservationId = data.OldReservationId,
+                    NewReservationId = data.NewReservationId,
+                    Reason = reason,
                     Message = data.Message ?? "Waiting task was replanned."
                 });
             }
@@ -1184,6 +1242,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     VehicleId = vehicle.VehicleId,
                     TaskId = taskId,
                     ResourceId = data.NewReservationId,
+                    OldReservationId = data.OldReservationId,
+                    NewReservationId = data.NewReservationId,
+                    Reason = reason,
                     Message = "Replanned first rolling window was locked."
                 });
             }
@@ -1197,6 +1258,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     VehicleId = vehicle.VehicleId,
                     TaskId = taskId,
                     ResourceId = data.NewReservationId,
+                    OldReservationId = data.OldReservationId,
+                    NewReservationId = data.NewReservationId,
+                    Reason = reason,
                     Message = data.Message ?? "Replanned route is waiting for traffic."
                 });
             }
@@ -1251,10 +1315,13 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 new MockSimulationEvent
                 {
                     Tick = tick,
-                    EventType = MockSimulationEventType.ReplanRequired,
+                    EventType = MockSimulationEventType.RouteInvalidated,
                     VehicleId = vehicle.VehicleId,
                     TaskId = taskId,
                     ResourceId = disabledResource,
+                    OldPlanId = vehicle.PlanId,
+                    OldReservationId = reservation.ReservationId,
+                    Reason = "MapResourceDisabled",
                     Message = "Current route contains a disabled map resource; running replan is required."
                 }
             };
@@ -1270,6 +1337,254 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 cancellationToken,
                 invalid.DisabledEdgeIds,
                 invalid.DisabledNodeIds).ConfigureAwait(false);
+        }
+
+        private async Task<MockSimulationTickResult?> ReplanIfReservationTrafficBlockedAsync(
+            MockVehicleRuntimeState vehicle,
+            string taskId,
+            int currentSegmentSequence,
+            RouteReservationDto reservation,
+            long tick,
+            MockSimulationOptions options,
+            CancellationToken cancellationToken)
+        {
+            var conflict = await FindRemainingRouteTrafficConflictAsync(
+                vehicle,
+                taskId,
+                currentSegmentSequence,
+                reservation,
+                cancellationToken).ConfigureAwait(false);
+            if (conflict is null || !ShouldReplanForTrafficConflict(conflict.Value.State, options))
+            {
+                return null;
+            }
+
+            var prefixEvents = new[]
+            {
+                new MockSimulationEvent
+                {
+                    Tick = tick,
+                    EventType = MockSimulationEventType.RouteInvalidated,
+                    VehicleId = vehicle.VehicleId,
+                    TaskId = taskId,
+                    ResourceId = conflict.Value.ResourceId,
+                    OldPlanId = vehicle.PlanId,
+                    OldReservationId = reservation.ReservationId,
+                    Reason = conflict.Value.State.ToString(),
+                    Message = $"Route resource {conflict.Value.ResourceId} is {conflict.Value.State}; running replan is required."
+                }
+            };
+
+            return await ExecuteWaitingReplanAsync(
+                vehicle,
+                taskId,
+                tick,
+                conflict.Value.State.ToString(),
+                prefixEvents,
+                DateTimeOffset.Now,
+                vehicle.WaitRetryCount,
+                cancellationToken,
+                conflict.Value.ResourceType == TrafficResourceType.Edge ? new[] { conflict.Value.ResourceId } : null,
+                conflict.Value.ResourceType == TrafficResourceType.Node ? new[] { conflict.Value.ResourceId } : null)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<MockSimulationTickResult?> ReplanIfWaitingConflictPolicyRequiresAsync(
+            MockVehicleRuntimeState vehicle,
+            string taskId,
+            long tick,
+            MockSimulationOptions options,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            if (_routeReservationService is null)
+            {
+                return null;
+            }
+
+            var reservationId = vehicle.ReservationId;
+            if (string.IsNullOrWhiteSpace(reservationId))
+            {
+                return null;
+            }
+
+            var reservation = await _routeReservationService.GetReservationAsync(
+                new GetRouteReservationRequest
+                {
+                    Context = Context("WaitingConflictPolicy"),
+                    ReservationId = reservationId
+                },
+                cancellationToken).ConfigureAwait(false);
+            if (!reservation.Success || reservation.Data is null)
+            {
+                return null;
+            }
+
+            var conflict = await FindRemainingRouteTrafficConflictAsync(
+                vehicle,
+                taskId,
+                vehicle.CurrentSegmentSequence,
+                reservation.Data,
+                cancellationToken).ConfigureAwait(false);
+            if (conflict is null || !ShouldReplanForTrafficConflict(conflict.Value.State, options))
+            {
+                return null;
+            }
+
+            var prefixEvents = new[]
+            {
+                new MockSimulationEvent
+                {
+                    Tick = tick,
+                    EventType = MockSimulationEventType.ReplanRequired,
+                    VehicleId = vehicle.VehicleId,
+                    TaskId = taskId,
+                    ResourceId = conflict.Value.ResourceId,
+                    OldPlanId = vehicle.PlanId,
+                    OldReservationId = reservation.Data.ReservationId,
+                    Reason = conflict.Value.State.ToString(),
+                    Message = $"Waiting route resource {conflict.Value.ResourceId} is {conflict.Value.State}; running replan is required."
+                }
+            };
+
+            return await ExecuteWaitingReplanAsync(
+                vehicle,
+                taskId,
+                tick,
+                conflict.Value.State.ToString(),
+                prefixEvents,
+                now,
+                vehicle.WaitRetryCount,
+                cancellationToken,
+                conflict.Value.ResourceType == TrafficResourceType.Edge ? new[] { conflict.Value.ResourceId } : null,
+                conflict.Value.ResourceType == TrafficResourceType.Node ? new[] { conflict.Value.ResourceId } : null)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<RouteTrafficConflict?> FindRemainingRouteTrafficConflictAsync(
+            MockVehicleRuntimeState vehicle,
+            string taskId,
+            int currentSegmentSequence,
+            RouteReservationDto reservation,
+            CancellationToken cancellationToken)
+        {
+            if (_trafficControlService is null)
+            {
+                return null;
+            }
+
+            var resources = reservation.Segments
+                .Where(segment => !segment.IsReleased &&
+                                  segment.Segment.Sequence > currentSegmentSequence)
+                .OrderBy(segment => segment.Segment.Sequence)
+                .SelectMany(segment => segment.Resources)
+                .GroupBy(resource => (resource.ResourceType, resource.ResourceId))
+                .Select(group => group.First())
+                .ToArray();
+            if (resources.Length == 0)
+            {
+                return null;
+            }
+
+            var statuses = await _trafficControlService.GetResourceStatusesAsync(
+                resources,
+                Context("RouteTrafficConflict"),
+                cancellationToken).ConfigureAwait(false);
+            if (!statuses.Success || statuses.Data is null)
+            {
+                return null;
+            }
+
+            return statuses.Data
+                .Where(status => status.State != TrafficResourceState.Free &&
+                                 !IsOwnedByVehicleTask(status, vehicle.VehicleId, taskId))
+                .Select(status => new RouteTrafficConflict(
+                    status.Resource.ResourceType,
+                    status.Resource.ResourceId,
+                    status.State))
+                .FirstOrDefault();
+        }
+
+        private static bool ShouldReplanForTrafficConflict(
+            TrafficResourceState state,
+            MockSimulationOptions options)
+        {
+            return state switch
+            {
+                TrafficResourceState.Blocked or TrafficResourceState.Disabled =>
+                    options.ReplanOnBlockedResource,
+                TrafficResourceState.Locked or TrafficResourceState.Reserved or TrafficResourceState.Occupied =>
+                    options.ReplanOnLockedResource && !options.PreferWaitingOverReplan,
+                _ => false
+            };
+        }
+
+        private static bool IsOwnedByVehicleTask(
+            TrafficResourceStatusDto status,
+            string vehicleId,
+            string taskId)
+        {
+            return string.Equals(status.TaskId, taskId, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(status.OccupiedByAgvId, vehicleId, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(status.ReservedByAgvId, vehicleId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private MockSimulationTickResult HandleReplanLimitExceeded(
+            MockVehicleRuntimeState vehicle,
+            string taskId,
+            long tick,
+            MockSimulationOptions options)
+        {
+            var terminalState = options.OnTimeoutPolicy == MockSimulationTimeoutPolicy.FailTask
+                ? MockVehicleSimulationState.Failed
+                : MockVehicleSimulationState.TimedOut;
+            if (terminalState == MockVehicleSimulationState.Failed)
+            {
+                _taskService?.UpdateTaskState(taskId, TaskState.Failed, "Mock simulation exceeded max replan count.");
+            }
+
+            var updated = CopyVehicle(
+                vehicle,
+                state: terminalState,
+                currentTaskId: taskId,
+                waitingSince: null,
+                lastRetryAt: vehicle.LastRetryAt);
+            lock (_syncRoot)
+            {
+                _vehicles[vehicle.VehicleId] = updated;
+            }
+
+            UpsertVehicleSnapshot(
+                updated,
+                terminalState == MockVehicleSimulationState.Failed ? RobotState.Fault : RobotState.Idle,
+                taskId,
+                hasAlarm: terminalState == MockVehicleSimulationState.Failed,
+                alarmCode: terminalState == MockVehicleSimulationState.Failed ? "MOCK_REPLAN_LIMIT" : null,
+                alarmMessage: terminalState == MockVehicleSimulationState.Failed
+                    ? "Mock simulation exceeded max replan count."
+                    : null);
+
+            return new MockSimulationTickResult
+            {
+                Tick = tick,
+                Succeeded = true,
+                Events = new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = tick,
+                        EventType = MockSimulationEventType.ReplanSkipped,
+                        VehicleId = vehicle.VehicleId,
+                        TaskId = taskId,
+                        ResourceId = vehicle.ReservationId,
+                        OldPlanId = vehicle.PlanId,
+                        OldReservationId = vehicle.ReservationId,
+                        Reason = "MaxReplanCountExceeded",
+                        Message = "Maximum replan count was exceeded."
+                    }
+                },
+                VehicleStates = GetVehicleStates()
+            };
         }
 
         private static (IReadOnlyList<string> DisabledEdgeIds, IReadOnlyList<string> DisabledNodeIds)
@@ -1340,6 +1655,9 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                         VehicleId = vehicle.VehicleId,
                         TaskId = taskId,
                         ResourceId = vehicle.ReservationId,
+                        OldPlanId = vehicle.PlanId,
+                        OldReservationId = vehicle.ReservationId,
+                        Reason = "WaitingTimeout",
                         Message = "Waiting timeout reached; running replan is required."
                     }
                 };
@@ -1512,7 +1830,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             int? currentSegmentSequence = null,
             DateTimeOffset? waitingSince = null,
             DateTimeOffset? lastRetryAt = null,
-            int? waitRetryCount = null) => new()
+            int? waitRetryCount = null,
+            int? replanCount = null) => new()
         {
             VehicleId = source.VehicleId,
             Brand = source.Brand,
@@ -1527,6 +1846,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             WaitingSince = waitingSince,
             LastRetryAt = lastRetryAt ?? source.LastRetryAt,
             WaitRetryCount = waitRetryCount ?? source.WaitRetryCount,
+            ReplanCount = replanCount ?? source.ReplanCount,
             BatteryLevel = source.BatteryLevel,
             IsOnline = source.IsOnline,
             HasFault = source.HasFault,
@@ -1552,6 +1872,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             WaitingSince = source.WaitingSince,
             LastRetryAt = source.LastRetryAt,
             WaitRetryCount = source.WaitRetryCount,
+            ReplanCount = source.ReplanCount,
             BatteryLevel = source.BatteryLevel,
             IsOnline = source.IsOnline,
             HasFault = hasFault,
@@ -1665,5 +1986,10 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                 }
             });
         }
+
+        private readonly record struct RouteTrafficConflict(
+            TrafficResourceType ResourceType,
+            string ResourceId,
+            TrafficResourceState State);
     }
 }

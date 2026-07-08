@@ -294,6 +294,23 @@ internal static class MockSimulationMaps
         }
     };
 
+    public static MapSnapshotDto CreateCurrentNodeReplanMap() => new()
+    {
+        MapId = "MAP-CURRENT-NODE-REPLAN",
+        MapName = "Current node replan",
+        Version = "1.0",
+        Nodes = new[] { Node("S"), Node("A"), Node("B"), Node("C"), Node("T"), Node("P") },
+        Edges = new[]
+        {
+            Edge("E-S-A", "S", "A"),
+            Edge("E-A-T", "A", "T"),
+            Edge("E-A-B", "A", "B"),
+            Edge("E-B-C", "B", "C"),
+            Edge("E-C-T", "C", "T"),
+            Edge("E-P-A", "P", "A")
+        }
+    };
+
     public static MapSnapshotDto CreateSameTargetAlternativeMap() => new()
     {
         MapId = "MAP-SAME-TARGET-ALTERNATIVE",

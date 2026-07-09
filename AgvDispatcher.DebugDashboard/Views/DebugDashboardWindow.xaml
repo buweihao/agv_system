@@ -264,13 +264,13 @@
             <TabItem Header="交通资源">
                 <DataGrid Margin="8" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding TrafficResources}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Type" Binding="{Binding ResourceType}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
-                        <DataGridTextColumn Header="ResourceId" Binding="{Binding ResourceId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
-                        <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource StateCellTextStyle}" Width="100"/>
-                        <DataGridTextColumn Header="OccupiedBy" Binding="{Binding OccupiedByAgvId}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
-                        <DataGridTextColumn Header="ReservedBy" Binding="{Binding ReservedByAgvId}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
-                        <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
-                        <DataGridTextColumn Header="ReservationId" Binding="{Binding ReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="170"/>
+                            <DataGridTextColumn Header="ResourceType" Binding="{Binding ResourceType}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
+                            <DataGridTextColumn Header="ResourceId" Binding="{Binding ResourceId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource StateCellTextStyle}" Width="100"/>
+                            <DataGridTextColumn Header="OccupiedByAgvId" Binding="{Binding OccupiedByAgvId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="ReservedByAgvId" Binding="{Binding ReservedByAgvId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
+                            <DataGridTextColumn Header="ReservationId" Binding="{Binding ReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="170"/>
                         <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" ElementStyle="{StaticResource CellTextStyle}" Width="220"/>
                         <DataGridTextColumn Header="ExpireAt" Binding="{Binding ExpireAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
                         <DataGridTextColumn Header="UpdatedAt" Binding="{Binding UpdatedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
@@ -289,11 +289,10 @@
                             <DataGridTextColumn Header="ReservationId" Binding="{Binding ReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="170"/>
                             <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
                             <DataGridTextColumn Header="VehicleId" Binding="{Binding VehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
-                            <DataGridTextColumn Header="PlanId" Binding="{Binding PlanId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
-                            <DataGridTextColumn Header="MapId" Binding="{Binding MapId}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
-                            <DataGridTextColumn Header="MapVersion" Binding="{Binding MapVersion}" ElementStyle="{StaticResource CellTextStyle}" Width="100"/>
                             <DataGridTextColumn Header="State" Binding="{Binding State}" ElementStyle="{StaticResource CellTextStyle}" Width="120"/>
-                            <DataGridTextColumn Header="WindowSize" Binding="{Binding RollingWindowSize}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
+                            <DataGridTextColumn Header="PlanId" Binding="{Binding PlanId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="RollingWindowSize" Binding="{Binding RollingWindowSize}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="Segment count" Binding="{Binding SegmentCount}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
                             <DataGridTextColumn Header="Window" Binding="{Binding CurrentWindow}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
                             <DataGridTextColumn Header="UpdatedAt" Binding="{Binding UpdatedAt, StringFormat=yyyy-MM-dd HH:mm:ss}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
                         </DataGrid.Columns>
@@ -301,11 +300,11 @@
                     <DataGrid Grid.Row="1" Style="{StaticResource DashboardDataGridStyle}" ItemsSource="{Binding SelectedReservationSegments}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Sequence" Binding="{Binding Sequence}" ElementStyle="{StaticResource CellTextStyle}" Width="90"/>
-                            <DataGridTextColumn Header="FromNode" Binding="{Binding FromNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
-                            <DataGridTextColumn Header="ToNode" Binding="{Binding ToNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
                             <DataGridTextColumn Header="EdgeId" Binding="{Binding EdgeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
-                            <DataGridCheckBoxColumn Header="Locked" Binding="{Binding IsLocked}" Width="90"/>
-                            <DataGridCheckBoxColumn Header="Released" Binding="{Binding IsReleased}" Width="90"/>
+                            <DataGridTextColumn Header="FromNodeId" Binding="{Binding FromNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridTextColumn Header="ToNodeId" Binding="{Binding ToNodeId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                            <DataGridCheckBoxColumn Header="IsLocked" Binding="{Binding IsLocked}" Width="90"/>
+                            <DataGridCheckBoxColumn Header="IsReleased" Binding="{Binding IsReleased}" Width="90"/>
                             <DataGridTextColumn Header="TrafficReservationIds" Binding="{Binding TrafficReservationIds}" ElementStyle="{StaticResource CellTextStyle}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
@@ -430,6 +429,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="180"/>
@@ -437,61 +437,175 @@
                                 <ColumnDefinition Width="120"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Row="0" Grid.ColumnSpan="4" Orientation="Horizontal" Margin="0,0,0,12">
+                            <WrapPanel Grid.Row="0" Grid.ColumnSpan="4" Margin="0,0,0,12">
                                 <ComboBox ItemsSource="{Binding MockSimulationScenarioOptions}"
                                           SelectedItem="{Binding SelectedMockSimulationScenario}"
                                           DisplayMemberPath="Name"
                                           Width="220"
                                           Height="30"
-                                          Margin="0,0,10,0"/>
+                                          Margin="0,0,10,8"/>
                                 <Button Content="LoadScenario"
                                         Command="{Binding LoadMockSimulationScenarioCommand}"
                                         Width="112"
                                         Height="30"
-                                        Margin="0,0,10,0"/>
+                                        Margin="0,0,10,8"/>
                                 <Button Content="StartAll"
                                         Command="{Binding StartAllMockSimulationTasksCommand}"
                                         Width="86"
                                         Height="30"
-                                        Margin="0,0,10,0"/>
+                                        Margin="0,0,10,8"/>
                                 <Button Content="Start selected vehicle/task"
                                         Command="{Binding StartSelectedMockSimulationTaskCommand}"
                                         Width="178"
                                         Height="30"
-                                        Margin="0,0,10,0"/>
+                                        Margin="0,0,10,8"/>
                                 <Button Content="Step"
                                         Command="{Binding StepMockSimulationCommand}"
                                         Width="64"
                                         Height="30"
-                                        Margin="0,0,10,0"/>
+                                        Margin="0,0,10,8"/>
                                 <Button Content="Run 10 ticks"
                                         Command="{Binding RunTenMockSimulationTicksCommand}"
                                         Width="104"
                                         Height="30"
-                                        Margin="0,0,10,0"/>
+                                        Margin="0,0,10,8"/>
                                 <Button Content="Run until idle"
                                         Command="{Binding RunMockSimulationUntilIdleCommand}"
                                         Width="112"
                                         Height="30"
-                                        Margin="0,0,10,0"/>
+                                        Margin="0,0,10,8"/>
                                 <Button Content="Stop auto run"
                                         Command="{Binding StopMockSimulationRunCommand}"
                                         Width="112"
-                                        Height="30"/>
-                            </StackPanel>
-                            <StackPanel Grid.Row="1" Grid.Column="0">
+                                        Height="30"
+                                        Margin="0,0,10,8"/>
+                                <Button Content="CancelTask"
+                                        Command="{Binding CancelSelectedMockSimulationTaskCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,10,8"/>
+                                <ComboBox ItemsSource="{Binding MockFaultPolicies}"
+                                          SelectedItem="{Binding SelectedMockFaultPolicy}"
+                                          Width="160"
+                                          Height="30"
+                                          Margin="0,0,10,8"/>
+                                <Button Content="InjectFault"
+                                        Command="{Binding InjectMockSimulationFaultCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,10,8"/>
+                                <Button Content="Recover"
+                                        Command="{Binding RecoverMockSimulationVehicleCommand}"
+                                        Width="86"
+                                        Height="30"
+                                        Margin="0,0,10,8"/>
+                            </WrapPanel>
+                            <WrapPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,0,0,12">
+                                <TextBox Text="{Binding MockMapEdgeId, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="140"
+                                         Height="30"
+                                         VerticalContentAlignment="Center"
+                                         Margin="0,0,8,8"/>
+                                <Button Content="Disable edge"
+                                        Command="{Binding DisableMockMapEdgeCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="Enable edge"
+                                        Command="{Binding EnableMockMapEdgeCommand}"
+                                        Width="96"
+                                        Height="30"
+                                        Margin="0,0,16,8"/>
+                                <ComboBox ItemsSource="{Binding MockTrafficResourceTypes}"
+                                          SelectedItem="{Binding SelectedMockTrafficResourceType}"
+                                          Width="82"
+                                          Height="30"
+                                          Margin="0,0,8,8"/>
+                                <TextBox Text="{Binding MockTrafficResourceId, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="140"
+                                         Height="30"
+                                         VerticalContentAlignment="Center"
+                                         Margin="0,0,8,8"/>
+                                <Button Content="Block"
+                                        Command="{Binding BlockMockTrafficResourceCommand}"
+                                        Width="72"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="Unblock"
+                                        Command="{Binding UnblockMockTrafficResourceCommand}"
+                                        Width="82"
+                                        Height="30"
+                                        Margin="0,0,16,8"/>
+                                <CheckBox Content="ReplanOnLockedResource"
+                                          IsChecked="{Binding MockReplanOnLockedResource}"
+                                          Foreground="#D8E8F8"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,12,8"/>
+                                <CheckBox Content="ReplanOnBlockedResource"
+                                          IsChecked="{Binding MockReplanOnBlockedResource}"
+                                          Foreground="#D8E8F8"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,12,8"/>
+                                <CheckBox Content="PreferWaitingOverReplan"
+                                          IsChecked="{Binding MockPreferWaitingOverReplan}"
+                                          Foreground="#D8E8F8"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,12,8"/>
+                                <TextBlock Text="MaxReplan"
+                                           Foreground="#8FA8BF"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,4,8"/>
+                                <TextBox Text="{Binding MockMaxReplanCount, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="44"
+                                         Height="30"
+                                         VerticalContentAlignment="Center"
+                                         Margin="0,0,8,8"/>
+                                <TextBlock Text="Wait(s)"
+                                           Foreground="#8FA8BF"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,4,8"/>
+                                <TextBox Text="{Binding MockWaitTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="52"
+                                         Height="30"
+                                         VerticalContentAlignment="Center"
+                                         Margin="0,0,8,8"/>
+                                <TextBlock Text="Retry(s)"
+                                           Foreground="#8FA8BF"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,4,8"/>
+                                <TextBox Text="{Binding MockRetryIntervalSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="52"
+                                         Height="30"
+                                         VerticalContentAlignment="Center"
+                                         Margin="0,0,8,8"/>
+                                <TextBlock Text="MaxRetry"
+                                           Foreground="#8FA8BF"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,4,8"/>
+                                <TextBox Text="{Binding MockMaxRetryCount, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="44"
+                                         Height="30"
+                                         VerticalContentAlignment="Center"
+                                         Margin="0,0,8,8"/>
+                                <Button Content="Apply options"
+                                        Command="{Binding ApplyMockSimulationOptionsCommand}"
+                                        Width="112"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                            </WrapPanel>
+                            <StackPanel Grid.Row="2" Grid.Column="0">
                                 <TextBlock Text="ScenarioId" Foreground="#8FA8BF" FontSize="12"/>
                                 <TextBlock Text="{Binding MockSimulationScenarioId}" Foreground="#D8E8F8" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
-                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="16,0,0,0">
+                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="16,0,0,0">
                                 <TextBlock Text="Name" Foreground="#8FA8BF" FontSize="12"/>
                                 <TextBlock Text="{Binding MockSimulationName}" Foreground="#D8E8F8" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
-                            <StackPanel Grid.Row="1" Grid.Column="2" Margin="16,0,0,0">
+                            <StackPanel Grid.Row="2" Grid.Column="2" Margin="16,0,0,0">
                                 <TextBlock Text="Tick" Foreground="#8FA8BF" FontSize="12"/>
                                 <TextBlock Text="{Binding MockSimulationTick}" Foreground="#D8E8F8"/>
                             </StackPanel>
-                            <StackPanel Grid.Row="1" Grid.Column="3" Margin="16,0,0,0">
+                            <StackPanel Grid.Row="2" Grid.Column="3" Margin="16,0,0,0">
                                 <TextBlock Text="Options" Foreground="#8FA8BF" FontSize="12"/>
                                 <TextBlock Text="{Binding MockSimulationOptions}" Foreground="#D8E8F8" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
@@ -538,20 +652,114 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
-                        <DataGrid Grid.Column="1"
-                                  Style="{StaticResource DashboardDataGridStyle}"
-                                  ItemsSource="{Binding MockSimulationEvents}"
-                                  Margin="5,0,0,0">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="EventType" Binding="{Binding EventType}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
-                                <DataGridTextColumn Header="VehicleId" Binding="{Binding VehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
-                                <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
-                                <DataGridTextColumn Header="ResourceId" Binding="{Binding ResourceId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
-                                <DataGridTextColumn Header="OldReservationId" Binding="{Binding OldReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="160"/>
-                                <DataGridTextColumn Header="NewReservationId" Binding="{Binding NewReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="160"/>
-                                <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" ElementStyle="{StaticResource CellTextStyle}" Width="*"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
+                        <Grid Grid.Column="1" Margin="5,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="2*"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <WrapPanel Grid.Row="0" Margin="0,0,0,8">
+                                <TextBlock Text="Vehicle"
+                                           Foreground="#8FA8BF"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                                <ComboBox ItemsSource="{Binding MockSimulationEventVehicleFilters}"
+                                          SelectedItem="{Binding SelectedMockEventVehicleFilter}"
+                                          Width="130"
+                                          Height="28"
+                                          Margin="0,0,12,0"/>
+                                <TextBlock Text="EventType"
+                                           Foreground="#8FA8BF"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,6,0"/>
+                                <ComboBox ItemsSource="{Binding MockSimulationEventTypeFilters}"
+                                          SelectedItem="{Binding SelectedMockEventTypeFilter}"
+                                          Width="170"
+                                          Height="28"/>
+                            </WrapPanel>
+                            <DataGrid Grid.Row="1"
+                                      Style="{StaticResource DashboardDataGridStyle}"
+                                      ItemsSource="{Binding MockSimulationEventTimelineView}"
+                                      SelectedItem="{Binding SelectedMockSimulationEvent}"
+                                      Margin="0,0,0,8">
+                                <DataGrid.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.HeaderTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#102033"
+                                                        BorderBrush="#1A2B3C"
+                                                        BorderThickness="0,1,0,1"
+                                                        Padding="8,4">
+                                                    <TextBlock Text="{Binding Name}"
+                                                               Foreground="#00BFFF"
+                                                               FontWeight="SemiBold"/>
+                                                </Border>
+                                            </DataTemplate>
+                                        </GroupStyle.HeaderTemplate>
+                                    </GroupStyle>
+                                </DataGrid.GroupStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Tick" Binding="{Binding Tick}" ElementStyle="{StaticResource CellTextStyle}" Width="64"/>
+                                    <DataGridTextColumn Header="EventType" Binding="{Binding EventType}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
+                                    <DataGridTextColumn Header="VehicleId" Binding="{Binding VehicleId}" ElementStyle="{StaticResource CellTextStyle}" Width="110"/>
+                                    <DataGridTextColumn Header="TaskId" Binding="{Binding TaskId}" ElementStyle="{StaticResource CellTextStyle}" Width="140"/>
+                                    <DataGridTextColumn Header="ResourceId" Binding="{Binding ResourceId}" ElementStyle="{StaticResource CellTextStyle}" Width="130"/>
+                                    <DataGridTextColumn Header="OldReservationId" Binding="{Binding OldReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                                    <DataGridTextColumn Header="NewReservationId" Binding="{Binding NewReservationId}" ElementStyle="{StaticResource CellTextStyle}" Width="150"/>
+                                    <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" ElementStyle="{StaticResource CellTextStyle}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <Border Grid.Row="2" Style="{StaticResource PanelBorderStyle}" Padding="10">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Row="0" Grid.Column="0"
+                                               Text="{Binding SelectedMockSimulationEvent.EventType, StringFormat=EventType: {0}}"
+                                               Foreground="#D8E8F8"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding SelectedMockSimulationEvent.Tick, StringFormat=Tick: {0}}"
+                                               Foreground="#8FA8BF"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0"
+                                               Text="{Binding SelectedMockSimulationEvent.VehicleId, StringFormat=VehicleId: {0}}"
+                                               Foreground="#8FA8BF"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1"
+                                               Text="{Binding SelectedMockSimulationEvent.TaskId, StringFormat=TaskId: {0}}"
+                                               Foreground="#8FA8BF"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0"
+                                               Text="{Binding SelectedMockSimulationEvent.OldReservationId, StringFormat=OldReservationId: {0}}"
+                                               Foreground="#8FA8BF"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1"
+                                               Text="{Binding SelectedMockSimulationEvent.NewReservationId, StringFormat=NewReservationId: {0}}"
+                                               Foreground="#8FA8BF"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBox Grid.Row="3"
+                                             Grid.ColumnSpan="2"
+                                             Text="{Binding SelectedMockSimulationEvent.Message}"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             VerticalScrollBarVisibility="Auto"
+                                             Background="#08111E"
+                                             Foreground="#D8E8F8"
+                                             BorderBrush="#1A2B3C"
+                                             Margin="0,8,0,0"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </Grid>
             </TabItem>

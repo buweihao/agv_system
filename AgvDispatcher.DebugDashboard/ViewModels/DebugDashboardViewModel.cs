@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using AgvDispatcher.Core.Contracts.Dispatching.Enums;
 using AgvDispatcher.Core.Contracts.Dispatching.Models;
 using AgvDispatcher.Core.Contracts.Reservations.Models;
@@ -11,6 +12,7 @@ using AgvDispatcher.Infrastructure.Mock.Simulation;
 using AgvDispatcher.Infrastructure.Okapi;
 using Prism.Commands;
 using Prism.Mvvm;
+using System.Windows.Data;
 using System.Windows.Threading;
 
 namespace AgvDispatcher.DebugDashboard.ViewModels;
@@ -46,6 +48,21 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private string _mockSimulationOptions = string.Empty;
     private MockSimulationScenarioDefinition? _selectedMockSimulationScenario;
     private MockSimulationVehicleRow? _selectedMockSimulationVehicle;
+    private MockFaultPolicy _selectedMockFaultPolicy = MockFaultPolicy.HoldResources;
+    private string _mockMapEdgeId = string.Empty;
+    private TrafficResourceType _selectedMockTrafficResourceType = TrafficResourceType.Edge;
+    private string _mockTrafficResourceId = string.Empty;
+    private bool _mockReplanOnLockedResource;
+    private bool _mockReplanOnBlockedResource = true;
+    private bool _mockPreferWaitingOverReplan = true;
+    private int _mockMaxReplanCount = 3;
+    private double _mockWaitTimeoutSeconds = 10;
+    private double _mockRetryIntervalSeconds = 1;
+    private int _mockMaxRetryCount = 3;
+    private string _mockSimulationEditableScenarioId = string.Empty;
+    private string _selectedMockEventVehicleFilter = "All";
+    private string _selectedMockEventTypeFilter = "All";
+    private MockSimulationEventRow? _selectedMockSimulationEvent;
     private CancellationTokenSource? _mockSimulationRunCancellation;
     private bool _isMockSimulationRunActive;
     private bool _isScenarioManualBlockActive;
@@ -85,6 +102,31 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         StopMockSimulationRunCommand = new DelegateCommand(
             StopMockSimulationRun,
             () => IsMockSimulationRunActive);
+        CancelSelectedMockSimulationTaskCommand = new DelegateCommand(
+            async () => await CancelSelectedMockSimulationTaskAsync().ConfigureAwait(true),
+            () => CanRunSelectedMockVehicleCommand() &&
+                  !string.IsNullOrWhiteSpace(SelectedMockSimulationVehicle?.CurrentTaskId));
+        InjectMockSimulationFaultCommand = new DelegateCommand(
+            async () => await InjectMockSimulationFaultAsync().ConfigureAwait(true),
+            () => CanRunSelectedMockVehicleCommand());
+        RecoverMockSimulationVehicleCommand = new DelegateCommand(
+            async () => await RecoverMockSimulationVehicleAsync().ConfigureAwait(true),
+            () => CanRunSelectedMockVehicleCommand());
+        DisableMockMapEdgeCommand = new DelegateCommand(
+            async () => await SetMockMapEdgeEnabledAsync(false).ConfigureAwait(true),
+            () => CanRunMockSimulationCommand() && !string.IsNullOrWhiteSpace(MockMapEdgeId));
+        EnableMockMapEdgeCommand = new DelegateCommand(
+            async () => await SetMockMapEdgeEnabledAsync(true).ConfigureAwait(true),
+            () => CanRunMockSimulationCommand() && !string.IsNullOrWhiteSpace(MockMapEdgeId));
+        BlockMockTrafficResourceCommand = new DelegateCommand(
+            async () => await SetMockTrafficResourceBlockedAsync(true).ConfigureAwait(true),
+            () => CanRunMockSimulationCommand() && !string.IsNullOrWhiteSpace(MockTrafficResourceId));
+        UnblockMockTrafficResourceCommand = new DelegateCommand(
+            async () => await SetMockTrafficResourceBlockedAsync(false).ConfigureAwait(true),
+            () => CanRunMockSimulationCommand() && !string.IsNullOrWhiteSpace(MockTrafficResourceId));
+        ApplyMockSimulationOptionsCommand = new DelegateCommand(
+            async () => await ApplyMockSimulationOptionsAsync().ConfigureAwait(true),
+            () => CanRunMockSimulationCommand());
         InitializeScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => _mockScenarioController.InitializeScenarioAsync(SelectedScenario?.Key ?? string.Empty)).ConfigureAwait(true));
         StartVehicleACommand = new DelegateCommand(async () => await RunScenarioActionAsync(
@@ -105,6 +147,27 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         _selectedScenario = ScenarioOptions.FirstOrDefault();
         MockSimulationScenarioOptions = MockSimulationScenarioCatalog.GetDefinitions();
         _selectedMockSimulationScenario = MockSimulationScenarioOptions.FirstOrDefault();
+        MockFaultPolicies = Enum.GetValues<MockFaultPolicy>();
+        MockTrafficResourceTypes = new[] { TrafficResourceType.Edge, TrafficResourceType.Node };
+        MockSimulationEventTypeFilters = new[]
+        {
+            "All",
+            nameof(MockSimulationEventType.VehicleMoved),
+            nameof(MockSimulationEventType.WaitingForTraffic),
+            nameof(MockSimulationEventType.RouteInvalidated),
+            nameof(MockSimulationEventType.TaskReplanned),
+            nameof(MockSimulationEventType.ReplanFailed),
+            nameof(MockSimulationEventType.ReplanSkipped),
+            nameof(MockSimulationEventType.ResourceLocked),
+            nameof(MockSimulationEventType.ResourceReleased)
+        };
+        MockSimulationEventTimelineView = CollectionViewSource.GetDefaultView(MockSimulationEvents);
+        MockSimulationEventTimelineView.GroupDescriptions?.Add(
+            new PropertyGroupDescription(nameof(MockSimulationEventRow.TickGroup)));
+        MockSimulationEventTimelineView.SortDescriptions.Add(
+            new SortDescription(nameof(MockSimulationEventRow.Tick), ListSortDirection.Descending));
+        MockSimulationEventTimelineView.SortDescriptions.Add(
+            new SortDescription(nameof(MockSimulationEventRow.Sequence), ListSortDirection.Ascending));
         RefreshIntervals = new[] { 1, 2, 5 };
         _mockScenarioController.ScenarioChanged += OnScenarioChanged;
         ApplyScenarioState(_mockScenarioController.CurrentState);
@@ -132,6 +195,22 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 
     public DelegateCommand StopMockSimulationRunCommand { get; }
 
+    public DelegateCommand CancelSelectedMockSimulationTaskCommand { get; }
+
+    public DelegateCommand InjectMockSimulationFaultCommand { get; }
+
+    public DelegateCommand RecoverMockSimulationVehicleCommand { get; }
+
+    public DelegateCommand DisableMockMapEdgeCommand { get; }
+
+    public DelegateCommand EnableMockMapEdgeCommand { get; }
+
+    public DelegateCommand BlockMockTrafficResourceCommand { get; }
+
+    public DelegateCommand UnblockMockTrafficResourceCommand { get; }
+
+    public DelegateCommand ApplyMockSimulationOptionsCommand { get; }
+
     public DelegateCommand InitializeScenarioCommand { get; }
 
     public DelegateCommand StartVehicleACommand { get; }
@@ -154,6 +233,14 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 
     public IReadOnlyList<MockSimulationScenarioDefinition> MockSimulationScenarioOptions { get; }
 
+    public IReadOnlyList<MockFaultPolicy> MockFaultPolicies { get; }
+
+    public IReadOnlyList<TrafficResourceType> MockTrafficResourceTypes { get; }
+
+    public IReadOnlyList<string> MockSimulationEventTypeFilters { get; }
+
+    public ICollectionView MockSimulationEventTimelineView { get; }
+
     public ObservableCollection<TaskRow> Tasks { get; } = new();
 
     public ObservableCollection<VehicleRow> Vehicles { get; } = new();
@@ -175,6 +262,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     public ObservableCollection<MockSimulationVehicleRow> MockSimulationVehicles { get; } = new();
 
     public ObservableCollection<MockSimulationEventRow> MockSimulationEvents { get; } = new();
+
+    public ObservableCollection<string> MockSimulationEventVehicleFilters { get; } = new();
 
     public ObservableCollection<MockSimulationTaskRow> MockSimulationTasks { get; } = new();
 
@@ -359,9 +448,117 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         {
             if (SetProperty(ref _selectedMockSimulationVehicle, value))
             {
-                StartSelectedMockSimulationTaskCommand.RaiseCanExecuteChanged();
+                RaiseMockSimulationCommandStates();
             }
         }
+    }
+
+    public MockFaultPolicy SelectedMockFaultPolicy
+    {
+        get => _selectedMockFaultPolicy;
+        set => SetProperty(ref _selectedMockFaultPolicy, value);
+    }
+
+    public string MockMapEdgeId
+    {
+        get => _mockMapEdgeId;
+        set
+        {
+            if (SetProperty(ref _mockMapEdgeId, value ?? string.Empty))
+            {
+                RaiseMockSimulationCommandStates();
+            }
+        }
+    }
+
+    public TrafficResourceType SelectedMockTrafficResourceType
+    {
+        get => _selectedMockTrafficResourceType;
+        set => SetProperty(ref _selectedMockTrafficResourceType, value);
+    }
+
+    public string MockTrafficResourceId
+    {
+        get => _mockTrafficResourceId;
+        set
+        {
+            if (SetProperty(ref _mockTrafficResourceId, value ?? string.Empty))
+            {
+                RaiseMockSimulationCommandStates();
+            }
+        }
+    }
+
+    public bool MockReplanOnLockedResource
+    {
+        get => _mockReplanOnLockedResource;
+        set => SetProperty(ref _mockReplanOnLockedResource, value);
+    }
+
+    public bool MockReplanOnBlockedResource
+    {
+        get => _mockReplanOnBlockedResource;
+        set => SetProperty(ref _mockReplanOnBlockedResource, value);
+    }
+
+    public bool MockPreferWaitingOverReplan
+    {
+        get => _mockPreferWaitingOverReplan;
+        set => SetProperty(ref _mockPreferWaitingOverReplan, value);
+    }
+
+    public int MockMaxReplanCount
+    {
+        get => _mockMaxReplanCount;
+        set => SetProperty(ref _mockMaxReplanCount, Math.Max(0, value));
+    }
+
+    public double MockWaitTimeoutSeconds
+    {
+        get => _mockWaitTimeoutSeconds;
+        set => SetProperty(ref _mockWaitTimeoutSeconds, Math.Max(0, value));
+    }
+
+    public double MockRetryIntervalSeconds
+    {
+        get => _mockRetryIntervalSeconds;
+        set => SetProperty(ref _mockRetryIntervalSeconds, Math.Max(0, value));
+    }
+
+    public int MockMaxRetryCount
+    {
+        get => _mockMaxRetryCount;
+        set => SetProperty(ref _mockMaxRetryCount, Math.Max(0, value));
+    }
+
+    public string SelectedMockEventVehicleFilter
+    {
+        get => _selectedMockEventVehicleFilter;
+        set
+        {
+            if (SetProperty(ref _selectedMockEventVehicleFilter, string.IsNullOrWhiteSpace(value) ? "All" : value))
+            {
+                ApplySnapshot();
+            }
+        }
+    }
+
+    public string SelectedMockEventTypeFilter
+    {
+        get => _selectedMockEventTypeFilter;
+        set
+        {
+            if (SetProperty(ref _selectedMockEventTypeFilter, string.IsNullOrWhiteSpace(value) ? "All" : value))
+            {
+                ApplySnapshot();
+            }
+        }
+    }
+
+    public MockSimulationEventRow? SelectedMockSimulationEvent
+    {
+        get => _selectedMockSimulationEvent;
+        set => SetProperty(ref _selectedMockSimulationEvent, value);
     }
 
     public bool IsMockSimulationRunActive
@@ -427,6 +624,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         {
             var scenario = MockSimulationScenarioCatalog.Create(SelectedMockSimulationScenario.Key);
             var result = await _mockFleetSimulationEngine.InitializeAsync(scenario).ConfigureAwait(true);
+            _mockSimulationEditableScenarioId = string.Empty;
             StatusMessage = result.Succeeded
                 ? $"Mock scenario loaded: {scenario.Name}"
                 : result.Message;
@@ -486,6 +684,143 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             StatusMessage = result.Succeeded
                 ? $"Mock simulation stepped: tick {result.Tick}"
                 : result.Message;
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private async Task CancelSelectedMockSimulationTaskAsync()
+    {
+        var vehicle = SelectedMockSimulationVehicle;
+        if (string.IsNullOrWhiteSpace(vehicle?.CurrentTaskId))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _mockFleetSimulationEngine
+                .CancelTaskAsync(vehicle.CurrentTaskId)
+                .ConfigureAwait(true);
+            StatusMessage = result.Succeeded
+                ? $"Mock simulation task canceled: {vehicle.CurrentTaskId}"
+                : result.Message;
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private async Task InjectMockSimulationFaultAsync()
+    {
+        var vehicle = SelectedMockSimulationVehicle;
+        if (string.IsNullOrWhiteSpace(vehicle?.VehicleId))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _mockFleetSimulationEngine
+                .InjectFaultAsync(vehicle.VehicleId, SelectedMockFaultPolicy)
+                .ConfigureAwait(true);
+            StatusMessage = result.Succeeded
+                ? $"Mock simulation fault injected: {vehicle.VehicleId}/{SelectedMockFaultPolicy}"
+                : result.Message;
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private async Task RecoverMockSimulationVehicleAsync()
+    {
+        var vehicle = SelectedMockSimulationVehicle;
+        if (string.IsNullOrWhiteSpace(vehicle?.VehicleId))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _mockFleetSimulationEngine
+                .RecoverVehicleAsync(vehicle.VehicleId)
+                .ConfigureAwait(true);
+            StatusMessage = result.Succeeded
+                ? $"Mock simulation vehicle recovered: {vehicle.VehicleId}"
+                : result.Message;
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private async Task SetMockMapEdgeEnabledAsync(bool enabled)
+    {
+        try
+        {
+            var result = await _mockFleetSimulationEngine
+                .SetMapEdgeEnabledAsync(MockMapEdgeId.Trim(), enabled)
+                .ConfigureAwait(true);
+            StatusMessage = result.Succeeded
+                ? result.Message
+                : result.Message;
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private async Task SetMockTrafficResourceBlockedAsync(bool blocked)
+    {
+        try
+        {
+            var result = blocked
+                ? await _mockFleetSimulationEngine
+                    .BlockTrafficResourceAsync(SelectedMockTrafficResourceType, MockTrafficResourceId.Trim())
+                    .ConfigureAwait(true)
+                : await _mockFleetSimulationEngine
+                    .UnblockTrafficResourceAsync(SelectedMockTrafficResourceType, MockTrafficResourceId.Trim())
+                    .ConfigureAwait(true);
+            StatusMessage = result.Message;
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
+    }
+
+    private async Task ApplyMockSimulationOptionsAsync()
+    {
+        try
+        {
+            var current = _mockFleetSimulationEngine.CurrentScenario?.Options ?? new MockSimulationOptions();
+            var result = await _mockFleetSimulationEngine.UpdateOptionsAsync(new MockSimulationOptions
+            {
+                RollingWindowSize = current.RollingWindowSize,
+                WaitTimeout = TimeSpan.FromSeconds(MockWaitTimeoutSeconds),
+                RetryInterval = TimeSpan.FromSeconds(MockRetryIntervalSeconds),
+                MaxRetryCount = MockMaxRetryCount,
+                ReplanOnLockedResource = MockReplanOnLockedResource,
+                ReplanOnBlockedResource = MockReplanOnBlockedResource,
+                PreferWaitingOverReplan = MockPreferWaitingOverReplan,
+                MaxReplanCount = MockMaxReplanCount,
+                OnTimeoutPolicy = current.OnTimeoutPolicy,
+                AutoStartTasks = current.AutoStartTasks
+            }).ConfigureAwait(true);
+            StatusMessage = result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
@@ -661,8 +996,12 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             .Select(ToMockSimulationVehicleRow)
             .Where(row => Matches(row, query))
             .ToArray();
-        var mockEventRows = _snapshot.MockSimulation.RecentEvents
-            .Select(ToMockSimulationEventRow)
+        var allMockEventRows = _snapshot.MockSimulation.RecentEvents
+            .Select((item, index) => ToMockSimulationEventRow(item, index))
+            .ToArray();
+        UpdateMockEventVehicleFilters(allMockEventRows);
+        var mockEventRows = allMockEventRows
+            .Where(row => MatchesMockEventFilters(row))
             .Where(row => Matches(row, query))
             .ToArray();
         var mockTaskRows = _snapshot.MockSimulation.Vehicles
@@ -679,11 +1018,16 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         Replace(OkapiProtocolRecords, okapiRows);
         Replace(MockSimulationVehicles, mockVehicleRows);
         Replace(MockSimulationEvents, mockEventRows);
+        MockSimulationEventTimelineView.Refresh();
+        SelectedMockSimulationEvent = SelectedMockSimulationEvent is null
+            ? null
+            : MockSimulationEvents.FirstOrDefault(row => row.Sequence == SelectedMockSimulationEvent.Sequence);
         Replace(MockSimulationTasks, mockTaskRows);
         MockSimulationScenarioId = _snapshot.MockSimulation.ScenarioId;
         MockSimulationName = _snapshot.MockSimulation.Name;
         MockSimulationTick = _snapshot.MockSimulation.Tick;
         MockSimulationOptions = _snapshot.MockSimulation.Options;
+        SyncEditableMockSimulationOptions();
         SelectedMockSimulationVehicle = SelectedMockSimulationVehicle is null
             ? null
             : MockSimulationVehicles.FirstOrDefault(vehicle =>
@@ -805,6 +1149,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         MapVersion = reservation.MapVersion,
         State = reservation.State.ToString(),
         RollingWindowSize = reservation.RollingWindowSize,
+        SegmentCount = reservation.Segments.Count,
         CurrentWindow = reservation.CurrentWindow is null
             ? string.Empty
             : $"{reservation.CurrentWindow.StartSegmentSequence}-{reservation.CurrentWindow.EndSegmentSequence}",
@@ -834,15 +1179,25 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         ReplanCount = vehicle.ReplanCount
     };
 
-    private static MockSimulationEventRow ToMockSimulationEventRow(AgvDispatcher.Infrastructure.Mock.Simulation.MockSimulationEvent simulationEvent) => new()
+    private static MockSimulationEventRow ToMockSimulationEventRow(
+        AgvDispatcher.Infrastructure.Mock.Simulation.MockSimulationEvent simulationEvent,
+        int sequence) => new()
     {
+        Sequence = sequence,
+        Tick = simulationEvent.Tick,
+        TickGroup = $"Tick {simulationEvent.Tick}",
         EventType = simulationEvent.EventType.ToString(),
         VehicleId = simulationEvent.VehicleId,
         TaskId = simulationEvent.TaskId,
+        FromNodeId = simulationEvent.FromNodeId,
+        ToNodeId = simulationEvent.ToNodeId,
         ResourceId = simulationEvent.ResourceId,
+        OldPlanId = simulationEvent.OldPlanId,
+        NewPlanId = simulationEvent.NewPlanId,
         OldReservationId = simulationEvent.OldReservationId,
         NewReservationId = simulationEvent.NewReservationId,
-        Reason = simulationEvent.Reason
+        Reason = simulationEvent.Reason,
+        Message = simulationEvent.Message
     };
 
     private static MockSimulationTaskRow ToMockSimulationTaskRow(
@@ -884,7 +1239,9 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private static bool Matches(MockSimulationEventRow row, string query) =>
         IsEmpty(query) || Contains(row.EventType, query) || Contains(row.VehicleId, query) ||
         Contains(row.TaskId, query) || Contains(row.ResourceId, query) || Contains(row.Reason, query) ||
-        Contains(row.OldReservationId, query) || Contains(row.NewReservationId, query);
+        Contains(row.OldReservationId, query) || Contains(row.NewReservationId, query) ||
+        Contains(row.OldPlanId, query) || Contains(row.NewPlanId, query) ||
+        Contains(row.FromNodeId, query) || Contains(row.ToNodeId, query);
 
     private static bool Matches(MockSimulationTaskRow row, string query) =>
         IsEmpty(query) || Contains(row.TaskId, query) || Contains(row.VehicleId, query) ||
@@ -898,6 +1255,59 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private bool CanRunMockSimulationCommand() =>
         !IsRefreshing && !IsMockSimulationRunActive && !string.IsNullOrWhiteSpace(MockSimulationScenarioId);
 
+    private bool CanRunSelectedMockVehicleCommand() =>
+        CanRunMockSimulationCommand() && SelectedMockSimulationVehicle is not null;
+
+    private bool MatchesMockEventFilters(MockSimulationEventRow row)
+    {
+        var vehicleMatches = SelectedMockEventVehicleFilter == "All" ||
+            string.Equals(row.VehicleId, SelectedMockEventVehicleFilter, StringComparison.OrdinalIgnoreCase);
+        var typeMatches = SelectedMockEventTypeFilter == "All" ||
+            string.Equals(row.EventType, SelectedMockEventTypeFilter, StringComparison.OrdinalIgnoreCase);
+        return vehicleMatches && typeMatches;
+    }
+
+    private void UpdateMockEventVehicleFilters(IReadOnlyList<MockSimulationEventRow> events)
+    {
+        var values = events
+            .Where(row => !string.IsNullOrWhiteSpace(row.VehicleId))
+            .Select(row => row.VehicleId!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .Prepend("All")
+            .ToArray();
+        Replace(MockSimulationEventVehicleFilters, values);
+        if (!MockSimulationEventVehicleFilters.Contains(SelectedMockEventVehicleFilter))
+        {
+            _selectedMockEventVehicleFilter = "All";
+            RaisePropertyChanged(nameof(SelectedMockEventVehicleFilter));
+        }
+    }
+
+    private void SyncEditableMockSimulationOptions()
+    {
+        if (string.IsNullOrWhiteSpace(MockSimulationScenarioId) ||
+            string.Equals(_mockSimulationEditableScenarioId, MockSimulationScenarioId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var options = _mockFleetSimulationEngine.CurrentScenario?.Options;
+        if (options is null)
+        {
+            return;
+        }
+
+        _mockSimulationEditableScenarioId = MockSimulationScenarioId;
+        MockReplanOnLockedResource = options.ReplanOnLockedResource;
+        MockReplanOnBlockedResource = options.ReplanOnBlockedResource;
+        MockPreferWaitingOverReplan = options.PreferWaitingOverReplan;
+        MockMaxReplanCount = options.MaxReplanCount;
+        MockWaitTimeoutSeconds = options.WaitTimeout.TotalSeconds;
+        MockRetryIntervalSeconds = options.RetryInterval.TotalSeconds;
+        MockMaxRetryCount = options.MaxRetryCount;
+    }
+
     private void RaiseMockSimulationCommandStates()
     {
         LoadMockSimulationScenarioCommand.RaiseCanExecuteChanged();
@@ -907,6 +1317,14 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         RunTenMockSimulationTicksCommand.RaiseCanExecuteChanged();
         RunMockSimulationUntilIdleCommand.RaiseCanExecuteChanged();
         StopMockSimulationRunCommand.RaiseCanExecuteChanged();
+        CancelSelectedMockSimulationTaskCommand.RaiseCanExecuteChanged();
+        InjectMockSimulationFaultCommand.RaiseCanExecuteChanged();
+        RecoverMockSimulationVehicleCommand.RaiseCanExecuteChanged();
+        DisableMockMapEdgeCommand.RaiseCanExecuteChanged();
+        EnableMockMapEdgeCommand.RaiseCanExecuteChanged();
+        BlockMockTrafficResourceCommand.RaiseCanExecuteChanged();
+        UnblockMockTrafficResourceCommand.RaiseCanExecuteChanged();
+        ApplyMockSimulationOptionsCommand.RaiseCanExecuteChanged();
     }
 
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items)
@@ -976,6 +1394,7 @@ public sealed class RouteReservationRow
     public string MapVersion { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
     public int RollingWindowSize { get; init; }
+    public int SegmentCount { get; init; }
     public string CurrentWindow { get; init; } = string.Empty;
     public DateTimeOffset UpdatedAt { get; init; }
     public IReadOnlyList<RouteSegmentRow> Segments { get; init; } = Array.Empty<RouteSegmentRow>();
@@ -1007,13 +1426,21 @@ public sealed class MockSimulationVehicleRow
 
 public sealed class MockSimulationEventRow
 {
+    public int Sequence { get; init; }
+    public long Tick { get; init; }
+    public string TickGroup { get; init; } = string.Empty;
     public string EventType { get; init; } = string.Empty;
     public string? VehicleId { get; init; }
     public string? TaskId { get; init; }
+    public string? FromNodeId { get; init; }
+    public string? ToNodeId { get; init; }
     public string? ResourceId { get; init; }
+    public string? OldPlanId { get; init; }
+    public string? NewPlanId { get; init; }
     public string? OldReservationId { get; init; }
     public string? NewReservationId { get; init; }
     public string? Reason { get; init; }
+    public string Message { get; init; } = string.Empty;
 }
 
 public sealed class MockSimulationTaskRow

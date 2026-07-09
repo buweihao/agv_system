@@ -617,6 +617,230 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             }));
         }
 
+        public Task<MockSimulationTickResult> UpdateOptionsAsync(
+            MockSimulationOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ArgumentNullException.ThrowIfNull(options);
+            options.Validate();
+
+            lock (_syncRoot)
+            {
+                if (_currentScenario is null)
+                {
+                    return Task.FromResult(Failure("Simulation scenario has not been initialized."));
+                }
+
+                _currentScenario = CopyScenario(_currentScenario, options: options.Clone());
+                var result = new MockSimulationTickResult
+                {
+                    Tick = _tick,
+                    Succeeded = true,
+                    Message = "Mock simulation options updated.",
+                    Events = new[]
+                    {
+                        new MockSimulationEvent
+                        {
+                            Tick = _tick,
+                            EventType = MockSimulationEventType.None,
+                            Reason = "OptionsUpdated",
+                            Message = "Mock simulation options were updated."
+                        }
+                    },
+                    VehicleStates = GetVehicleStatesNoLock()
+                };
+                RecordSimulationResultNoLock(result);
+                return Task.FromResult(result);
+            }
+        }
+
+        public Task<MockSimulationTickResult> SetMapEdgeEnabledAsync(
+            string edgeId,
+            bool enabled,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(edgeId))
+            {
+                return Task.FromResult(Failure("Edge id is required."));
+            }
+
+            lock (_syncRoot)
+            {
+                if (_currentScenario?.MapSnapshot is null)
+                {
+                    return Task.FromResult(Failure("Current simulation scenario does not have a map snapshot."));
+                }
+
+                var changed = false;
+                var map = CopyMapSnapshot(
+                    _currentScenario.MapSnapshot,
+                    edges: _currentScenario.MapSnapshot.Edges
+                        .Select(edge =>
+                        {
+                            if (!string.Equals(edge.EdgeId, edgeId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return edge;
+                            }
+
+                            changed = true;
+                            return CopyEdge(edge, enabled);
+                        })
+                        .ToArray(),
+                    versionSuffix: enabled ? $"enabled-{edgeId}" : $"disabled-{edgeId}");
+
+                if (!changed)
+                {
+                    return Task.FromResult(Failure($"Edge '{edgeId}' was not found in the current simulation map."));
+                }
+
+                _currentScenario = CopyScenario(_currentScenario, map);
+                var result = new MockSimulationTickResult
+                {
+                    Tick = _tick,
+                    Succeeded = true,
+                    Message = enabled
+                        ? $"Map edge enabled: {edgeId}"
+                        : $"Map edge disabled: {edgeId}",
+                    Events = new[]
+                    {
+                        new MockSimulationEvent
+                        {
+                            Tick = _tick,
+                            EventType = enabled
+                                ? MockSimulationEventType.None
+                                : MockSimulationEventType.RouteInvalidated,
+                            ResourceId = edgeId,
+                            Reason = enabled ? "MapEdgeEnabled" : "MapEdgeDisabled",
+                            Message = enabled
+                                ? $"Map edge {edgeId} was enabled."
+                                : $"Map edge {edgeId} was disabled; next step will validate active routes."
+                        }
+                    },
+                    VehicleStates = GetVehicleStatesNoLock()
+                };
+                RecordSimulationResultNoLock(result);
+                return Task.FromResult(result);
+            }
+        }
+
+        public async Task<MockSimulationTickResult> BlockTrafficResourceAsync(
+            TrafficResourceType resourceType,
+            string resourceId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_trafficControlService is null)
+            {
+                return Failure("Traffic control dependency was not supplied to the simulation engine.", resourceId: resourceId);
+            }
+
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return Failure("Traffic resource id is required.");
+            }
+
+            var block = await _trafficControlService.BlockResourcesAsync(
+                new TrafficBlockRequest
+                {
+                    Context = Context("MockSimulationBlockResource"),
+                    Resources = new[]
+                    {
+                        new TrafficResourceKey
+                        {
+                            ResourceType = resourceType,
+                            ResourceId = resourceId
+                        }
+                    },
+                    Reason = "Mock simulation manual block",
+                    OperatorId = nameof(MockFleetSimulationEngine)
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            if (!block.Success)
+            {
+                return Failure(block.Message, resourceId: resourceId);
+            }
+
+            return RecordSimulationResult(new MockSimulationTickResult
+            {
+                Tick = CurrentTick,
+                Succeeded = true,
+                Message = block.Message ?? $"Traffic resource blocked: {resourceType}:{resourceId}",
+                Events = new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = CurrentTick,
+                        EventType = MockSimulationEventType.RouteInvalidated,
+                        ResourceId = resourceId,
+                        Reason = "TrafficResourceBlocked",
+                        Message = $"Traffic resource {resourceType}:{resourceId} was blocked; next step will validate active routes."
+                    }
+                },
+                VehicleStates = GetVehicleStates()
+            });
+        }
+
+        public async Task<MockSimulationTickResult> UnblockTrafficResourceAsync(
+            TrafficResourceType resourceType,
+            string resourceId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_trafficControlService is null)
+            {
+                return Failure("Traffic control dependency was not supplied to the simulation engine.", resourceId: resourceId);
+            }
+
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return Failure("Traffic resource id is required.");
+            }
+
+            var unblock = await _trafficControlService.UnblockResourcesAsync(
+                new TrafficUnblockRequest
+                {
+                    Context = Context("MockSimulationUnblockResource"),
+                    Resources = new[]
+                    {
+                        new TrafficResourceKey
+                        {
+                            ResourceType = resourceType,
+                            ResourceId = resourceId
+                        }
+                    },
+                    Reason = "Mock simulation manual unblock",
+                    OperatorId = nameof(MockFleetSimulationEngine)
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            if (!unblock.Success)
+            {
+                return Failure(unblock.Message, resourceId: resourceId);
+            }
+
+            return RecordSimulationResult(new MockSimulationTickResult
+            {
+                Tick = CurrentTick,
+                Succeeded = true,
+                Message = unblock.Message ?? $"Traffic resource unblocked: {resourceType}:{resourceId}",
+                Events = new[]
+                {
+                    new MockSimulationEvent
+                    {
+                        Tick = CurrentTick,
+                        EventType = MockSimulationEventType.None,
+                        ResourceId = resourceId,
+                        Reason = "TrafficResourceUnblocked",
+                        Message = $"Traffic resource {resourceType}:{resourceId} was unblocked."
+                    }
+                },
+                VehicleStates = GetVehicleStates()
+            });
+        }
+
         public async Task<MockSimulationTickResult> StepAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1355,26 +1579,37 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             long tick,
             CancellationToken cancellationToken)
         {
-            if (_mapService is null)
+            MapSnapshotDto? mapResult = null;
+            if (_mapService is not null)
             {
-                return null;
+                var currentMap = _mapService.GetCurrentMap(new GetMapSnapshotRequest { Context = Context("StepValidateMap") });
+                if (!currentMap.Success || currentMap.Data is null)
+                {
+                    return new MockSimulationTickResult
+                    {
+                        Tick = tick,
+                        Succeeded = false,
+                        Events = new[] { FailureEvent(tick, vehicle.VehicleId, taskId, currentMap.Message) }
+                    };
+                }
+
+                if (MapContainsReservationResources(currentMap.Data, reservation))
+                {
+                    mapResult = currentMap.Data;
+                }
             }
 
-            var mapResult = _mapService.GetCurrentMap(new GetMapSnapshotRequest { Context = Context("StepValidateMap") });
-            if (!mapResult.Success || mapResult.Data is null)
+            mapResult ??= GetCurrentSimulationMap();
+
+            if (mapResult is null)
             {
-                return new MockSimulationTickResult
-                {
-                    Tick = tick,
-                    Succeeded = false,
-                    Events = new[] { FailureEvent(tick, vehicle.VehicleId, taskId, mapResult.Message) }
-                };
+                return null;
             }
 
             var invalid = FindInvalidRemainingRouteResources(
                 reservation,
                 currentSegmentSequence,
-                mapResult.Data);
+                mapResult);
             if (invalid.DisabledEdgeIds.Count == 0 && invalid.DisabledNodeIds.Count == 0)
             {
                 return null;
@@ -1700,6 +1935,23 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             return (disabledEdges.ToArray(), disabledNodes.ToArray());
         }
 
+        private static bool MapContainsReservationResources(
+            MapSnapshotDto map,
+            RouteReservationDto reservation)
+        {
+            var edgeIds = (map.Edges ?? Array.Empty<MapEdgeDto>())
+                .Select(edge => edge.EdgeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var nodeIds = (map.Nodes ?? Array.Empty<MapNodeDto>())
+                .Select(node => node.NodeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return reservation.Segments.All(segment =>
+                edgeIds.Contains(segment.Segment.EdgeId) &&
+                nodeIds.Contains(segment.Segment.FromNodeId) &&
+                nodeIds.Contains(segment.Segment.ToNodeId));
+        }
+
         private async Task<MockSimulationTickResult> HandleWaitingTimeoutLimitAsync(
             MockVehicleRuntimeState vehicle,
             string taskId,
@@ -1864,7 +2116,8 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
         private MockSimulationTickResult Failure(
             string? message,
             string? vehicleId = null,
-            string? taskId = null) => RecordSimulationResult(new MockSimulationTickResult
+            string? taskId = null,
+            string? resourceId = null) => RecordSimulationResult(new MockSimulationTickResult
         {
             Tick = CurrentTick,
             Succeeded = false,
@@ -1877,6 +2130,7 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
                     EventType = MockSimulationEventType.SimulationFailed,
                     VehicleId = vehicleId,
                     TaskId = taskId,
+                    ResourceId = resourceId,
                     Message = string.IsNullOrWhiteSpace(message) ? "Simulation operation failed." : message
                 }
             }
@@ -1965,6 +2219,77 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             HasFault = hasFault,
             FaultCode = faultCode,
             UpdatedAt = DateTimeOffset.Now
+        };
+
+        private MapSnapshotDto? GetCurrentSimulationMap()
+        {
+            lock (_syncRoot)
+            {
+                return _currentScenario?.MapSnapshot is null
+                    ? null
+                    : CopyMapSnapshot(_currentScenario.MapSnapshot);
+            }
+        }
+
+        private static MockSimulationScenario CopyScenario(
+            MockSimulationScenario source,
+            MapSnapshotDto? mapSnapshot = null,
+            MockSimulationOptions? options = null) => new()
+        {
+            ScenarioId = source.ScenarioId,
+            Name = source.Name,
+            MapSnapshot = mapSnapshot ?? source.MapSnapshot,
+            Vehicles = source.Vehicles.Select(vehicle => vehicle.Clone()).ToArray(),
+            Tasks = source.Tasks.Select(task => task.Clone()).ToArray(),
+            Options = options ?? source.Options.Clone()
+        };
+
+        private static MapSnapshotDto CopyMapSnapshot(
+            MapSnapshotDto source,
+            IReadOnlyList<MapEdgeDto>? edges = null,
+            string? versionSuffix = null) => new()
+        {
+            MapId = source.MapId,
+            MapName = source.MapName,
+            Version = string.IsNullOrWhiteSpace(versionSuffix)
+                ? source.Version
+                : $"{source.Version}-{versionSuffix}",
+            Nodes = source.Nodes.Select(CopyNode).ToArray(),
+            Edges = (edges ?? source.Edges).Select(CopyEdge).ToArray(),
+            Areas = source.Areas,
+            VendorNodeMappings = source.VendorNodeMappings,
+            UpdatedAt = DateTimeOffset.Now
+        };
+
+        private static MapNodeDto CopyNode(MapNodeDto source) => new()
+        {
+            NodeId = source.NodeId,
+            NodeCode = source.NodeCode,
+            NodeName = source.NodeName,
+            NodeType = source.NodeType,
+            X = source.X,
+            Y = source.Y,
+            Angle = source.Angle,
+            AreaId = source.AreaId,
+            Enabled = source.Enabled,
+            Properties = source.Properties
+        };
+
+        private static MapEdgeDto CopyEdge(MapEdgeDto source) => CopyEdge(source, source.Enabled);
+
+        private static MapEdgeDto CopyEdge(MapEdgeDto source, bool enabled) => new()
+        {
+            EdgeId = source.EdgeId,
+            FromNodeId = source.FromNodeId,
+            ToNodeId = source.ToNodeId,
+            Distance = source.Distance,
+            Direction = source.Direction,
+            EdgeType = source.EdgeType,
+            Cost = source.Cost,
+            SpeedLimit = source.SpeedLimit,
+            AreaId = source.AreaId,
+            Enabled = enabled,
+            Properties = source.Properties
         };
 
         private static RequestContext Context(string operation) => new()

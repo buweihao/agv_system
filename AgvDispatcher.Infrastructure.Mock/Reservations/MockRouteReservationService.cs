@@ -503,6 +503,22 @@ namespace AgvDispatcher.Infrastructure.Mock.Reservations
             }
         }
 
+        public async Task<IReadOnlyList<RouteReservationDto>> GetAllReservationsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            await _gate.WaitAsync(cancellationToken);
+            try
+            {
+                return _reservations.Values
+                    .OrderByDescending(reservation => reservation.UpdatedAt)
+                    .ToArray();
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
         private async Task<(RouteReservationFailureReason Reason, bool RequiresReplan)> DescribeAcquireFailureAsync(
             RouteReservationDto reservation,
             IEnumerable<RouteReservedSegmentDto> segments,

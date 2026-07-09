@@ -45,4 +45,7 @@ public sealed class MockSimulationSnapshotDto
 
     public IReadOnlyList<MockSimulationEvent> RecentEvents { get; init; } =
         Array.Empty<MockSimulationEvent>();
+
+    public IReadOnlyList<TrafficResourceKey> MapResources { get; init; } =
+        Array.Empty<TrafficResourceKey>();
 }

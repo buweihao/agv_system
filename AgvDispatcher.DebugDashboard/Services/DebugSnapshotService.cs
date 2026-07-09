@@ -5,10 +5,12 @@ using AgvDispatcher.Core.Contracts.Dispatching.Requests;
 using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
 using AgvDispatcher.Core.Contracts.Reservations.Models;
 using AgvDispatcher.Core.Contracts.Reservations.Requests;
+using AgvDispatcher.Core.Contracts.Traffic.Enums;
 using AgvDispatcher.Core.Contracts.Traffic.Interfaces;
 using AgvDispatcher.Core.Contracts.Traffic.Models;
 using AgvDispatcher.Core.Interfaces;
 using AgvDispatcher.Core.Models;
+using AgvDispatcher.Infrastructure.Mock.Reservations;
 using AgvDispatcher.Infrastructure.Mock.Simulation;
 using AgvDispatcher.Infrastructure.Okapi;
 
@@ -95,14 +97,7 @@ public sealed class DebugSnapshotService : IDebugSnapshotService
                 Array.Empty<TrafficResourceStatusDto>(),
                 diagnostics)
             .ConfigureAwait(false);
-        var routeReservations = await ReadResultSectionAsync(
-                "Route reservations",
-                () => _routeReservationService.GetActiveReservationsAsync(
-                    new GetRouteReservationsRequest { Context = context },
-                    cancellationToken),
-                result => result,
-                Array.Empty<RouteReservationDto>(),
-                diagnostics)
+        var routeReservations = await ReadRouteReservationsAsync(context, cancellationToken, diagnostics)
             .ConfigureAwait(false);
         var dispatchExecutions = await ReadResultSectionAsync(
                 "Dispatch executions",
@@ -119,6 +114,7 @@ public sealed class DebugSnapshotService : IDebugSnapshotService
             Array.Empty<OkapiProtocolTraceRecord>(),
             diagnostics);
         var mockSimulation = ReadMockSimulationSnapshot(diagnostics);
+        trafficResources = AddKnownFreeTrafficResources(trafficResources, routeReservations, mockSimulation);
 
         return new DebugSnapshotDto
         {
@@ -150,9 +146,93 @@ public sealed class DebugSnapshotService : IDebugSnapshotService
             Tick = _mockFleetSimulationEngine.CurrentTick,
             Options = scenario is null ? string.Empty : FormatOptions(scenario.Options),
             Vehicles = _mockFleetSimulationEngine.GetVehicleStates(),
-            RecentEvents = _mockFleetSimulationEngine.GetRecentEvents(100)
+            RecentEvents = _mockFleetSimulationEngine.GetRecentEvents(100),
+            MapResources = scenario is null
+                ? Array.Empty<TrafficResourceKey>()
+                : scenario.MapSnapshot is null
+                    ? Array.Empty<TrafficResourceKey>()
+                    : scenario.MapSnapshot.Edges
+                        .Select(edge => new TrafficResourceKey
+                        {
+                            ResourceType = TrafficResourceType.Edge,
+                            ResourceId = edge.EdgeId
+                        })
+                        .Concat(scenario.MapSnapshot.Nodes.Select(node => new TrafficResourceKey
+                        {
+                            ResourceType = TrafficResourceType.Node,
+                            ResourceId = node.NodeId
+                        }))
+                        .ToArray()
         };
     }
+
+    private async Task<IReadOnlyList<RouteReservationDto>> ReadRouteReservationsAsync(
+        RequestContext context,
+        CancellationToken cancellationToken,
+        ICollection<string> diagnostics)
+    {
+        if (_routeReservationService is MockRouteReservationService mockRouteReservationService)
+        {
+            try
+            {
+                return await mockRouteReservationService.GetAllReservationsAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"Route reservations: {ex.Message}");
+                return Array.Empty<RouteReservationDto>();
+            }
+        }
+
+        return await ReadResultSectionAsync(
+                "Route reservations",
+                () => _routeReservationService.GetActiveReservationsAsync(
+                    new GetRouteReservationsRequest { Context = context },
+                    cancellationToken),
+                result => result,
+                Array.Empty<RouteReservationDto>(),
+                diagnostics)
+            .ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<TrafficResourceStatusDto> AddKnownFreeTrafficResources(
+        IReadOnlyList<TrafficResourceStatusDto> current,
+        IReadOnlyList<RouteReservationDto> reservations,
+        MockSimulationSnapshotDto mockSimulation)
+    {
+        var statuses = current
+            .GroupBy(status => ToResourceIdentity(status.Resource), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var knownResources = reservations
+            .SelectMany(reservation => reservation.Segments)
+            .SelectMany(segment => segment.Resources)
+            .Concat(mockSimulation.MapResources);
+        var now = DateTimeOffset.Now;
+        foreach (var resource in knownResources)
+        {
+            var key = ToResourceIdentity(resource);
+            if (statuses.ContainsKey(key))
+            {
+                continue;
+            }
+
+            statuses[key] = new TrafficResourceStatusDto
+            {
+                Resource = resource,
+                State = TrafficResourceState.Free,
+                UpdatedAt = now
+            };
+        }
+
+        return statuses.Values
+            .OrderBy(status => status.Resource.ResourceType.ToString(), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(status => status.Resource.ResourceId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string ToResourceIdentity(TrafficResourceKey resource) =>
+        $"{resource.ResourceType}:{resource.ResourceId}";
 
     private static string FormatOptions(MockSimulationOptions options) =>
         $"RollingWindowSize={options.RollingWindowSize}; " +

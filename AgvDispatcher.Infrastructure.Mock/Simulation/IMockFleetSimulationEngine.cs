@@ -36,6 +36,25 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
             string vehicleId,
             CancellationToken cancellationToken = default);
 
+        Task<MockSimulationTickResult> UpdateOptionsAsync(
+            MockSimulationOptions options,
+            CancellationToken cancellationToken = default);
+
+        Task<MockSimulationTickResult> SetMapEdgeEnabledAsync(
+            string edgeId,
+            bool enabled,
+            CancellationToken cancellationToken = default);
+
+        Task<MockSimulationTickResult> BlockTrafficResourceAsync(
+            AgvDispatcher.Core.Contracts.Traffic.Enums.TrafficResourceType resourceType,
+            string resourceId,
+            CancellationToken cancellationToken = default);
+
+        Task<MockSimulationTickResult> UnblockTrafficResourceAsync(
+            AgvDispatcher.Core.Contracts.Traffic.Enums.TrafficResourceType resourceType,
+            string resourceId,
+            CancellationToken cancellationToken = default);
+
         Task<MockSimulationTickResult> StepAsync(CancellationToken cancellationToken = default);
     }
 }

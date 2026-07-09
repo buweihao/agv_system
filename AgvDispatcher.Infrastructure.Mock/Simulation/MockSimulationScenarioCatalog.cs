@@ -6,12 +6,12 @@ namespace AgvDispatcher.Infrastructure.Mock.Simulation
     {
         public static IReadOnlyList<MockSimulationScenarioDefinition> GetDefinitions() => new[]
         {
-            new MockSimulationScenarioDefinition("SameTarget", "SameTarget"),
-            new MockSimulationScenarioDefinition("NarrowAisle", "NarrowAisle"),
-            new MockSimulationScenarioDefinition("Intersection", "Intersection"),
-            new MockSimulationScenarioDefinition("AlternativeRoute", "AlternativeRoute"),
-            new MockSimulationScenarioDefinition("CurrentNodeReplan", "CurrentNodeReplan"),
-            new MockSimulationScenarioDefinition("Linear", "Linear")
+            new MockSimulationScenarioDefinition("SameTarget", "两车同终点"),
+            new MockSimulationScenarioDefinition("NarrowAisle", "相向窄道"),
+            new MockSimulationScenarioDefinition("Intersection", "路口占用"),
+            new MockSimulationScenarioDefinition("AlternativeRoute", "可替代路线"),
+            new MockSimulationScenarioDefinition("CurrentNodeReplan", "当前位置重规划"),
+            new MockSimulationScenarioDefinition("Linear", "线性路线")
         };
 
         public static MockSimulationScenario Create(string scenarioKey)

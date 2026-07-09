@@ -65,6 +65,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private MockSimulationEventRow? _selectedMockSimulationEvent;
     private CancellationTokenSource? _mockSimulationRunCancellation;
     private bool _isMockSimulationRunActive;
+    private bool _isMockSimulationRegressionActive;
     private bool _isScenarioManualBlockActive;
 
     public DebugDashboardViewModel(
@@ -81,7 +82,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         OpenVehicleWindowCommand = new DelegateCommand<VehicleRow?>(OpenVehicleWindow);
         LoadMockSimulationScenarioCommand = new DelegateCommand(
             async () => await LoadMockSimulationScenarioAsync().ConfigureAwait(true),
-            () => !IsRefreshing && !IsMockSimulationRunActive && SelectedMockSimulationScenario is not null);
+            () => !IsRefreshing && !IsMockSimulationRunActive && !IsMockSimulationRegressionActive &&
+                  SelectedMockSimulationScenario is not null);
         StartAllMockSimulationTasksCommand = new DelegateCommand(
             async () => await StartAllMockSimulationTasksAsync().ConfigureAwait(true),
             () => CanRunMockSimulationCommand());
@@ -127,6 +129,12 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         ApplyMockSimulationOptionsCommand = new DelegateCommand(
             async () => await ApplyMockSimulationOptionsAsync().ConfigureAwait(true),
             () => CanRunMockSimulationCommand());
+        RunMockEightScenarioRegressionCommand = new DelegateCommand(
+            async () => await RunMockEightScenarioRegressionAsync().ConfigureAwait(true),
+            () => CanRunMockRegressionCommand());
+        RunMockReplanRegressionCommand = new DelegateCommand(
+            async () => await RunMockReplanRegressionAsync().ConfigureAwait(true),
+            () => CanRunMockRegressionCommand());
         InitializeScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => _mockScenarioController.InitializeScenarioAsync(SelectedScenario?.Key ?? string.Empty)).ConfigureAwait(true));
         StartVehicleACommand = new DelegateCommand(async () => await RunScenarioActionAsync(
@@ -211,6 +219,10 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 
     public DelegateCommand ApplyMockSimulationOptionsCommand { get; }
 
+    public DelegateCommand RunMockEightScenarioRegressionCommand { get; }
+
+    public DelegateCommand RunMockReplanRegressionCommand { get; }
+
     public DelegateCommand InitializeScenarioCommand { get; }
 
     public DelegateCommand StartVehicleACommand { get; }
@@ -266,6 +278,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     public ObservableCollection<string> MockSimulationEventVehicleFilters { get; } = new();
 
     public ObservableCollection<MockSimulationTaskRow> MockSimulationTasks { get; } = new();
+
+    public ObservableCollection<MockSimulationRegressionResultRow> MockSimulationRegressionResults { get; } = new();
 
     public bool IsRefreshing
     {
@@ -573,6 +587,18 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         }
     }
 
+    public bool IsMockSimulationRegressionActive
+    {
+        get => _isMockSimulationRegressionActive;
+        private set
+        {
+            if (SetProperty(ref _isMockSimulationRegressionActive, value))
+            {
+                RaiseMockSimulationCommandStates();
+            }
+        }
+    }
+
     public int TaskCount { get; private set; }
     public int RunningTaskCount { get; private set; }
     public int WaitingForTrafficTaskCount { get; private set; }
@@ -625,8 +651,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             var scenario = MockSimulationScenarioCatalog.Create(SelectedMockSimulationScenario.Key);
             var result = await _mockFleetSimulationEngine.InitializeAsync(scenario).ConfigureAwait(true);
             _mockSimulationEditableScenarioId = string.Empty;
-            StatusMessage = result.Succeeded
-                ? $"Mock scenario loaded: {scenario.Name}"
+        StatusMessage = result.Succeeded
+                ? $"仿真场景已加载：{MockDisplayNames.ToDisplayName(scenario.Name)}"
                 : result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -642,7 +668,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         {
             var result = await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true);
             StatusMessage = result.Succeeded
-                ? "Mock simulation tasks started."
+                ? "仿真任务已全部启动。"
                 : result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -666,7 +692,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
                 .StartTaskAsync(vehicle.VehicleId, vehicle.CurrentTaskId)
                 .ConfigureAwait(true);
             StatusMessage = result.Succeeded
-                ? $"Mock simulation task started: {vehicle.VehicleId}/{vehicle.CurrentTaskId}"
+                ? $"仿真任务已启动：{vehicle.VehicleId}/{vehicle.CurrentTaskId}"
                 : result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -682,7 +708,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         {
             var result = await _mockFleetSimulationEngine.StepAsync().ConfigureAwait(true);
             StatusMessage = result.Succeeded
-                ? $"Mock simulation stepped: tick {result.Tick}"
+                ? $"仿真已推进：第 {result.Tick} tick"
                 : result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -706,7 +732,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
                 .CancelTaskAsync(vehicle.CurrentTaskId)
                 .ConfigureAwait(true);
             StatusMessage = result.Succeeded
-                ? $"Mock simulation task canceled: {vehicle.CurrentTaskId}"
+                ? $"仿真任务已取消：{vehicle.CurrentTaskId}"
                 : result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -730,7 +756,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
                 .InjectFaultAsync(vehicle.VehicleId, SelectedMockFaultPolicy)
                 .ConfigureAwait(true);
             StatusMessage = result.Succeeded
-                ? $"Mock simulation fault injected: {vehicle.VehicleId}/{SelectedMockFaultPolicy}"
+                ? $"已注入车辆故障：{vehicle.VehicleId}/{MockDisplayNames.ToDisplayName(SelectedMockFaultPolicy.ToString())}"
                 : result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -754,7 +780,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
                 .RecoverVehicleAsync(vehicle.VehicleId)
                 .ConfigureAwait(true);
             StatusMessage = result.Succeeded
-                ? $"Mock simulation vehicle recovered: {vehicle.VehicleId}"
+                ? $"仿真车辆已恢复：{vehicle.VehicleId}"
                 : result.Message;
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -829,6 +855,431 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         }
     }
 
+    private async Task RunMockEightScenarioRegressionAsync()
+    {
+        await RunMockRegressionAsync(new Func<Task<MockSimulationRegressionResultRow>>[]
+        {
+            RunSameTargetRegressionAsync,
+            RunNarrowAisleRegressionAsync,
+            RunIntersectionRegressionAsync,
+            RunLockedEdgeRegressionAsync,
+            RunWaitingTimeoutRegressionAsync,
+            RunCancelTaskRegressionAsync,
+            RunFaultVehicleRegressionAsync,
+            RunDisabledMapEdgeRegressionAsync
+        }, "8 个核心场景回归完成。").ConfigureAwait(true);
+    }
+
+    private async Task RunMockReplanRegressionAsync()
+    {
+        await RunMockRegressionAsync(new Func<Task<MockSimulationRegressionResultRow>>[]
+        {
+            RunDisabledEdgeWithAlternativeRegressionAsync,
+            RunDisabledEdgeWithoutAlternativeRegressionAsync,
+            RunLockedEdgeReplanRegressionAsync,
+            RunReplanLimitRegressionAsync
+        }, "重规划回归完成。").ConfigureAwait(true);
+    }
+
+    private async Task RunMockRegressionAsync(
+        IReadOnlyList<Func<Task<MockSimulationRegressionResultRow>>> cases,
+        string completedMessage)
+    {
+        if (IsMockSimulationRegressionActive)
+        {
+            return;
+        }
+
+        IsMockSimulationRegressionActive = true;
+        MockSimulationRegressionResults.Clear();
+        var finalStatus = string.Empty;
+        try
+        {
+            foreach (var runCase in cases)
+            {
+                var row = await runCase().ConfigureAwait(true);
+                MockSimulationRegressionResults.Add(row);
+                StatusMessage = $"仿真回归：{row.ScenarioNameDisplay} {row.ResultDisplay}。";
+            }
+
+            var failedCount = MockSimulationRegressionResults.Count(row =>
+                string.Equals(row.Result, "Failed", StringComparison.OrdinalIgnoreCase));
+            finalStatus = failedCount == 0
+                ? completedMessage
+                : $"{completedMessage} 失败：{failedCount}。";
+            StatusMessage = finalStatus;
+        }
+        catch (Exception ex)
+        {
+            finalStatus = ex.Message;
+            StatusMessage = finalStatus;
+        }
+        finally
+        {
+            IsMockSimulationRegressionActive = false;
+            await RefreshAsync().ConfigureAwait(true);
+            if (!string.IsNullOrWhiteSpace(finalStatus))
+            {
+                StatusMessage = finalStatus;
+            }
+        }
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunSameTargetRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("SameTarget", events).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 40, stopWhenIdle: true).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "TwoVehiclesSameTarget",
+            HasEvent(events, MockSimulationEventType.WaitingForTraffic) &&
+            HasEvent(events, MockSimulationEventType.TaskCompleted) &&
+            !HasEvent(events, MockSimulationEventType.SimulationFailed),
+            "预期共享终点串行通行，且等待后最终完成。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunNarrowAisleRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("NarrowAisle", events).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 40, stopWhenIdle: true).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "TwoVehiclesOppositeDirectionNarrowAisle",
+            HasEvent(events, MockSimulationEventType.WaitingForTraffic) &&
+            !HasEvent(events, MockSimulationEventType.SimulationFailed),
+            "预期窄道相向会车时至少一台车等待。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunIntersectionRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("Intersection", events).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 30, stopWhenIdle: true).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "IntersectionOccupied",
+            HasEvent(events, MockSimulationEventType.WaitingForTraffic) &&
+            !HasEvent(events, MockSimulationEventType.SimulationFailed),
+            "预期路口被占用时另一台车等待。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunLockedEdgeRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("AlternativeRoute", events, options => new MockSimulationOptions
+        {
+            RollingWindowSize = options.RollingWindowSize,
+            WaitTimeout = options.WaitTimeout,
+            RetryInterval = options.RetryInterval,
+            MaxRetryCount = options.MaxRetryCount,
+            ReplanOnLockedResource = false,
+            ReplanOnBlockedResource = options.ReplanOnBlockedResource,
+            PreferWaitingOverReplan = true,
+            MaxReplanCount = options.MaxReplanCount,
+            OnTimeoutPolicy = options.OnTimeoutPolicy,
+            AutoStartTasks = options.AutoStartTasks
+        }).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 15, stopWhenIdle: false).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "LockedEdge",
+            HasEvent(events, MockSimulationEventType.WaitingForTraffic) ||
+            HasEvent(events, MockSimulationEventType.ResourceLocked),
+            "预期边资源被锁后其他车辆等待或产生锁定事件。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunWaitingTimeoutRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("SameTarget", events, options => new MockSimulationOptions
+        {
+            RollingWindowSize = options.RollingWindowSize,
+            WaitTimeout = TimeSpan.Zero,
+            RetryInterval = TimeSpan.Zero,
+            MaxRetryCount = 0,
+            ReplanOnLockedResource = true,
+            ReplanOnBlockedResource = true,
+            PreferWaitingOverReplan = false,
+            MaxReplanCount = 1,
+            OnTimeoutPolicy = options.OnTimeoutPolicy,
+            AutoStartTasks = options.AutoStartTasks
+        }).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 8, stopWhenIdle: false).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "WaitingTimeout",
+            HasAnyEvent(events,
+                MockSimulationEventType.WaitingTimedOut,
+                MockSimulationEventType.RetryAttempted,
+                MockSimulationEventType.ReplanRequired,
+                MockSimulationEventType.TaskReplanned,
+                MockSimulationEventType.ReplanFailed,
+                MockSimulationEventType.ReplanSkipped),
+            "预期等待超时后重试或请求重规划。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunCancelTaskRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("Linear", events).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        var taskId = _mockFleetSimulationEngine.GetVehicleStates().FirstOrDefault()?.CurrentTaskId;
+        if (!string.IsNullOrWhiteSpace(taskId))
+        {
+            AddEvents(events, await _mockFleetSimulationEngine.CancelTaskAsync(taskId).ConfigureAwait(true));
+        }
+
+        return BuildRegressionResult(
+            "CancelTask",
+            HasEvent(events, MockSimulationEventType.TaskCanceled) &&
+            _mockFleetSimulationEngine.GetVehicleStates().All(vehicle => vehicle.State is MockVehicleSimulationState.Idle
+                or MockVehicleSimulationState.Canceled),
+            "预期取消后任务释放，车辆回到空闲或终态。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunFaultVehicleRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("SameTarget", events).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        AddEvents(events, await _mockFleetSimulationEngine
+            .InjectFaultAsync("AGV-MOCK-A", MockFaultPolicy.HoldResources)
+            .ConfigureAwait(true));
+        AddEvents(events, await _mockFleetSimulationEngine.StepAsync().ConfigureAwait(true));
+
+        return BuildRegressionResult(
+            "FaultVehicle",
+            HasEvent(events, MockSimulationEventType.VehicleFaulted) &&
+            _mockFleetSimulationEngine.GetVehicleStates().Any(vehicle =>
+                string.Equals(vehicle.VehicleId, "AGV-MOCK-A", StringComparison.OrdinalIgnoreCase) &&
+                vehicle.State == MockVehicleSimulationState.Fault),
+            "预期故障注入后车辆进入故障状态。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunDisabledMapEdgeRegressionAsync()
+    {
+        return await RunDisabledEdgeWithAlternativeRegressionAsync("DisabledMapEdge").ConfigureAwait(true);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunDisabledEdgeWithAlternativeRegressionAsync()
+    {
+        return await RunDisabledEdgeWithAlternativeRegressionAsync("DisabledMapEdge_WithAlternative")
+            .ConfigureAwait(true);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunDisabledEdgeWithAlternativeRegressionAsync(
+        string scenarioName)
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("CurrentNodeReplan", events, options => new MockSimulationOptions
+        {
+            RollingWindowSize = options.RollingWindowSize,
+            WaitTimeout = options.WaitTimeout,
+            RetryInterval = options.RetryInterval,
+            MaxRetryCount = options.MaxRetryCount,
+            ReplanOnLockedResource = options.ReplanOnLockedResource,
+            ReplanOnBlockedResource = true,
+            PreferWaitingOverReplan = options.PreferWaitingOverReplan,
+            MaxReplanCount = 3,
+            OnTimeoutPolicy = options.OnTimeoutPolicy,
+            AutoStartTasks = options.AutoStartTasks
+        }).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine
+            .StartTaskAsync("AGV-MOCK-A", "TASK-MOCK-A")
+            .ConfigureAwait(true));
+        AddEvents(events, await _mockFleetSimulationEngine
+            .SetMapEdgeEnabledAsync("E-A-T", enabled: false)
+            .ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 8, stopWhenIdle: false).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            scenarioName,
+            HasEvent(events, MockSimulationEventType.RouteInvalidated) &&
+            HasEvent(events, MockSimulationEventType.TaskReplanned),
+            "预期禁用当前路线边后触发重规划并绕行。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunDisabledEdgeWithoutAlternativeRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("Linear", events).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        AddEvents(events, await _mockFleetSimulationEngine
+            .SetMapEdgeEnabledAsync("E2", enabled: false)
+            .ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 5, stopWhenIdle: false).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "DisabledMapEdge_NoAlternative",
+            HasEvent(events, MockSimulationEventType.RouteInvalidated) &&
+            HasEvent(events, MockSimulationEventType.ReplanFailed),
+            "预期路线被禁用且无替代路径时产生重规划失败。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunLockedEdgeReplanRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("AlternativeRoute", events, options => new MockSimulationOptions
+        {
+            RollingWindowSize = options.RollingWindowSize,
+            WaitTimeout = TimeSpan.Zero,
+            RetryInterval = TimeSpan.Zero,
+            MaxRetryCount = 0,
+            ReplanOnLockedResource = true,
+            ReplanOnBlockedResource = true,
+            PreferWaitingOverReplan = false,
+            MaxReplanCount = 2,
+            OnTimeoutPolicy = options.OnTimeoutPolicy,
+            AutoStartTasks = options.AutoStartTasks
+        }).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine.StartAllAsync().ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 10, stopWhenIdle: false).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "LockedEdge_WithAlternative",
+            HasAnyEvent(events,
+                MockSimulationEventType.ReplanRequired,
+                MockSimulationEventType.TaskReplanned,
+                MockSimulationEventType.WaitingTimedOut),
+            "预期锁定资源策略触发重规划尝试。",
+            events);
+    }
+
+    private async Task<MockSimulationRegressionResultRow> RunReplanLimitRegressionAsync()
+    {
+        var events = new List<MockSimulationEvent>();
+        await InitializeRegressionScenarioAsync("CurrentNodeReplan", events, options => new MockSimulationOptions
+        {
+            RollingWindowSize = options.RollingWindowSize,
+            WaitTimeout = options.WaitTimeout,
+            RetryInterval = options.RetryInterval,
+            MaxRetryCount = options.MaxRetryCount,
+            ReplanOnLockedResource = options.ReplanOnLockedResource,
+            ReplanOnBlockedResource = true,
+            PreferWaitingOverReplan = options.PreferWaitingOverReplan,
+            MaxReplanCount = 0,
+            OnTimeoutPolicy = options.OnTimeoutPolicy,
+            AutoStartTasks = options.AutoStartTasks
+        }).ConfigureAwait(true);
+        AddEvents(events, await _mockFleetSimulationEngine
+            .StartTaskAsync("AGV-MOCK-A", "TASK-MOCK-A")
+            .ConfigureAwait(true));
+        AddEvents(events, await _mockFleetSimulationEngine
+            .SetMapEdgeEnabledAsync("E-A-T", enabled: false)
+            .ConfigureAwait(true));
+        await RunRegressionStepsAsync(events, 5, stopWhenIdle: false).ConfigureAwait(true);
+
+        return BuildRegressionResult(
+            "ExceedsMaxReplan",
+            HasEvent(events, MockSimulationEventType.ReplanSkipped),
+            "预期达到最大重规划次数后跳过重规划。",
+            events);
+    }
+
+    private async Task InitializeRegressionScenarioAsync(
+        string scenarioKey,
+        ICollection<MockSimulationEvent> events,
+        Func<MockSimulationOptions, MockSimulationOptions>? configureOptions = null)
+    {
+        var scenario = MockSimulationScenarioCatalog.Create(scenarioKey);
+        if (configureOptions is not null)
+        {
+            scenario = WithOptions(scenario, configureOptions(scenario.Options));
+        }
+
+        AddEvents(events, await _mockFleetSimulationEngine.InitializeAsync(scenario).ConfigureAwait(true));
+    }
+
+    private async Task RunRegressionStepsAsync(
+        ICollection<MockSimulationEvent> events,
+        int maxTicks,
+        bool stopWhenIdle)
+    {
+        for (var i = 0; i < maxTicks; i++)
+        {
+            AddEvents(events, await _mockFleetSimulationEngine.StepAsync().ConfigureAwait(true));
+            if (stopWhenIdle && IsMockSimulationIdle())
+            {
+                return;
+            }
+        }
+    }
+
+    private static MockSimulationScenario WithOptions(
+        MockSimulationScenario scenario,
+        MockSimulationOptions options) => new()
+    {
+        ScenarioId = scenario.ScenarioId,
+        Name = scenario.Name,
+        MapSnapshot = scenario.MapSnapshot,
+        Vehicles = scenario.Vehicles.Select(vehicle => vehicle.Clone()).ToArray(),
+        Tasks = scenario.Tasks.Select(task => task.Clone()).ToArray(),
+        Options = options
+    };
+
+    private static void AddEvents(ICollection<MockSimulationEvent> target, MockSimulationTickResult result)
+    {
+        foreach (var simulationEvent in result.Events)
+        {
+            target.Add(simulationEvent);
+        }
+    }
+
+    private static MockSimulationRegressionResultRow BuildRegressionResult(
+        string scenarioName,
+        bool passed,
+        string failedReason,
+        IReadOnlyList<MockSimulationEvent> events) => new()
+    {
+        ScenarioName = scenarioName,
+        Result = passed ? "Passed" : "Failed",
+        FailedReason = passed ? string.Empty : failedReason,
+        LastEvent = FormatLastEvent(events.LastOrDefault())
+    };
+
+    private static bool HasEvent(
+        IEnumerable<MockSimulationEvent> events,
+        MockSimulationEventType eventType) =>
+        events.Any(simulationEvent => simulationEvent.EventType == eventType);
+
+    private static bool HasAnyEvent(
+        IEnumerable<MockSimulationEvent> events,
+        params MockSimulationEventType[] eventTypes)
+    {
+        var set = eventTypes.ToHashSet();
+        return events.Any(simulationEvent => set.Contains(simulationEvent.EventType));
+    }
+
+    private static string FormatLastEvent(MockSimulationEvent? simulationEvent)
+    {
+        if (simulationEvent is null)
+        {
+            return string.Empty;
+        }
+
+        var subject = simulationEvent.VehicleId ?? simulationEvent.TaskId ?? simulationEvent.ResourceId;
+        var eventName = MockDisplayNames.ToDisplayName(simulationEvent.EventType.ToString());
+        return string.IsNullOrWhiteSpace(subject)
+            ? $"{eventName}: {simulationEvent.Message}"
+            : $"{eventName} [{subject}]: {simulationEvent.Message}";
+    }
+
     private async Task RunMockSimulationTicksAsync(int tickCount)
     {
         await RunMockSimulationLoopAsync(
@@ -863,14 +1314,14 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
                 cancellation.Token.ThrowIfCancellationRequested();
                 var result = await _mockFleetSimulationEngine.StepAsync(cancellation.Token).ConfigureAwait(true);
                 executedTicks++;
-                StatusMessage = result.Succeeded
-                    ? $"Mock simulation stepped: tick {result.Tick}"
+            StatusMessage = result.Succeeded
+                    ? $"仿真已推进：第 {result.Tick} tick"
                     : result.Message;
                 await RefreshAsync().ConfigureAwait(true);
 
                 if (stopWhenIdle && IsMockSimulationIdle())
                 {
-                    StatusMessage = $"{completedMessage} Ticks: {executedTicks}.";
+                    StatusMessage = $"{completedMessage} 已执行 tick：{executedTicks}。";
                     return;
                 }
 
@@ -878,12 +1329,12 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             }
 
             StatusMessage = stopWhenIdle
-                ? $"Run until idle stopped at max tick limit {maxTicks}."
-                : $"{completedMessage} Ticks: {executedTicks}.";
+                ? $"运行到空闲已达到最大 tick 限制：{maxTicks}。"
+                : $"{completedMessage} 已执行 tick：{executedTicks}。";
         }
         catch (OperationCanceledException)
         {
-            StatusMessage = $"Mock simulation run stopped. Ticks: {executedTicks}.";
+            StatusMessage = $"仿真运行已停止。已执行 tick：{executedTicks}。";
         }
         catch (Exception ex)
         {
@@ -1096,6 +1547,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     {
         TaskId = task.TaskId,
         State = task.State.ToString(),
+        StateDisplay = MockDisplayNames.ToDisplayName(task.State.ToString()),
         AssignedVehicleId = task.AssignedVehicleId,
         SourceNodeId = task.SourceNodeId,
         TargetNodeId = task.TargetNodeId,
@@ -1115,6 +1567,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         Brand = vehicle?.Brand ?? string.Empty,
         AdapterType = vehicle?.AdapterType ?? string.Empty,
         State = status?.State.ToString() ?? "Unknown",
+        StateDisplay = MockDisplayNames.ToDisplayName(status?.State.ToString() ?? "Unknown"),
         IsOnline = status?.IsOnline ?? false,
         BatteryLevel = status?.BatteryLevel,
         Location = status?.LocationText ?? vehicle?.HomeNodeId ?? string.Empty,
@@ -1128,8 +1581,10 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private static TrafficResourceRow ToTrafficResourceRow(TrafficResourceStatusDto resource) => new()
     {
         ResourceType = resource.Resource.ResourceType.ToString(),
+        ResourceTypeDisplay = MockDisplayNames.ToDisplayName(resource.Resource.ResourceType.ToString()),
         ResourceId = resource.Resource.ResourceId,
         State = resource.State.ToString(),
+        StateDisplay = MockDisplayNames.ToDisplayName(resource.State.ToString()),
         OccupiedByAgvId = resource.OccupiedByAgvId,
         ReservedByAgvId = resource.ReservedByAgvId,
         TaskId = resource.TaskId,
@@ -1148,6 +1603,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         MapId = reservation.MapId,
         MapVersion = reservation.MapVersion,
         State = reservation.State.ToString(),
+        StateDisplay = MockDisplayNames.ToDisplayName(reservation.State.ToString()),
         RollingWindowSize = reservation.RollingWindowSize,
         SegmentCount = reservation.Segments.Count,
         CurrentWindow = reservation.CurrentWindow is null
@@ -1170,6 +1626,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     {
         VehicleId = vehicle.VehicleId,
         State = vehicle.State.ToString(),
+        StateDisplay = MockDisplayNames.ToDisplayName(vehicle.State.ToString()),
         CurrentNodeId = vehicle.CurrentNodeId,
         CurrentEdgeId = vehicle.CurrentEdgeId,
         CurrentTaskId = vehicle.CurrentTaskId,
@@ -1186,7 +1643,9 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         Sequence = sequence,
         Tick = simulationEvent.Tick,
         TickGroup = $"Tick {simulationEvent.Tick}",
+        TickGroupDisplay = $"第 {simulationEvent.Tick} tick",
         EventType = simulationEvent.EventType.ToString(),
+        EventTypeDisplay = MockDisplayNames.ToDisplayName(simulationEvent.EventType.ToString()),
         VehicleId = simulationEvent.VehicleId,
         TaskId = simulationEvent.TaskId,
         FromNodeId = simulationEvent.FromNodeId,
@@ -1207,6 +1666,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         VehicleId = vehicle.VehicleId,
         TaskId = vehicle.CurrentTaskId ?? string.Empty,
         State = task?.State.ToString() ?? "Unknown",
+        StateDisplay = MockDisplayNames.ToDisplayName(task?.State.ToString() ?? "Unknown"),
         SourceNodeId = task?.SourceNodeId ?? string.Empty,
         TargetNodeId = task?.TargetNodeId ?? vehicle.TargetNodeId ?? string.Empty,
         ProgressPercent = task?.ProgressPercent ?? 0
@@ -1237,7 +1697,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         Contains(row.ReservationId, query) || Contains(row.PlanId, query) || Contains(row.CurrentNodeId, query);
 
     private static bool Matches(MockSimulationEventRow row, string query) =>
-        IsEmpty(query) || Contains(row.EventType, query) || Contains(row.VehicleId, query) ||
+        IsEmpty(query) || Contains(row.EventType, query) || Contains(row.EventTypeDisplay, query) ||
+        Contains(row.VehicleId, query) ||
         Contains(row.TaskId, query) || Contains(row.ResourceId, query) || Contains(row.Reason, query) ||
         Contains(row.OldReservationId, query) || Contains(row.NewReservationId, query) ||
         Contains(row.OldPlanId, query) || Contains(row.NewPlanId, query) ||
@@ -1245,7 +1706,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 
     private static bool Matches(MockSimulationTaskRow row, string query) =>
         IsEmpty(query) || Contains(row.TaskId, query) || Contains(row.VehicleId, query) ||
-        Contains(row.State, query) || Contains(row.SourceNodeId, query) || Contains(row.TargetNodeId, query);
+        Contains(row.State, query) || Contains(row.StateDisplay, query) ||
+        Contains(row.SourceNodeId, query) || Contains(row.TargetNodeId, query);
 
     private static bool IsEmpty(string query) => string.IsNullOrWhiteSpace(query);
 
@@ -1253,7 +1715,11 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         value?.Contains(query, StringComparison.OrdinalIgnoreCase) == true;
 
     private bool CanRunMockSimulationCommand() =>
-        !IsRefreshing && !IsMockSimulationRunActive && !string.IsNullOrWhiteSpace(MockSimulationScenarioId);
+        !IsRefreshing && !IsMockSimulationRunActive && !IsMockSimulationRegressionActive &&
+        !string.IsNullOrWhiteSpace(MockSimulationScenarioId);
+
+    private bool CanRunMockRegressionCommand() =>
+        !IsRefreshing && !IsMockSimulationRunActive && !IsMockSimulationRegressionActive;
 
     private bool CanRunSelectedMockVehicleCommand() =>
         CanRunMockSimulationCommand() && SelectedMockSimulationVehicle is not null;
@@ -1325,6 +1791,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         BlockMockTrafficResourceCommand.RaiseCanExecuteChanged();
         UnblockMockTrafficResourceCommand.RaiseCanExecuteChanged();
         ApplyMockSimulationOptionsCommand.RaiseCanExecuteChanged();
+        RunMockEightScenarioRegressionCommand.RaiseCanExecuteChanged();
+        RunMockReplanRegressionCommand.RaiseCanExecuteChanged();
     }
 
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items)
@@ -1341,6 +1809,7 @@ public sealed class TaskRow
 {
     public string TaskId { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
+    public string StateDisplay { get; init; } = string.Empty;
     public string? AssignedVehicleId { get; init; }
     public string SourceNodeId { get; init; } = string.Empty;
     public string TargetNodeId { get; init; } = string.Empty;
@@ -1360,6 +1829,7 @@ public sealed class VehicleRow
     public string Brand { get; init; } = string.Empty;
     public string AdapterType { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
+    public string StateDisplay { get; init; } = string.Empty;
     public bool IsOnline { get; init; }
     public double? BatteryLevel { get; init; }
     public string Location { get; init; } = string.Empty;
@@ -1373,8 +1843,10 @@ public sealed class VehicleRow
 public sealed class TrafficResourceRow
 {
     public string ResourceType { get; init; } = string.Empty;
+    public string ResourceTypeDisplay { get; init; } = string.Empty;
     public string ResourceId { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
+    public string StateDisplay { get; init; } = string.Empty;
     public string? OccupiedByAgvId { get; init; }
     public string? ReservedByAgvId { get; init; }
     public string? TaskId { get; init; }
@@ -1393,6 +1865,7 @@ public sealed class RouteReservationRow
     public string MapId { get; init; } = string.Empty;
     public string MapVersion { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
+    public string StateDisplay { get; init; } = string.Empty;
     public int RollingWindowSize { get; init; }
     public int SegmentCount { get; init; }
     public string CurrentWindow { get; init; } = string.Empty;
@@ -1415,6 +1888,7 @@ public sealed class MockSimulationVehicleRow
 {
     public string VehicleId { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
+    public string StateDisplay { get; init; } = string.Empty;
     public string CurrentNodeId { get; init; } = string.Empty;
     public string? CurrentEdgeId { get; init; }
     public string? CurrentTaskId { get; init; }
@@ -1429,7 +1903,9 @@ public sealed class MockSimulationEventRow
     public int Sequence { get; init; }
     public long Tick { get; init; }
     public string TickGroup { get; init; } = string.Empty;
+    public string TickGroupDisplay { get; init; } = string.Empty;
     public string EventType { get; init; } = string.Empty;
+    public string EventTypeDisplay { get; init; } = string.Empty;
     public string? VehicleId { get; init; }
     public string? TaskId { get; init; }
     public string? FromNodeId { get; init; }
@@ -1448,7 +1924,94 @@ public sealed class MockSimulationTaskRow
     public string VehicleId { get; init; } = string.Empty;
     public string TaskId { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
+    public string StateDisplay { get; init; } = string.Empty;
     public string SourceNodeId { get; init; } = string.Empty;
     public string TargetNodeId { get; init; } = string.Empty;
     public int ProgressPercent { get; init; }
+}
+
+public sealed class MockSimulationRegressionResultRow
+{
+    public string ScenarioName { get; init; } = string.Empty;
+    public string ScenarioNameDisplay => MockDisplayNames.ToDisplayName(ScenarioName);
+    public string Result { get; init; } = string.Empty;
+    public string ResultDisplay => MockDisplayNames.ToDisplayName(Result);
+    public string FailedReason { get; init; } = string.Empty;
+    public string LastEvent { get; init; } = string.Empty;
+}
+
+public static class MockDisplayNames
+{
+    public static string ToDisplayName(string? value) => value switch
+    {
+        null or "" => string.Empty,
+        "All" => "全部",
+        "SameTarget" => "两车同终点",
+        "NarrowAisle" => "相向窄道",
+        "Intersection" => "路口占用",
+        "AlternativeRoute" => "可替代路线",
+        "CurrentNodeReplan" => "当前位置重规划",
+        "Linear" => "线性路线",
+        "TwoVehiclesSameTarget" => "两车同终点",
+        "TwoVehiclesOppositeDirectionNarrowAisle" => "两车相向进入窄道",
+        "LockedEdge" => "路径边被锁",
+        "WaitingTimeout" => "等待超时",
+        "CancelTask" => "任务取消",
+        "FaultVehicle" => "车辆故障",
+        "DisabledMapEdge" => "地图禁用路线",
+        "DisabledMapEdge_WithAlternative" => "禁用边后绕行",
+        "DisabledMapEdge_NoAlternative" => "禁用边且无替代路径",
+        "LockedEdge_WithAlternative" => "锁边后绕行",
+        "ExceedsMaxReplan" => "超过最大重规划次数",
+        "Passed" => "通过",
+        "Failed" => "失败",
+        "Idle" => "空闲",
+        "Dispatching" => "调度中",
+        "Running" => "运行中",
+        "WaitingForTraffic" => "等待交通资源",
+        "Replanning" => "重规划中",
+        "Completed" => "已完成",
+        "Canceled" => "已取消",
+        "Cancelled" => "已取消",
+        "TimedOut" => "已超时",
+        "Fault" => "故障",
+        "Offline" => "离线",
+        "Pending" => "待执行",
+        "Unknown" => "未知",
+        "Locked" => "已锁定",
+        "Occupied" => "已占用",
+        "Blocked" => "已阻塞",
+        "Free" => "空闲",
+        "Released" => "已释放",
+        "Active" => "活动中",
+        "Waiting" => "等待中",
+        "Edge" => "路径边",
+        "Node" => "点位",
+        "Area" => "区域",
+        "Path" => "路径",
+        "HoldResources" => "保持资源",
+        "ReleaseReservation" => "释放预约",
+        "FailTaskAndRelease" => "任务失败并释放",
+        "None" => "无",
+        "VehicleInitialized" => "车辆初始化",
+        "TaskDispatchRequested" => "请求任务调度",
+        "TaskDispatchStarted" => "任务调度启动",
+        "VehicleMoved" => "车辆移动",
+        "ResourceLocked" => "资源锁定",
+        "ResourceReleased" => "资源释放",
+        "WaitingTimedOut" => "等待超时",
+        "ReplanRequired" => "需要重规划",
+        "TaskCompleted" => "任务完成",
+        "TaskCanceled" => "任务取消",
+        "VehicleFaulted" => "车辆故障",
+        "RetryAttempted" => "已尝试重试",
+        "VehicleRecovered" => "车辆恢复",
+        "TaskReplanned" => "任务已重规划",
+        "RouteInvalidated" => "路线失效",
+        "ReplanFailed" => "重规划失败",
+        "ReplanSkipped" => "跳过重规划",
+        "SimulationFailed" => "仿真失败",
+        "NoOp" => "无操作",
+        _ => value
+    };
 }

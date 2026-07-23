@@ -316,12 +316,28 @@
                                         <StackPanel.InputBindings>
                                             <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.MapItemClickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
                                         </StackPanel.InputBindings>
+                                        <StackPanel.ToolTip>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding VehicleId}" FontWeight="Bold"/>
+                                                <TextBlock Text="{Binding X, StringFormat=当前 X：{0:F2}}"/>
+                                                <TextBlock Text="{Binding Y, StringFormat=当前 Y：{0:F2}}"/>
+                                                <TextBlock Text="{Binding Heading, StringFormat=Heading：{0:F1}°}"/>
+                                                <TextBlock Text="{Binding Location, StringFormat=逻辑节点：{0}}"/>
+                                                <TextBlock Text="{Binding CurrentTaskId, StringFormat=当前任务：{0}}"/>
+                                                <TextBlock Text="{Binding StateText, StringFormat=当前状态：{0}}"/>
+                                            </StackPanel>
+                                        </StackPanel.ToolTip>
                                         <Border Background="#0A111E" BorderBrush="{Binding Fill}" BorderThickness="1" CornerRadius="4" Padding="5,2" HorizontalAlignment="Center">
                                             <TextBlock Text="{Binding VehicleId}" Foreground="White" FontSize="10" FontWeight="Bold"/>
                                         </Border>
-                                        <Border Width="30" Height="16" Background="{Binding Fill}" CornerRadius="8" BorderBrush="White" BorderThickness="1">
+                                        <Grid Width="30" Height="18" RenderTransformOrigin="0.5,0.5">
+                                            <Grid.RenderTransform>
+                                                <RotateTransform Angle="{Binding Heading}"/>
+                                            </Grid.RenderTransform>
+                                            <Border Background="{Binding Fill}" CornerRadius="8" BorderBrush="White" BorderThickness="1"/>
                                             <TextBlock Text="AGV" FontSize="8" Foreground="#05111F" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
-                                        </Border>
+                                            <Polygon Points="27,9 21,5 21,13" Fill="White" Stroke="#05111F" StrokeThickness="0.5"/>
+                                        </Grid>
                                     </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

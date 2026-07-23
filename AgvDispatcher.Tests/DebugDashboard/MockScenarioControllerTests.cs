@@ -130,7 +130,8 @@ public sealed class MockScenarioControllerTests
             reservations,
             dispatch,
             new FakeMapService(CreateMap()),
-            simulation);
+            simulation,
+            new FakeVehicleMotionSimulationService());
         return new Fixture(controller, dispatch, tasks, traffic, simulation);
     }
 
@@ -328,6 +329,7 @@ public sealed class MockScenarioControllerTests
 
             if (update.State.HasValue) snapshot.State = update.State.Value;
             if (update.Location is not null) snapshot.Location = update.Location;
+            if (update.Position is not null) snapshot.Position = update.Position.Clone();
             if (update.CurrentTaskId is not null) snapshot.CurrentTaskId = string.IsNullOrWhiteSpace(update.CurrentTaskId) ? null : update.CurrentTaskId;
             if (update.IsOnline.HasValue) snapshot.IsOnline = update.IsOnline.Value;
             if (update.HasAlarm.HasValue) snapshot.HasAlarm = update.HasAlarm.Value;
@@ -337,5 +339,16 @@ public sealed class MockScenarioControllerTests
             _vehicles[snapshot.VehicleId] = snapshot;
             VehiclesChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private sealed class FakeVehicleMotionSimulationService : IVehicleMotionSimulationService
+    {
+        public double DefaultSpeed { get; set; } = 120;
+        public bool IsMoving(string vehicleId) => false;
+        public Task<VehicleMotionResult> MoveToAsync(string vehicleId, MapPosition target, double? speed = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(VehicleMotionResult.Arrived());
+        public bool StopVehicle(string vehicleId, string reason = "Stopped") => true;
+        public void StopAll(string reason = "Stopped") { }
+        public void Dispose() { }
     }
 }

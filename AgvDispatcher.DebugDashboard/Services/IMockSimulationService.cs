@@ -28,6 +28,8 @@ public sealed class MockVehicleUpdate
 
     public string? Location { get; init; }
 
+    public MapPosition? Position { get; init; }
+
     public string? CurrentTaskId { get; init; }
 
     public bool? IsOnline { get; init; }

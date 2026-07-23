@@ -8,6 +8,7 @@ using AgvDispatcher.Core.Models;
 using Prism.Commands;
 using Prism.Events;
 using Prism.Mvvm;
+using Prism.Navigation;
 using ContractMap = AgvDispatcher.Core.Contracts.Map;
 
 namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
@@ -25,15 +26,21 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     /// 浠ュ強瀵瑰舰濡?"A01" 鐨勪綅缃覆鍋氬綊涓€鍖栫殑妯＄硦鍖归厤锛堣 <see cref="ResolveNode"/>锛夈€?
     /// </para>
     /// </summary>
-    public class MapViewModel : BindableBase
+    public class MapViewModel : BindableBase, IDisposable, IDestructible
     {
         private readonly ContractMap.IMapService _mapService;
         private readonly IPathPlanningService _pathPlanningService;
         private readonly IVehicleStateStore _vehicleStateStore;
         private readonly ITaskService _taskService;
         private readonly IMapLocationAliasRepository _aliasRepo;
+        private readonly SubscriptionToken _selectedVehicleSubscription;
+        private readonly SubscriptionToken _vehicleStateSubscription;
+        private readonly SubscriptionToken _mapPublishedSubscription;
+        private readonly Dictionary<string, VehicleMapViewItem> _vehicleItems =
+            new(StringComparer.OrdinalIgnoreCase);
 
         private IReadOnlyList<MapLocationAlias> _aliases = new List<MapLocationAlias>();
+        private IReadOnlyList<MapNode> _mapNodes = Array.Empty<MapNode>();
 
         private string? _selectedVehicleId;
         private string _pathSummary = "\u8bf7\u9009\u62e9 AGV \u67e5\u770b\u89c4\u5212\u8def\u5f84";
@@ -47,6 +54,9 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         private bool _isUpdatingPreviewSelection;
         private string _previewSummary = "\u9009\u62e9\u8d77\u70b9\u4e0e\u7ec8\u70b9\u540e\u70b9\u51fb\u201c\u9884\u89c8\u8def\u5f84\u201d";
         private bool _isPreviewPanelExpanded = true;
+        private bool _disposed;
+
+        public Task Initialization { get; }
 
         /// <summary>鍦板浘鍏ㄩ儴杈癸紙鏅€氭覆鏌撳浘灞傦級銆?/summary>
         public ObservableCollection<MapEdgeViewItem> Edges { get; } = new();
@@ -223,12 +233,15 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             ClearPreviewCommand = new DelegateCommand(OnClearPreview);
 
             // 鍏堝紓姝ュ姞杞藉埆鍚嶏紝瀹屾垚鍚庡湪 UI 绾跨▼棣栨缁樺埗鍦板浘
-            LoadAliasesAsync().ContinueWith(_ => LoadMap(null), TaskScheduler.FromCurrentSynchronizationContext());
+            Initialization = InitializeAsync();
             // 閫変腑杞﹁締鍙樺寲锛氶噸缁樺苟楂樹寒鍏惰矾寰?
-            eventAggregator.GetEvent<SelectedVehicleChangedEvent>().Subscribe(LoadMap, ThreadOption.UIThread);
+            _selectedVehicleSubscription = eventAggregator.GetEvent<SelectedVehicleChangedEvent>()
+                .Subscribe(LoadMap, ThreadOption.UIThread);
             // 杞﹁締鐘舵€佸彉鍖栵細淇濇寔褰撳墠閫変腑杞﹁締骞堕噸缁?
-            eventAggregator.GetEvent<VehicleStateChangedEvent>().Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
-            eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>().Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
+            _vehicleStateSubscription = eventAggregator.GetEvent<VehicleStateChangedEvent>()
+                .Subscribe(OnVehicleStateChanged, ThreadOption.UIThread);
+            _mapPublishedSubscription = eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>()
+                .Subscribe(_ => LoadMap(_selectedVehicleId), ThreadOption.UIThread);
         }
 
         /// <summary>
@@ -261,13 +274,32 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             {
                 DetailTitle = $"车辆详情: {vehicle.VehicleId}";
                 var taskStr = string.IsNullOrWhiteSpace(vehicle.CurrentTaskId) ? "无任务" : vehicle.CurrentTaskId;
-                DetailContent = $"状态: {vehicle.StateText}\n当前点位: {vehicle.Location}\n当前任务: {taskStr}\n电量: {vehicle.BatteryLevel:F1}%";
+                DetailContent = $"状态: {vehicle.StateText}\n当前点位: {vehicle.Location}\n当前任务: {taskStr}\n" +
+                                $"坐标: ({vehicle.X:F2}, {vehicle.Y:F2})\n朝向: {vehicle.Heading:F1}°\n电量: {vehicle.BatteryLevel:F1}%";
             }
         }
         /// <summary>寮傛鍔犺浇鍏ㄩ儴鍦板浘浣嶇疆鍒悕鍒板唴瀛樼紦瀛樸€?/summary>
         private async Task LoadAliasesAsync()
         {
             _aliases = await _aliasRepo.GetAllAsync();
+        }
+
+        private async Task InitializeAsync()
+        {
+            await LoadAliasesAsync().ConfigureAwait(false);
+            if (_disposed)
+            {
+                return;
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess())
+            {
+                LoadMap(null);
+                return;
+            }
+
+            await dispatcher.InvokeAsync(() => LoadMap(null));
         }
 
         /// <summary>
@@ -279,6 +311,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             _selectedVehicleId = selectedVehicleId;
 
             var nodes = GetNodes();
+            _mapNodes = nodes;
             var edges = GetEdges();
             var areas = GetAreas();
             var nodeMap = nodes.ToDictionary(node => node.NodeId, StringComparer.OrdinalIgnoreCase);
@@ -357,13 +390,93 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
 
             // 杞﹁締浣嶇疆鏍囪
             Vehicles.Clear();
+            _vehicleItems.Clear();
             foreach (var vehicle in CreateVehiclePositions(nodes, selectedVehicleId))
             {
                 Vehicles.Add(vehicle);
+                _vehicleItems[vehicle.VehicleId] = vehicle;
             }
 
             PathSummary = BuildPathSummary(selectedVehicle, plannedPath, nodes);
         }
+
+        private void OnVehicleStateChanged(VehicleStateChangedMessage message)
+        {
+            if (message.ChangeType == VehicleStateChangeType.Removed)
+            {
+                RemoveVehicleItem(message.RemovedVehicleId);
+                if (string.Equals(message.RemovedVehicleId, _selectedVehicleId, StringComparison.OrdinalIgnoreCase))
+                {
+                    LoadMap(null);
+                }
+
+                return;
+            }
+
+            if (message.Snapshot is null)
+            {
+                return;
+            }
+
+            _vehicleItems.TryGetValue(message.Snapshot.VehicleId, out var existing);
+            var pathInputsChanged = existing is not null &&
+                (!string.Equals(existing.Location, message.Snapshot.Location, StringComparison.OrdinalIgnoreCase) ||
+                 !string.Equals(existing.CurrentTaskId, message.Snapshot.CurrentTaskId, StringComparison.OrdinalIgnoreCase));
+
+            UpsertVehicleItem(message.Snapshot);
+
+            if (pathInputsChanged &&
+                string.Equals(message.Snapshot.VehicleId, _selectedVehicleId, StringComparison.OrdinalIgnoreCase))
+            {
+                // Logical node/task changes can change the highlighted route. Continuous
+                // animation frames do not enter this branch and therefore never rebuild the map.
+                LoadMap(_selectedVehicleId);
+            }
+        }
+
+        private void UpsertVehicleItem(VehicleStatusSnapshot snapshot)
+        {
+            var item = CreateVehicleItem(snapshot, _mapNodes, _selectedVehicleId);
+            if (item is null)
+            {
+                RemoveVehicleItem(snapshot.VehicleId);
+                return;
+            }
+
+            if (_vehicleItems.TryGetValue(snapshot.VehicleId, out var existing))
+            {
+                existing.UpdateFrom(item);
+                return;
+            }
+
+            _vehicleItems[snapshot.VehicleId] = item;
+            Vehicles.Add(item);
+        }
+
+        private void RemoveVehicleItem(string? vehicleId)
+        {
+            if (string.IsNullOrWhiteSpace(vehicleId) || !_vehicleItems.Remove(vehicleId, out var item))
+            {
+                return;
+            }
+
+            Vehicles.Remove(item);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _selectedVehicleSubscription.Dispose();
+            _vehicleStateSubscription.Dispose();
+            _mapPublishedSubscription.Dispose();
+        }
+
+        public void Destroy() => Dispose();
 
         /// <summary>
         /// 鍦板浘閲嶈浇鍚庝慨澶嶉瑙堣捣姝㈢偣瀵规柊鑺傜偣瑙嗗浘椤圭殑寮曠敤锛屽苟鎹閲嶇粯棰勮璺緞鍥惧眰銆?
@@ -1024,38 +1137,55 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         {
             foreach (var snapshot in _vehicleStateStore.GetAllVehicles())
             {
-                var node = ResolveNode(snapshot.Location, nodes, _aliases);
-                if (node is null)
+                var item = CreateVehicleItem(snapshot, nodes, selectedVehicleId);
+                if (item is not null)
                 {
-                    continue;
+                    yield return item;
                 }
-
-                var isSelected = string.Equals(snapshot.VehicleId, selectedVehicleId, StringComparison.OrdinalIgnoreCase);
-                yield return new VehicleMapViewItem
-                {
-                    VehicleId = snapshot.VehicleId,
-                    CurrentTaskId = snapshot.CurrentTaskId ?? string.Empty,
-                    State = ToChineseRobotState(snapshot.State),
-                    Location = snapshot.Location,
-                    X = node.Position.X,
-                    Y = node.Position.Y,
-                    CanvasLeft = node.Position.X + 12,
-                    CanvasTop = node.Position.Y - 34,
-                    BatteryLevel = snapshot.BatteryLevel,
-                    StateText = ToChineseRobotState(snapshot.State),
-                    Fill = isSelected
-                        ? "#FFD700"
-                        : snapshot.State switch
-                        {
-                            RobotState.Running => "#32CD32",
-                            RobotState.Fault => "#FF4500",
-                            RobotState.Idle => "#00BFFF",
-                            RobotState.Offline => "#D3D3D3",
-                            _ => "#FFD700"
-                        }
-                };
             }
         }
+
+        private VehicleMapViewItem? CreateVehicleItem(
+            VehicleStatusSnapshot snapshot,
+            IReadOnlyList<MapNode> nodes,
+            string? selectedVehicleId)
+        {
+            var node = ResolveNode(snapshot.Location, nodes, _aliases);
+            var position = VehiclePositionResolver.Resolve(snapshot, node?.Position);
+            if (position is null)
+            {
+                return null;
+            }
+
+            var stateText = ToChineseRobotState(snapshot.State);
+            return new VehicleMapViewItem
+            {
+                VehicleId = snapshot.VehicleId,
+                CurrentTaskId = snapshot.CurrentTaskId ?? string.Empty,
+                State = stateText,
+                Location = snapshot.Location,
+                X = position.X,
+                Y = position.Y,
+                CanvasLeft = position.X + 12,
+                CanvasTop = position.Y - 34,
+                Heading = position.Heading,
+                BatteryLevel = snapshot.BatteryLevel,
+                StateText = stateText,
+                Fill = VehicleFill(snapshot.State,
+                    string.Equals(snapshot.VehicleId, selectedVehicleId, StringComparison.OrdinalIgnoreCase))
+            };
+        }
+
+        private static string VehicleFill(RobotState state, bool isSelected) => isSelected
+            ? "#FFD700"
+            : state switch
+            {
+                RobotState.Running => "#32CD32",
+                RobotState.Fault => "#FF4500",
+                RobotState.Idle => "#00BFFF",
+                RobotState.Offline => "#D3D3D3",
+                _ => "#FFD700"
+            };
 
         private static string AreaColor(ContractMap.MapAreaType areaType) => areaType switch
         {
@@ -1307,40 +1437,70 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     }
 
     /// <summary>杞﹁締鍦ㄥ湴鍥句笂鐨勪綅缃爣璁拌鍥鹃」锛氭惡甯﹀潗鏍囥€佺姸鎬佷笌鏍峰紡銆?/summary>
-    public class VehicleMapViewItem
+    public class VehicleMapViewItem : BindableBase
     {
+        private string _vehicleId = string.Empty;
+        private string _currentTaskId = string.Empty;
+        private string _state = string.Empty;
+        private string _location = string.Empty;
+        private double _x;
+        private double _y;
+        private double _canvasLeft;
+        private double _canvasTop;
+        private double _heading;
+        private double _batteryLevel;
+        private string _stateText = string.Empty;
+        private string _fill = "#00BFFF";
+
         /// <summary>杞﹁締缂栧彿銆?/summary>
-        public string VehicleId { get; set; } = string.Empty;
+        public string VehicleId { get => _vehicleId; set => SetProperty(ref _vehicleId, value); }
 
         /// <summary>褰撳墠浠诲姟缂栧彿銆?/summary>
-        public string CurrentTaskId { get; set; } = string.Empty;
+        public string CurrentTaskId { get => _currentTaskId; set => SetProperty(ref _currentTaskId, value); }
 
         /// <summary>鐘舵€佹枃鏈€?/summary>
-        public string State { get; set; } = string.Empty;
+        public string State { get => _state; set => SetProperty(ref _state, value); }
 
         /// <summary>褰撳墠浣嶇疆锛堝師濮嬩綅缃覆锛夈€?/summary>
-        public string Location { get; set; } = string.Empty;
+        public string Location { get => _location; set => SetProperty(ref _location, value); }
 
         /// <summary>杞﹁締閫昏緫 X 鍧愭爣銆?/summary>
-        public double X { get; set; }
+        public double X { get => _x; set => SetProperty(ref _x, value); }
 
         /// <summary>杞﹁締閫昏緫 Y 鍧愭爣銆?/summary>
-        public double Y { get; set; }
+        public double Y { get => _y; set => SetProperty(ref _y, value); }
 
         /// <summary>鏍囪缁樺埗宸︿笂瑙?X锛堝凡鍋忕Щ锛夈€?/summary>
-        public double CanvasLeft { get; set; }
+        public double CanvasLeft { get => _canvasLeft; set => SetProperty(ref _canvasLeft, value); }
 
         /// <summary>鏍囪缁樺埗宸︿笂瑙?Y锛堝凡鍋忕Щ锛夈€?/summary>
-        public double CanvasTop { get; set; }
+        public double CanvasTop { get => _canvasTop; set => SetProperty(ref _canvasTop, value); }
+
+        public double Heading { get => _heading; set => SetProperty(ref _heading, value); }
 
         /// <summary>鐢甸噺鐧惧垎姣斻€?/summary>
-        public double BatteryLevel { get; set; }
+        public double BatteryLevel { get => _batteryLevel; set => SetProperty(ref _batteryLevel, value); }
 
         /// <summary>鐘舵€佹樉绀烘枃鏈€?/summary>
-        public string StateText { get; set; } = string.Empty;
+        public string StateText { get => _stateText; set => SetProperty(ref _stateText, value); }
 
         /// <summary>濉厖棰滆壊锛堥€変腑涓洪噾鑹诧紝鍚﹀垯鎸夌姸鎬佺潃鑹诧級銆?/summary>
-        public string Fill { get; set; } = "#00BFFF";
+        public string Fill { get => _fill; set => SetProperty(ref _fill, value); }
+
+        public void UpdateFrom(VehicleMapViewItem source)
+        {
+            CurrentTaskId = source.CurrentTaskId;
+            State = source.State;
+            Location = source.Location;
+            X = source.X;
+            Y = source.Y;
+            CanvasLeft = source.CanvasLeft;
+            CanvasTop = source.CanvasTop;
+            Heading = source.Heading;
+            BatteryLevel = source.BatteryLevel;
+            StateText = source.StateText;
+            Fill = source.Fill;
+        }
     }
 }
 

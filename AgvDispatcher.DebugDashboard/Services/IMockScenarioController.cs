@@ -18,6 +18,16 @@ public interface IMockScenarioController
         MockScenarioVehicleSlot slot,
         CancellationToken cancellationToken = default);
 
+    Task<MockScenarioOperationResult> StartAutomaticVehicleAsync(
+        MockScenarioVehicleSlot slot,
+        CancellationToken cancellationToken = default);
+
+    MockScenarioOperationResult StopAutomaticVehicle(string vehicleId);
+
+    void StopAllAutomaticVehicles();
+
+    bool IsAutomaticRunning(string vehicleId);
+
     Task<MockScenarioOperationResult> ArriveNextNodeAsync(
         string vehicleId,
         CancellationToken cancellationToken = default);
@@ -78,6 +88,10 @@ public sealed class MockScenarioState
     public TrafficResourceKey? ManualBlockResource { get; init; }
 
     public bool IsManualBlockActive { get; init; }
+
+    public bool IsVehicleAAutomaticRunning { get; init; }
+
+    public bool IsVehicleBAutomaticRunning { get; init; }
 
     public IReadOnlyList<MockScenarioStepLog> Logs { get; init; } = Array.Empty<MockScenarioStepLog>();
 }

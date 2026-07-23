@@ -39,6 +39,8 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private string _scenarioRouteSummary = string.Empty;
     private string _scenarioManualBlockResource = string.Empty;
     private bool _isScenarioManualBlockActive;
+    private bool _isVehicleAAutomaticRunning;
+    private bool _isVehicleBAutomaticRunning;
 
     public DebugDashboardViewModel(
         IDebugSnapshotService debugSnapshotService,
@@ -56,8 +58,17 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             () => _mockScenarioController.StartVehicleAsync(MockScenarioVehicleSlot.VehicleA)).ConfigureAwait(true));
         StartVehicleBCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => _mockScenarioController.StartVehicleAsync(MockScenarioVehicleSlot.VehicleB)).ConfigureAwait(true));
+        StartAutomaticVehicleACommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.StartAutomaticVehicleAsync(MockScenarioVehicleSlot.VehicleA)).ConfigureAwait(true));
+        StartAutomaticVehicleBCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.StartAutomaticVehicleAsync(MockScenarioVehicleSlot.VehicleB)).ConfigureAwait(true));
+        StopAutomaticVehicleACommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => Task.FromResult(_mockScenarioController.StopAutomaticVehicle(ScenarioVehicleAId))).ConfigureAwait(true));
+        StopAutomaticVehicleBCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => Task.FromResult(_mockScenarioController.StopAutomaticVehicle(ScenarioVehicleBId))).ConfigureAwait(true));
         VehicleAArriveNextNodeCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
-            () => _mockScenarioController.ArriveNextNodeAsync(ScenarioVehicleAId)).ConfigureAwait(true));
+            () => _mockScenarioController.ArriveNextNodeAsync(ScenarioVehicleAId)).ConfigureAwait(true),
+            () => !IsVehicleAAutomaticRunning);
         VehicleBRetryWaitingTaskCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => _mockScenarioController.RetryWaitingTaskAsync(ScenarioVehicleBId)).ConfigureAwait(true));
         ManualBlockScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
@@ -86,6 +97,14 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     public DelegateCommand StartVehicleACommand { get; }
 
     public DelegateCommand StartVehicleBCommand { get; }
+
+    public DelegateCommand StartAutomaticVehicleACommand { get; }
+
+    public DelegateCommand StartAutomaticVehicleBCommand { get; }
+
+    public DelegateCommand StopAutomaticVehicleACommand { get; }
+
+    public DelegateCommand StopAutomaticVehicleBCommand { get; }
 
     public DelegateCommand VehicleAArriveNextNodeCommand { get; }
 
@@ -257,6 +276,18 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         private set => SetProperty(ref _isScenarioManualBlockActive, value);
     }
 
+    public bool IsVehicleAAutomaticRunning
+    {
+        get => _isVehicleAAutomaticRunning;
+        private set => SetProperty(ref _isVehicleAAutomaticRunning, value);
+    }
+
+    public bool IsVehicleBAutomaticRunning
+    {
+        get => _isVehicleBAutomaticRunning;
+        private set => SetProperty(ref _isVehicleBAutomaticRunning, value);
+    }
+
     public int TaskCount { get; private set; }
     public int RunningTaskCount { get; private set; }
     public int WaitingForTrafficTaskCount { get; private set; }
@@ -298,6 +329,7 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     public void Dispose()
     {
         _timer.Stop();
+        _mockScenarioController.StopAllAutomaticVehicles();
         _mockScenarioController.ScenarioChanged -= OnScenarioChanged;
     }
 
@@ -342,6 +374,9 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             ? string.Empty
             : $"{state.ManualBlockResource.ResourceType}:{state.ManualBlockResource.ResourceId}";
         IsScenarioManualBlockActive = state.IsManualBlockActive;
+        IsVehicleAAutomaticRunning = state.IsVehicleAAutomaticRunning;
+        IsVehicleBAutomaticRunning = state.IsVehicleBAutomaticRunning;
+        VehicleAArriveNextNodeCommand.RaiseCanExecuteChanged();
         Replace(ScenarioLogs, state.Logs);
     }
 

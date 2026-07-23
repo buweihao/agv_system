@@ -16,7 +16,7 @@ using AgvDispatcher.Core.Models;
 
 namespace AgvDispatcher.DebugDashboard.Services;
 
-public sealed class MockScenarioController : IMockScenarioController
+public sealed class MockScenarioController : IMockScenarioController, IDisposable
 {
     private const string VehicleAId = "AGV-002";
     private const string VehicleBId = "AGV-003";
@@ -26,7 +26,10 @@ public sealed class MockScenarioController : IMockScenarioController
     private readonly IDispatchOrchestrationService _dispatchOrchestrationService;
     private readonly IMapService _mapService;
     private readonly IMockSimulationService _mockSimulationService;
+    private readonly IVehicleMotionSimulationService _vehicleMotionService;
     private readonly List<MockScenarioStepLog> _logs = new();
+    private readonly Dictionary<string, CancellationTokenSource> _automaticRuns =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly object _syncRoot = new();
     private ScenarioDefinition _scenario;
     private ScenarioLayout? _layout;
@@ -64,7 +67,8 @@ public sealed class MockScenarioController : IMockScenarioController
         IRouteReservationService routeReservationService,
         IDispatchOrchestrationService dispatchOrchestrationService,
         IMapService mapService,
-        IMockSimulationService mockSimulationService)
+        IMockSimulationService mockSimulationService,
+        IVehicleMotionSimulationService vehicleMotionService)
     {
         _taskService = taskService;
         _trafficControlService = trafficControlService;
@@ -72,6 +76,7 @@ public sealed class MockScenarioController : IMockScenarioController
         _dispatchOrchestrationService = dispatchOrchestrationService;
         _mapService = mapService;
         _mockSimulationService = mockSimulationService;
+        _vehicleMotionService = vehicleMotionService;
         _scenario = Scenarios[0];
     }
 
@@ -124,8 +129,8 @@ public sealed class MockScenarioController : IMockScenarioController
             _manualBlockActive = false;
         }
 
-        UpsertVehicle(VehicleAId, layout.SourceA, null, RobotState.Idle, clearAlarm: true);
-        UpsertVehicle(VehicleBId, layout.SourceB, null, RobotState.Idle, clearAlarm: true);
+        UpsertVehicle(VehicleAId, layout.SourceA, null, RobotState.Idle, clearAlarm: true, ResolveNodePosition(layout.SourceA));
+        UpsertVehicle(VehicleBId, layout.SourceB, null, RobotState.Idle, clearAlarm: true, ResolveNodePosition(layout.SourceB));
         AddLog(
             "初始化场景",
             "OK",
@@ -175,9 +180,114 @@ public sealed class MockScenarioController : IMockScenarioController
         return FailAndLog($"启动 {vehicleId}", result.Message);
     }
 
+    public async Task<MockScenarioOperationResult> StartAutomaticVehicleAsync(
+        MockScenarioVehicleSlot slot,
+        CancellationToken cancellationToken = default)
+    {
+        var (vehicleId, _, _) = GetSlot(slot);
+        lock (_syncRoot)
+        {
+            if (_automaticRuns.ContainsKey(vehicleId))
+            {
+                return MockScenarioOperationResult.Ok($"{vehicleId} is already running automatically.");
+            }
+        }
+
+        var taskId = GetTaskIdForVehicle(vehicleId);
+        var execution = string.IsNullOrWhiteSpace(taskId)
+            ? null
+            : await _dispatchOrchestrationService.GetExecutionAsync(
+                new GetDispatchExecutionRequest
+                {
+                    Context = Context("StartAutomaticVehicle"),
+                    TaskId = taskId
+                },
+                cancellationToken).ConfigureAwait(false);
+        var alreadyDispatched = execution?.Success == true &&
+            execution.Data?.State is DispatchExecutionState.Running or DispatchExecutionState.WaitingForTraffic;
+        if (!alreadyDispatched)
+        {
+            var started = await StartVehicleAsync(slot, cancellationToken).ConfigureAwait(false);
+            if (!started.Success)
+            {
+                return started;
+            }
+        }
+
+        var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        lock (_syncRoot)
+        {
+            if (_automaticRuns.ContainsKey(vehicleId))
+            {
+                linkedCancellation.Dispose();
+                return MockScenarioOperationResult.Ok($"{vehicleId} is already running automatically.");
+            }
+
+            _automaticRuns[vehicleId] = linkedCancellation;
+        }
+
+        _ = RunAutomaticVehicleAsync(vehicleId, linkedCancellation);
+        AddLog($"自动运行 {vehicleId}", "Started", "Continuous route motion started.");
+        NotifyChanged();
+        return MockScenarioOperationResult.Ok($"{vehicleId} automatic motion started.");
+    }
+
+    public MockScenarioOperationResult StopAutomaticVehicle(string vehicleId)
+    {
+        CancellationTokenSource? cancellation;
+        lock (_syncRoot)
+        {
+            _automaticRuns.Remove(vehicleId, out cancellation);
+        }
+
+        cancellation?.Cancel();
+        _vehicleMotionService.StopVehicle(vehicleId, "Automatic motion stopped.");
+        AddLog($"停止 {vehicleId}", "OK", "Automatic route motion stopped.");
+        NotifyChanged();
+        return MockScenarioOperationResult.Ok($"{vehicleId} automatic motion stopped.");
+    }
+
+    public void StopAllAutomaticVehicles()
+    {
+        CancellationTokenSource[] cancellations;
+        lock (_syncRoot)
+        {
+            cancellations = _automaticRuns.Values.ToArray();
+            _automaticRuns.Clear();
+        }
+
+        foreach (var cancellation in cancellations)
+        {
+            cancellation.Cancel();
+        }
+
+        _vehicleMotionService.StopAll("All automatic motion stopped.");
+        NotifyChanged();
+    }
+
+    public bool IsAutomaticRunning(string vehicleId)
+    {
+        lock (_syncRoot)
+        {
+            return _automaticRuns.ContainsKey(vehicleId);
+        }
+    }
+
     public async Task<MockScenarioOperationResult> ArriveNextNodeAsync(
         string vehicleId,
         CancellationToken cancellationToken = default)
+    {
+        if (IsAutomaticRunning(vehicleId))
+        {
+            return FailAndLog($"到达 {vehicleId}", "Automatic motion is active; manual advance is disabled.");
+        }
+
+        return await ArriveNextNodeCoreAsync(vehicleId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<MockScenarioOperationResult> ArriveNextNodeCoreAsync(
+        string vehicleId,
+        CancellationToken cancellationToken)
     {
         var taskId = GetTaskIdForVehicle(vehicleId);
         if (string.IsNullOrWhiteSpace(taskId))
@@ -280,7 +390,13 @@ public sealed class MockScenarioController : IMockScenarioController
         {
             if (result.Data.FirstWindowLocked)
             {
-                UpsertVehicle(vehicleId, CurrentSourceFor(vehicleId), taskId, RobotState.Running, clearAlarm: false);
+                var currentLocation = _mockSimulationService.GetVehicle(vehicleId)?.Location;
+                UpsertVehicle(
+                    vehicleId,
+                    string.IsNullOrWhiteSpace(currentLocation) ? CurrentSourceFor(vehicleId) : currentLocation,
+                    taskId,
+                    RobotState.Running,
+                    clearAlarm: false);
             }
 
             AddLog(
@@ -387,6 +503,7 @@ public sealed class MockScenarioController : IMockScenarioController
     public async Task<MockScenarioOperationResult> ResetScenarioAsync(
         CancellationToken cancellationToken = default)
     {
+        StopAllAutomaticVehicles();
         var state = CurrentState;
         foreach (var taskId in new[] { state.TaskAId, state.TaskBId }.Where(id => !string.IsNullOrWhiteSpace(id)))
         {
@@ -427,8 +544,8 @@ public sealed class MockScenarioController : IMockScenarioController
             _logs.Clear();
         }
 
-        UpsertVehicle(VehicleAId, string.Empty, null, RobotState.Idle, clearAlarm: true);
-        UpsertVehicle(VehicleBId, string.Empty, null, RobotState.Idle, clearAlarm: true);
+        UpsertVehicle(VehicleAId, string.Empty, null, RobotState.Idle, clearAlarm: true, new MapPosition());
+        UpsertVehicle(VehicleBId, string.Empty, null, RobotState.Idle, clearAlarm: true, new MapPosition());
         AddLog("重置场景", "OK", "演示任务和交通资源已释放。");
         NotifyChanged();
         return MockScenarioOperationResult.Ok("场景已重置。");
@@ -608,7 +725,8 @@ public sealed class MockScenarioController : IMockScenarioController
         string? location,
         string? taskId,
         RobotState state,
-        bool clearAlarm)
+        bool clearAlarm,
+        MapPosition? position = null)
     {
         var update = new MockVehicleUpdate
         {
@@ -616,6 +734,7 @@ public sealed class MockScenarioController : IMockScenarioController
             State = state,
             IsOnline = true,
             Location = string.IsNullOrWhiteSpace(location) ? null : location,
+            Position = position,
             CurrentTaskId = taskId ?? string.Empty,
             HasAlarm = clearAlarm ? false : null,
             ActiveAlarmCode = clearAlarm ? string.Empty : null,
@@ -627,6 +746,178 @@ public sealed class MockScenarioController : IMockScenarioController
             }
         };
         _mockSimulationService.UpsertVehicle(update);
+    }
+
+    public void Dispose()
+    {
+        StopAllAutomaticVehicles();
+    }
+
+    private async Task RunAutomaticVehicleAsync(
+        string vehicleId,
+        CancellationTokenSource runCancellation)
+    {
+        try
+        {
+            while (!runCancellation.IsCancellationRequested)
+            {
+                var snapshot = _mockSimulationService.GetVehicle(vehicleId);
+                if (snapshot is null || !snapshot.IsOnline || snapshot.State is RobotState.Fault or RobotState.Offline)
+                {
+                    _vehicleMotionService.StopVehicle(vehicleId, "Vehicle is unavailable.");
+                    break;
+                }
+
+                var segment = await GetNextAutomaticSegmentAsync(vehicleId, runCancellation.Token)
+                    .ConfigureAwait(false);
+                if (segment.State == AutomaticSegmentState.Completed)
+                {
+                    break;
+                }
+
+                if (segment.State == AutomaticSegmentState.Waiting)
+                {
+                    await RetryWaitingTaskAsync(vehicleId, runCancellation.Token).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromMilliseconds(500), runCancellation.Token).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (segment.Target is null)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(200), runCancellation.Token).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (snapshot.Position?.HasValidCoordinates() != true && segment.Start is not null)
+                {
+                    _mockSimulationService.UpsertVehicle(new MockVehicleUpdate
+                    {
+                        VehicleId = vehicleId,
+                        Position = segment.Start
+                    });
+                }
+
+                var motion = await _vehicleMotionService.MoveToAsync(
+                    vehicleId,
+                    segment.Target,
+                    cancellationToken: runCancellation.Token).ConfigureAwait(false);
+                if (!motion.ReachedTarget)
+                {
+                    break;
+                }
+
+                var advanced = await ArriveNextNodeCoreAsync(vehicleId, runCancellation.Token).ConfigureAwait(false);
+                if (!advanced.Success)
+                {
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            AddLog($"自动运行 {vehicleId}", "Failed", ex.Message);
+        }
+        finally
+        {
+            lock (_syncRoot)
+            {
+                if (_automaticRuns.TryGetValue(vehicleId, out var current) && ReferenceEquals(current, runCancellation))
+                {
+                    _automaticRuns.Remove(vehicleId);
+                }
+            }
+
+            runCancellation.Dispose();
+            NotifyChanged();
+        }
+    }
+
+    private async Task<AutomaticSegment> GetNextAutomaticSegmentAsync(
+        string vehicleId,
+        CancellationToken cancellationToken)
+    {
+        var taskId = GetTaskIdForVehicle(vehicleId);
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            return AutomaticSegment.Completed;
+        }
+
+        var executionResult = await _dispatchOrchestrationService.GetExecutionAsync(
+            new GetDispatchExecutionRequest
+            {
+                Context = Context("AutomaticMotion"),
+                TaskId = taskId
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (!executionResult.Success || executionResult.Data is null)
+        {
+            return AutomaticSegment.Completed;
+        }
+
+        var execution = executionResult.Data;
+        if (execution.State == DispatchExecutionState.WaitingForTraffic)
+        {
+            return AutomaticSegment.Waiting;
+        }
+
+        if (execution.State is DispatchExecutionState.Completed or DispatchExecutionState.Canceled or DispatchExecutionState.Failed)
+        {
+            return AutomaticSegment.Completed;
+        }
+
+        var reservationResult = await _routeReservationService.GetReservationAsync(
+            new GetRouteReservationRequest
+            {
+                Context = Context("AutomaticMotion"),
+                ReservationId = execution.ReservationId ?? string.Empty
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (!reservationResult.Success || reservationResult.Data is null)
+        {
+            return AutomaticSegment.Waiting;
+        }
+
+        var next = NextSegment(reservationResult.Data, execution.CurrentSegmentSequence);
+        if (next is null)
+        {
+            var completed = await ArriveNextNodeCoreAsync(vehicleId, cancellationToken).ConfigureAwait(false);
+            return completed.Success ? AutomaticSegment.Completed : AutomaticSegment.Waiting;
+        }
+
+        if (!next.IsLocked)
+        {
+            return AutomaticSegment.Waiting;
+        }
+
+        var start = ResolveNodePosition(next.Segment.FromNodeId);
+        var target = ResolveNodePosition(next.Segment.ToNodeId);
+        return target is null
+            ? AutomaticSegment.Waiting
+            : new AutomaticSegment(AutomaticSegmentState.Ready, start, target);
+    }
+
+    private MapPosition? ResolveNodePosition(string nodeId)
+    {
+        var map = _mapService.GetCurrentMap(new GetMapSnapshotRequest { Context = Context("ResolveNodePosition") });
+        var node = map.Data?.Nodes.FirstOrDefault(item =>
+            string.Equals(item.NodeId, nodeId, StringComparison.OrdinalIgnoreCase));
+        if (node is null || map.Data is null)
+        {
+            return null;
+        }
+
+        return new MapPosition
+        {
+            MapId = map.Data.MapId,
+            NodeId = node.NodeId,
+            X = node.X,
+            Y = node.Y,
+            Heading = node.Angle ?? 0,
+            AreaCode = node.AreaId
+        };
     }
 
     private MockScenarioOperationResult FailAndLog(string step, string? message)
@@ -669,6 +960,8 @@ public sealed class MockScenarioController : IMockScenarioController
         Target = _layout?.Target ?? string.Empty,
         ManualBlockResource = _layout?.ManualBlockResource,
         IsManualBlockActive = _manualBlockActive,
+        IsVehicleAAutomaticRunning = _automaticRuns.ContainsKey(VehicleAId),
+        IsVehicleBAutomaticRunning = _automaticRuns.ContainsKey(VehicleBId),
         Logs = _logs.ToArray()
     };
 
@@ -732,4 +1025,20 @@ public sealed class MockScenarioController : IMockScenarioController
         string SourceB,
         string Target,
         TrafficResourceKey ManualBlockResource);
+
+    private enum AutomaticSegmentState
+    {
+        Ready,
+        Waiting,
+        Completed
+    }
+
+    private sealed record AutomaticSegment(
+        AutomaticSegmentState State,
+        MapPosition? Start,
+        MapPosition? Target)
+    {
+        public static AutomaticSegment Waiting { get; } = new(AutomaticSegmentState.Waiting, null, null);
+        public static AutomaticSegment Completed { get; } = new(AutomaticSegmentState.Completed, null, null);
+    }
 }

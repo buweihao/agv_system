@@ -80,6 +80,29 @@ public sealed class MockSimulationServiceTests
         Assert.False(snapshot.IsOnline);
     }
 
+    [Fact]
+    public void UpsertVehicle_CopiesContinuousPositionAndRefreshesReportedAt()
+    {
+        var store = new FakeVehicleStateStore();
+        var service = new MockSimulationService(store, new EventAggregator());
+        var position = new MapPosition { MapId = "MAIN", X = 0, Y = 0, Heading = 90 };
+
+        service.UpsertVehicle(new MockVehicleUpdate
+        {
+            VehicleId = "AGV-004",
+            Position = position
+        });
+
+        var first = store.GetVehicle("AGV-004")!;
+        Assert.NotSame(position, first.Position);
+        Assert.True(first.Position.HasValidCoordinates());
+        Assert.Equal(0, first.Position.X);
+        Assert.NotEqual(default, first.ReportedAt);
+
+        position.X = 99;
+        Assert.Equal(0, first.Position.X);
+    }
+
     private sealed class FakeVehicleStateStore : IVehicleStateStore
     {
         private readonly Dictionary<string, VehicleStatusSnapshot> _vehicles = new(StringComparer.OrdinalIgnoreCase);

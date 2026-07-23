@@ -82,6 +82,11 @@ public sealed class MockSimulationService : IMockSimulationService, IDisposable
             snapshot.Location = update.Location;
         }
 
+        if (update.Position is not null)
+        {
+            snapshot.Position = update.Position.Clone();
+        }
+
         if (update.CurrentTaskId is not null)
         {
             snapshot.CurrentTaskId = string.IsNullOrWhiteSpace(update.CurrentTaskId) ? null : update.CurrentTaskId;
@@ -154,33 +159,5 @@ public sealed class MockSimulationService : IMockSimulationService, IDisposable
         Telemetry = new Dictionary<string, string>()
     };
 
-    private static VehicleStatusSnapshot Clone(VehicleStatusSnapshot source) => new()
-    {
-        VehicleId = source.VehicleId,
-        Brand = source.Brand,
-        BatteryLevel = source.BatteryLevel,
-        Location = source.Location,
-        State = source.State,
-        LoadState = source.LoadState,
-        Position = source.Position is null
-            ? new MapPosition()
-            : new MapPosition
-            {
-                MapId = source.Position.MapId,
-                X = source.Position.X,
-                Y = source.Position.Y,
-                Z = source.Position.Z,
-                Heading = source.Position.Heading,
-                NodeId = source.Position.NodeId,
-                AreaCode = source.Position.AreaCode
-            },
-        CurrentTaskId = source.CurrentTaskId,
-        IsOnline = source.IsOnline,
-        IsCharging = source.IsCharging,
-        HasAlarm = source.HasAlarm,
-        ActiveAlarmCode = source.ActiveAlarmCode,
-        ActiveAlarmMessage = source.ActiveAlarmMessage,
-        ReportedAt = source.ReportedAt,
-        Telemetry = new Dictionary<string, string>(source.Telemetry ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase)
-    };
+    private static VehicleStatusSnapshot Clone(VehicleStatusSnapshot source) => source.Clone();
 }

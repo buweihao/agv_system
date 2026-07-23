@@ -49,41 +49,43 @@ namespace AgvDispatcher.Shell.Services
                 throw new ArgumentException("VehicleId cannot be empty.", nameof(snapshot));
             }
 
-            if (snapshot.Position is null)
+            var storedSnapshot = snapshot.Clone();
+
+            if (storedSnapshot.Position is null)
             {
-                snapshot.Position = new MapPosition();
+                storedSnapshot.Position = new MapPosition();
             }
 
-            if (snapshot.Telemetry is null)
+            if (storedSnapshot.Telemetry is null)
             {
-                snapshot.Telemetry = new Dictionary<string, string>();
+                storedSnapshot.Telemetry = new Dictionary<string, string>();
             }
 
-            if (snapshot.ReportedAt == default)
+            if (storedSnapshot.ReportedAt == default)
             {
-                snapshot.ReportedAt = DateTime.Now;
+                storedSnapshot.ReportedAt = DateTime.Now;
             }
 
             VehicleStateChangeType changeType;
             lock (_syncRoot)
             {
-                changeType = _vehicles.ContainsKey(snapshot.VehicleId)
+                changeType = _vehicles.ContainsKey(storedSnapshot.VehicleId)
                     ? VehicleStateChangeType.Updated
                     : VehicleStateChangeType.Added;
 
-                _vehicles[snapshot.VehicleId] = snapshot;
+                _vehicles[storedSnapshot.VehicleId] = storedSnapshot;
             }
 
-            _eventAggregator.GetEvent<VehicleStatusUpdatedEvent>().Publish(snapshot);
+            _eventAggregator.GetEvent<VehicleStatusUpdatedEvent>().Publish(storedSnapshot.Clone());
 
-            if (VehicleStatusRules.IsLowBattery(snapshot.BatteryLevel))
+            if (VehicleStatusRules.IsLowBattery(storedSnapshot.BatteryLevel))
             {
                 _eventAggregator.GetEvent<RobotLowBatteryEvent>().Publish(new RobotBatteryAlert
                 {
-                    VehicleId = snapshot.VehicleId,
-                    Brand = snapshot.Brand,
-                    BatteryLevel = snapshot.BatteryLevel,
-                    Location = snapshot.Location,
+                    VehicleId = storedSnapshot.VehicleId,
+                    Brand = storedSnapshot.Brand,
+                    BatteryLevel = storedSnapshot.BatteryLevel,
+                    Location = storedSnapshot.Location,
                     Threshold = VehicleStatusRules.LowBatteryThreshold,
                     OccurredAt = DateTime.Now
                 });
@@ -92,7 +94,7 @@ namespace AgvDispatcher.Shell.Services
             _eventAggregator.GetEvent<VehicleStateChangedEvent>().Publish(new VehicleStateChangedMessage
             {
                 ChangeType = changeType,
-                Snapshot = snapshot,
+                Snapshot = storedSnapshot.Clone(),
                 OccurredAt = DateTime.Now
             });
         }
@@ -133,7 +135,7 @@ namespace AgvDispatcher.Shell.Services
             lock (_syncRoot)
             {
                 return _vehicles.TryGetValue(vehicleId, out var snapshot)
-                    ? snapshot
+                    ? snapshot.Clone()
                     : null;
             }
         }
@@ -142,7 +144,7 @@ namespace AgvDispatcher.Shell.Services
         {
             lock (_syncRoot)
             {
-                return _vehicles.Values.ToArray();
+                return _vehicles.Values.Select(snapshot => snapshot.Clone()).ToArray();
             }
         }
 

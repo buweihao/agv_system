@@ -27,6 +27,12 @@
     <ProjectReference Include="..\AgvDispatcher.Infrastructure.Mock\AgvDispatcher.Infrastructure.Mock.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Infrastructure.Sqlite\AgvDispatcher.Infrastructure.Sqlite.csproj" />
     <ProjectReference Include="..\AgvDispatcher.Modules.MapModule\AgvDispatcher.Modules.MapModule.csproj" />
+    <ProjectReference Include="..\AgvDispatcher.Modules.MonitorWorkspaceModule\AgvDispatcher.Modules.MonitorWorkspaceModule.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\AgvDispatcher.Shell\Services\VehicleStateStore.cs"
+             Link="Shell\VehicleStateStore.cs" />
   </ItemGroup>
 
 </Project>

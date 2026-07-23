@@ -360,6 +360,12 @@
                                       Foreground="#D8E8F8"
                                       Margin="0,8,0,16"/>
 
+                            <TextBlock Text="{Binding IsVehicleAAutomaticRunning, StringFormat=A 车自动运行：{0}}"
+                                       Foreground="#8FA8BF"/>
+                            <TextBlock Text="{Binding IsVehicleBAutomaticRunning, StringFormat=B 车自动运行：{0}}"
+                                       Foreground="#8FA8BF"
+                                       Margin="0,0,0,12"/>
+
                             <WrapPanel>
                                 <Button Content="初始化场景"
                                         Command="{Binding InitializeScenarioCommand}"
@@ -373,6 +379,26 @@
                                         Margin="0,0,8,8"/>
                                 <Button Content="启动车B"
                                         Command="{Binding StartVehicleBCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="自动运行 A"
+                                        Command="{Binding StartAutomaticVehicleACommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="自动运行 B"
+                                        Command="{Binding StartAutomaticVehicleBCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="停止 A"
+                                        Command="{Binding StopAutomaticVehicleACommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="停止 B"
+                                        Command="{Binding StopAutomaticVehicleBCommand}"
                                         Width="104"
                                         Height="30"
                                         Margin="0,0,8,8"/>

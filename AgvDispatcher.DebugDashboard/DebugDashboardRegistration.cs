@@ -11,6 +11,8 @@ public static class DebugDashboardRegistration
     {
         containerRegistry.RegisterSingleton<IDebugSnapshotService, DebugSnapshotService>();
         containerRegistry.RegisterSingleton<IMockSimulationService, MockSimulationService>();
+        containerRegistry.RegisterSingleton<IVehicleMotionScheduler, VehicleMotionScheduler>();
+        containerRegistry.RegisterSingleton<IVehicleMotionSimulationService, VehicleMotionSimulationService>();
         containerRegistry.RegisterSingleton<IMockScenarioController, MockScenarioController>();
         containerRegistry.RegisterSingleton<IMockVehicleWindowService, MockVehicleWindowService>();
         containerRegistry.Register<DebugDashboardViewModel>();

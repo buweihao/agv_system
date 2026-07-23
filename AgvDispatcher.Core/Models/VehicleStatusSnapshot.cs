@@ -33,5 +33,26 @@ namespace AgvDispatcher.Core.Models
         public DateTime ReportedAt { get; set; }
 
         public Dictionary<string, string> Telemetry { get; set; } = new();
+
+        public VehicleStatusSnapshot Clone() => new()
+        {
+            VehicleId = VehicleId,
+            Brand = Brand,
+            BatteryLevel = BatteryLevel,
+            Location = Location,
+            State = State,
+            LoadState = LoadState,
+            Position = Position?.Clone() ?? new MapPosition(),
+            CurrentTaskId = CurrentTaskId,
+            IsOnline = IsOnline,
+            IsCharging = IsCharging,
+            HasAlarm = HasAlarm,
+            ActiveAlarmCode = ActiveAlarmCode,
+            ActiveAlarmMessage = ActiveAlarmMessage,
+            ReportedAt = ReportedAt,
+            Telemetry = new Dictionary<string, string>(
+                Telemetry ?? new Dictionary<string, string>(),
+                StringComparer.OrdinalIgnoreCase)
+        };
     }
 }

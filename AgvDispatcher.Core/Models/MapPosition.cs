@@ -19,5 +19,25 @@ namespace AgvDispatcher.Core.Models
         public string? NodeId { get; set; }
 
         public string? AreaCode { get; set; }
+
+        /// <summary>
+        /// Indicates that the coordinates belong to a known map coordinate system.
+        /// MapId is the validity marker so that (0, 0) remains a valid position.
+        /// </summary>
+        public bool HasValidCoordinates() =>
+            !string.IsNullOrWhiteSpace(MapId) &&
+            double.IsFinite(X) &&
+            double.IsFinite(Y);
+
+        public MapPosition Clone() => new()
+        {
+            MapId = MapId,
+            X = X,
+            Y = Y,
+            Z = Z,
+            Heading = Heading,
+            NodeId = NodeId,
+            AreaCode = AreaCode
+        };
     }
 }

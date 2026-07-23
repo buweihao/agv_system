@@ -58,6 +58,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         /// <summary>地图比例尺/原点设置（"米/像素"显示换算）。</summary>
         public MapSettings Settings { get; } = new();
 
+        private readonly HashSet<string> _bulkHighlightedNodeIds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _bulkHighlightedEdgeIds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _previewNodeIds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _previewEdgeIds = new(StringComparer.OrdinalIgnoreCase);
+
         // ---- 编辑器命令 ----
 
         /// <summary>切换"连线模式"（开启后在画布上从一个节点拖到另一个节点建边）。</summary>
@@ -674,17 +679,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             var right = Math.Max(x1, x2);
             var bottom = Math.Max(y1, y2);
 
-            foreach (var node in EditorNodes)
-            {
-                node.IsBulkHighlighted = IsInside(node.X, node.Y, left, top, right, bottom);
-            }
-
-            foreach (var edge in EditorEdges)
-            {
-                edge.IsBulkHighlighted =
-                    IsInside(edge.X1, edge.Y1, left, top, right, bottom)
-                    && IsInside(edge.X2, edge.Y2, left, top, right, bottom);
-            }
+            PreviewElementsInRectangle(left, top, right, bottom);
         }
 
         public void PreviewDeleteElements(double x1, double y1, double x2, double y2)
@@ -824,8 +819,92 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         public void ClearBulkHighlights()
         {
-            foreach (var node in EditorNodes) node.IsBulkHighlighted = false;
-            foreach (var edge in EditorEdges) edge.IsBulkHighlighted = false;
+            if (_bulkHighlightedNodeIds.Count == 0 && _bulkHighlightedEdgeIds.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var node in EditorNodes)
+            {
+                if (_bulkHighlightedNodeIds.Contains(node.NodeId))
+                {
+                    node.IsBulkHighlighted = false;
+                }
+            }
+
+            foreach (var edge in EditorEdges)
+            {
+                if (_bulkHighlightedEdgeIds.Contains(edge.EdgeId))
+                {
+                    edge.IsBulkHighlighted = false;
+                }
+            }
+
+            _bulkHighlightedNodeIds.Clear();
+            _bulkHighlightedEdgeIds.Clear();
+        }
+
+        private void ApplyBulkHighlights(HashSet<string> nextNodeIds, HashSet<string> nextEdgeIds)
+        {
+            if (_bulkHighlightedNodeIds.SetEquals(nextNodeIds)
+                && _bulkHighlightedEdgeIds.SetEquals(nextEdgeIds))
+            {
+                return;
+            }
+
+            foreach (var node in EditorNodes)
+            {
+                var shouldHighlight = nextNodeIds.Contains(node.NodeId);
+                if (shouldHighlight != _bulkHighlightedNodeIds.Contains(node.NodeId))
+                {
+                    node.IsBulkHighlighted = shouldHighlight;
+                }
+            }
+
+            foreach (var edge in EditorEdges)
+            {
+                var shouldHighlight = nextEdgeIds.Contains(edge.EdgeId);
+                if (shouldHighlight != _bulkHighlightedEdgeIds.Contains(edge.EdgeId))
+                {
+                    edge.IsBulkHighlighted = shouldHighlight;
+                }
+            }
+
+            _bulkHighlightedNodeIds.Clear();
+            foreach (var nodeId in nextNodeIds)
+            {
+                _bulkHighlightedNodeIds.Add(nodeId);
+            }
+
+            _bulkHighlightedEdgeIds.Clear();
+            foreach (var edgeId in nextEdgeIds)
+            {
+                _bulkHighlightedEdgeIds.Add(edgeId);
+            }
+        }
+
+        private void PreviewElementsInRectangle(double left, double top, double right, double bottom)
+        {
+            _previewNodeIds.Clear();
+            _previewEdgeIds.Clear();
+
+            foreach (var node in EditorNodes)
+            {
+                if (IsInside(node.X, node.Y, left, top, right, bottom))
+                {
+                    _previewNodeIds.Add(node.NodeId);
+                }
+            }
+
+            foreach (var edge in EditorEdges)
+            {
+                if (LineIntersectsRect(edge.X1, edge.Y1, edge.X2, edge.Y2, left, top, right, bottom))
+                {
+                    _previewEdgeIds.Add(edge.EdgeId);
+                }
+            }
+
+            ApplyBulkHighlights(_previewNodeIds, _previewEdgeIds);
         }
 
         private EditorAreaVm AddAreaCore()
@@ -890,6 +969,52 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         private static bool IsInside(double x, double y, double left, double top, double right, double bottom)
             => x >= left && x <= right && y >= top && y <= bottom;
+
+        private static bool LineIntersectsRect(double x1, double y1, double x2, double y2, double left, double top, double right, double bottom)
+        {
+            if (IsInside(x1, y1, left, top, right, bottom) || IsInside(x2, y2, left, top, right, bottom))
+            {
+                return true;
+            }
+
+            return LinesIntersect(x1, y1, x2, y2, left, top, right, top)
+                || LinesIntersect(x1, y1, x2, y2, right, top, right, bottom)
+                || LinesIntersect(x1, y1, x2, y2, right, bottom, left, bottom)
+                || LinesIntersect(x1, y1, x2, y2, left, bottom, left, top);
+        }
+
+        private static bool LinesIntersect(double ax, double ay, double bx, double by, double cx, double cy, double dx, double dy)
+        {
+            static double Cross(double x1, double y1, double x2, double y2) => x1 * y2 - y1 * x2;
+            static bool InRange(double value, double a, double b) => value >= Math.Min(a, b) - 0.0001 && value <= Math.Max(a, b) + 0.0001;
+            static bool OnSegment(double px, double py, double sx, double sy, double ex, double ey)
+                => InRange(px, sx, ex) && InRange(py, sy, ey);
+
+            var abx = bx - ax;
+            var aby = by - ay;
+            var acx = cx - ax;
+            var acy = cy - ay;
+            var adx = dx - ax;
+            var ady = dy - ay;
+            var abToC = Cross(abx, aby, acx, acy);
+            var abToD = Cross(abx, aby, adx, ady);
+
+            var cdx = dx - cx;
+            var cdy = dy - cy;
+            var cax = ax - cx;
+            var cay = ay - cy;
+            var cbx = bx - cx;
+            var cby = by - cy;
+            var cdToA = Cross(cdx, cdy, cax, cay);
+            var cdToB = Cross(cdx, cdy, cbx, cby);
+
+            if (Math.Abs(abToC) < 0.0001 && OnSegment(cx, cy, ax, ay, bx, by)) return true;
+            if (Math.Abs(abToD) < 0.0001 && OnSegment(dx, dy, ax, ay, bx, by)) return true;
+            if (Math.Abs(cdToA) < 0.0001 && OnSegment(ax, ay, cx, cy, dx, dy)) return true;
+            if (Math.Abs(cdToB) < 0.0001 && OnSegment(bx, by, cx, cy, dx, dy)) return true;
+
+            return abToC * abToD < 0 && cdToA * cdToB < 0;
+        }
 
         private void DeleteSelection()
         {

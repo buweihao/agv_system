@@ -189,6 +189,10 @@ public sealed class DispatchOrchestrationServiceSmokeTests
 
         Assert.True(completed.Success);
         Assert.Equal(TaskState.Completed, fixture.Tasks.Task.State);
+        var completeCommand = fixture.Adapter.Commands.Last();
+        Assert.Equal(DispatchCommandType.CompleteTask, completeCommand.CommandType);
+        Assert.Equal("AGV-001", completeCommand.VehicleId);
+        Assert.Equal("N4", completeCommand.TargetNodeId);
         Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E1"));
         Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E2"));
         Assert.Equal(TrafficResourceState.Free, await GetEdgeStateAsync(fixture.Traffic, "E3"));

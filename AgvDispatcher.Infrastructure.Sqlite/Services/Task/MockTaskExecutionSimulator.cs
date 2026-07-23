@@ -204,7 +204,9 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                         Context = context,
                         TaskId = taskId,
                         VehicleId = vehicleId,
-                        CurrentNodeId = task.TargetNodeId
+                        CurrentNodeId = task.TargetNodeId,
+                        // The simulator sends CompleteTask above before an optional charging phase.
+                        SendVehicleCommand = false
                     },
                     cancellationToken);
                 if (!completion.Success)

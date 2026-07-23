@@ -237,6 +237,7 @@ public sealed class InMemoryTrafficReservationLifecycleTests
         Assert.True(completed.Success);
         Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask("TASK-001")!.State);
         Assert.Equal(DispatchExecutionState.Completed, (await GetExecutionAsync(fixture.Service, "TASK-001")).State);
+        Assert.Equal(DispatchCommandType.CompleteTask, fixture.Adapter.Commands.Last().CommandType);
         await AssertAllEdgesFreeAsync(fixture.Traffic);
         var next = await fixture.Service.StartTaskAsync(StartRequest("TASK-002", "AGV-001"));
         Assert.True(next.Success);

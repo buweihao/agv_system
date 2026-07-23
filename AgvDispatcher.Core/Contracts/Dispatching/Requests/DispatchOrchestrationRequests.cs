@@ -93,6 +93,9 @@ namespace AgvDispatcher.Core.Contracts.Dispatching.Requests
 
         /// <summary>Gets a value indicating whether the route reservation should be released.</summary>
         public bool ReleaseReservation { get; init; } = true;
+
+        /// <summary>Gets a value indicating whether a completion command should be sent to the vehicle.</summary>
+        public bool SendVehicleCommand { get; init; } = true;
     }
 
     /// <summary>

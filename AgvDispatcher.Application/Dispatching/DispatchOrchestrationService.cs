@@ -698,6 +698,26 @@ namespace AgvDispatcher.Application.Dispatching
             }
 
             var finalNodeId = FirstNonEmpty(request.CurrentNodeId, task.TargetNodeId);
+            if (request.SendVehicleCommand)
+            {
+                var commandResult = await _vehicleAdapterManager.SendCommandAsync(new DispatchCommand
+                {
+                    CommandId = Guid.NewGuid().ToString("N"),
+                    CommandType = DispatchCommandType.CompleteTask,
+                    TaskId = request.TaskId,
+                    VehicleId = request.VehicleId,
+                    TargetNodeId = finalNodeId,
+                    IssuedBy = nameof(DispatchOrchestrationService),
+                    CorrelationId = request.Context.RequestId
+                }, cancellationToken).ConfigureAwait(false);
+                if (!commandResult.Succeeded)
+                {
+                    return Fail(
+                        DispatchOrchestrationFailureCode.VehicleCommandFailed,
+                        commandResult.Message);
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(finalNodeId))
             {
                 var occupancyResult = await _trafficControlService.UpdateAgvOccupancyAsync(

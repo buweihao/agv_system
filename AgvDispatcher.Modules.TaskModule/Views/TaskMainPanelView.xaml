@@ -291,32 +291,11 @@
                 <DataGridTemplateColumn Header="派发状态" Width="1.2*">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Grid>
-                                <TextBlock Text="可派发" Foreground="#00FF7F" FontWeight="Bold">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsDispatchPaused}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock Text="{Binding DispatchPauseReason}" Foreground="#FFD700" FontWeight="Bold">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsDispatchPaused}" Value="True">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
+                            <TextBlock Text="{Binding DispatchStateDisplay}"
+                                       Foreground="{Binding DispatchStateColor}"
+                                       FontWeight="Bold"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding DispatchStateDisplay}"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
@@ -372,6 +351,32 @@
                                         </Style>
                                     </Button.Style>
                                 </Button>
+
+                                <!-- 待派发任务可直接取消；运行中任务取消时由命令二次确认。 -->
+                                <Button Content="取消"
+                                        Command="{Binding DataContext.CancelTaskCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}"
+                                        Background="Gray"
+                                        Foreground="White"
+                                        BorderThickness="0"
+                                        Padding="10,4"
+                                        Margin="5,0,0,0"
+                                        Cursor="Hand">
+                                    <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding State}" Value="{x:Static core:TaskState.Pending}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="{x:Static core:TaskState.Running}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                                 
                                 <!-- 中断时的三个操作按钮 -->
                                 <WrapPanel Orientation="Horizontal" MaxWidth="220">
@@ -395,7 +400,7 @@
                                     <Button Content="强完成" Command="{Binding DataContext.CompleteInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="#2E8B57" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,5" Cursor="Hand">
                                         <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
                                     </Button>
-                                    <Button Content="取消" Command="{Binding DataContext.CancelInterruptedCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="Gray" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,5" Cursor="Hand">
+                                    <Button Content="取消" Command="{Binding DataContext.CancelTaskCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Background="Gray" Foreground="White" BorderThickness="0" Padding="5,2" Margin="0,0,5,5" Cursor="Hand">
                                         <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="2"/></Style></Button.Resources>
                                     </Button>
                                 </WrapPanel>

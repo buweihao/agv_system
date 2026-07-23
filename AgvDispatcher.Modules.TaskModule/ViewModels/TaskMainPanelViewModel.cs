@@ -155,7 +155,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
         public DelegateCommand<TaskModel> RetryInterruptedCommand { get; }
         public DelegateCommand<TaskModel> FailInterruptedCommand { get; }
-        public DelegateCommand<TaskModel> CancelInterruptedCommand { get; }
+        public DelegateCommand<TaskModel> CancelTaskCommand { get; }
         public DelegateCommand<TaskModel> CompleteInterruptedCommand { get; }
 
         public TaskMainPanelViewModel(
@@ -190,7 +190,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
             RetryInterruptedCommand = new DelegateCommand<TaskModel>(RetryInterrupted, CanOperateInterrupted);
             FailInterruptedCommand = new DelegateCommand<TaskModel>(FailInterrupted, CanOperateInterrupted);
-            CancelInterruptedCommand = new DelegateCommand<TaskModel>(CancelInterrupted, CanOperateInterrupted);
+            CancelTaskCommand = new DelegateCommand<TaskModel>(CancelTask, CanCancelTask);
             CompleteInterruptedCommand = new DelegateCommand<TaskModel>(CompleteInterrupted, CanOperateInterrupted);
 
             RefreshTasks();
@@ -236,6 +236,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             RefreshPagedTasks();
             _eventAggregator.GetEvent<TaskDataChangedEvent>().Publish();
             AutoDispatchCommand.RaiseCanExecuteChanged();
+            CancelTaskCommand.RaiseCanExecuteChanged();
         }
 
         private void RefreshPagedTasks()
@@ -316,7 +317,9 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 return;
             }
 
+            task.IsDispatching = true;
             AutoDispatchCommand.RaiseCanExecuteChanged();
+            CancelTaskCommand.RaiseCanExecuteChanged();
             try
             {
                 var result = await _dispatchService.AssignTaskAsync(task.Id);
@@ -340,6 +343,13 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             return task is not null && task.State == TaskState.Interrupted;
         }
 
+        private bool CanCancelTask(TaskModel? task)
+        {
+            return task is not null
+                && task.State is TaskState.Pending or TaskState.Running or TaskState.Interrupted
+                && !_dispatchingTaskIds.Contains(task.Id);
+        }
+
         private void RetryInterrupted(TaskModel? task)
         {
             if (task is null) return;
@@ -356,11 +366,30 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             RefreshTasks();
         }
 
-        private void CancelInterrupted(TaskModel? task)
+        private void CancelTask(TaskModel? task)
         {
             if (task is null) return;
+
+            if (task.State == TaskState.Running)
+            {
+                var confirmation = System.Windows.MessageBox.Show(
+                    $"任务 {task.Id} 正在执行，取消后将向车辆发送取消指令并释放路线预约。是否继续？",
+                    "确认取消任务",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+                if (confirmation != System.Windows.MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            var wasPending = task.State == TaskState.Pending;
             var result = _dispatchService.CancelTask(task.Id, "操作员手动取消");
-            DispatchMessage = result.Succeeded ? $"已成功向小车发送取消指令并取消任务 {task.Id}" : $"取消失败：{result.Message}";
+            DispatchMessage = result.Succeeded
+                ? wasPending
+                    ? $"已取消待派发任务 {task.Id}"
+                    : $"已取消任务 {task.Id}，相关车辆指令及路线预约已处理"
+                : $"取消失败：{result.Message}";
             RefreshTasks();
         }
 
@@ -421,7 +450,8 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 EndPoint = task.TargetNodeId,
                 CreatedTime = task.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
                 EstimatedTime = task.FinishedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "-",
-                ProgressPercent = task.ProgressPercent
+                ProgressPercent = task.ProgressPercent,
+                IsDispatching = _dispatchingTaskIds.Contains(task.TaskId)
             };
 
             ApplyDispatchPauseState(model);

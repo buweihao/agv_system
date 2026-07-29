@@ -209,21 +209,9 @@ namespace AgvDispatcher.Modules.MonitoringModule.ViewModels
                 State = snapshot.State,
                 TaskId = string.IsNullOrWhiteSpace(snapshot.CurrentTaskId) ? "-" : snapshot.CurrentTaskId,
                 CurrentPosition = snapshot.Location,
-                TargetPosition = GetMockTargetPosition(snapshot.VehicleId),
                 BatteryLevel = (int)Math.Round(snapshot.BatteryLevel),
                 Speed = GetMockSpeed(snapshot.State, snapshot.VehicleId),
                 RunningTime = GetMockRunningTime(snapshot.VehicleId)
-            };
-        }
-
-        private static string GetMockTargetPosition(string vehicleId)
-        {
-            return vehicleId switch
-            {
-                "AGV-001" => "B03-05",
-                "AGV-003" => "C02-03",
-                "AGV-010" => "D01-02",
-                _ => "-"
             };
         }
 

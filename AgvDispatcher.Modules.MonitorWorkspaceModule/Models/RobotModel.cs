@@ -35,9 +35,6 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.Models
         /// <summary>褰撳墠鎵€鍦ㄤ綅缃紙鑺傜偣缂栧彿鎴栦綅缃埆鍚嶏級銆?/summary>
         public string CurrentPosition { get; set; } = string.Empty;
 
-        /// <summary>鐩爣浣嶇疆锛堜换鍔＄粓鐐硅妭鐐圭紪鍙凤級銆?/summary>
-        public string TargetPosition { get; set; } = string.Empty;
-
         /// <summary>鐢甸噺鐧惧垎姣旓紙0~100锛夈€?/summary>
         public int BatteryLevel { get; set; }
 

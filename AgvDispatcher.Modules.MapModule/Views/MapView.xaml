@@ -5,7 +5,11 @@
              prism:ViewModelLocator.AutoWireViewModel="True"
              Background="#050B14">
     <UserControl.Resources>
-        <Style x:Key="MapToggleStyle" TargetType="RadioButton">
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/AgvDispatcher.Modules.MapModule;component/Resources/AgvRobotIcon.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="MapToggleStyle" TargetType="RadioButton">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
@@ -26,7 +30,8 @@
                 </Setter.Value>
             </Setter>
             <Setter Property="FontWeight" Value="Bold"/>
-        </Style>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -149,9 +154,7 @@
                     <Border Background="#2E8B57" CornerRadius="4" Padding="6,2" Margin="0,-24,0,0" HorizontalAlignment="Center">
                         <TextBlock Text="001" Foreground="White" FontSize="11" FontWeight="Bold"/>
                     </Border>
-                    <Border Width="30" Height="16" Background="#32CD32" CornerRadius="8" BorderBrush="White" BorderThickness="1">
-                        <TextBlock Text="🔋" FontSize="10" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Width="30" Height="30" Source="{StaticResource AgvRobotDrawingImage}"/>
                 </Grid>
 
                 <!-- AGV 002 (Mid Right, Cyan) -->
@@ -159,9 +162,7 @@
                     <Border Background="#008B8B" CornerRadius="4" Padding="6,2" Margin="0,-24,0,0" HorizontalAlignment="Center">
                         <TextBlock Text="002" Foreground="White" FontSize="11" FontWeight="Bold"/>
                     </Border>
-                    <Border Width="30" Height="16" Background="#00FFFF" CornerRadius="8" BorderBrush="White" BorderThickness="1">
-                        <TextBlock Text="⚡" FontSize="10" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Width="30" Height="30" Source="{StaticResource AgvRobotDrawingImage}"/>
                 </Grid>
 
                 <!-- AGV 003 (Top Left Rack, Yellow) -->
@@ -171,9 +172,7 @@
                     <Border Background="#DAA520" CornerRadius="4" Padding="6,2" Margin="0,-24,0,0" HorizontalAlignment="Center">
                         <TextBlock Text="003" Foreground="White" FontSize="11" FontWeight="Bold"/>
                     </Border>
-                    <Border Width="30" Height="16" Background="#FFD700" CornerRadius="8" BorderBrush="White" BorderThickness="1">
-                        <TextBlock Text="🔋" FontSize="10" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Width="30" Height="30" Source="{StaticResource AgvRobotDrawingImage}"/>
                 </Grid>
 
                 <!-- AGV 005 (Top Right, Green) -->
@@ -181,9 +180,7 @@
                     <Border Background="#2E8B57" CornerRadius="4" Padding="6,2" Margin="0,-24,0,0" HorizontalAlignment="Center">
                         <TextBlock Text="005" Foreground="White" FontSize="11" FontWeight="Bold"/>
                     </Border>
-                    <Border Width="30" Height="16" Background="#32CD32" CornerRadius="8" BorderBrush="White" BorderThickness="1">
-                        <TextBlock Text="🔋" FontSize="10" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Width="30" Height="30" Source="{StaticResource AgvRobotDrawingImage}"/>
                 </Grid>
 
                 <!-- AGV 006 (Bot Left, Yellow) -->
@@ -191,9 +188,7 @@
                     <Border Background="#DAA520" CornerRadius="4" Padding="6,2" Margin="0,-24,0,0" HorizontalAlignment="Center">
                         <TextBlock Text="006" Foreground="White" FontSize="11" FontWeight="Bold"/>
                     </Border>
-                    <Border Width="30" Height="16" Background="#FFD700" CornerRadius="8" BorderBrush="White" BorderThickness="1">
-                        <TextBlock Text="🔋" FontSize="10" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Width="30" Height="30" Source="{StaticResource AgvRobotDrawingImage}"/>
                 </Grid>
 
                 <!-- AGV 007 (Bot Right, Green) -->
@@ -201,9 +196,7 @@
                     <Border Background="#2E8B57" CornerRadius="4" Padding="6,2" Margin="0,-24,0,0" HorizontalAlignment="Center">
                         <TextBlock Text="007" Foreground="White" FontSize="11" FontWeight="Bold"/>
                     </Border>
-                    <Border Width="30" Height="16" Background="#32CD32" CornerRadius="8" BorderBrush="White" BorderThickness="1">
-                        <TextBlock Text="🔋" FontSize="10" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Width="30" Height="30" Source="{StaticResource AgvRobotDrawingImage}"/>
                 </Grid>
 
                 <!-- AGV 008 (Top Right Rack, Red) -->
@@ -213,9 +206,7 @@
                     <Border Background="#8B0000" CornerRadius="4" Padding="6,2" Margin="0,-24,0,0" HorizontalAlignment="Center">
                         <TextBlock Text="008" Foreground="White" FontSize="11" FontWeight="Bold"/>
                     </Border>
-                    <Border Width="30" Height="16" Background="#FF4500" CornerRadius="8" BorderBrush="White" BorderThickness="1">
-                        <TextBlock Text="🔋" FontSize="10" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <Image Width="30" Height="30" Source="{StaticResource AgvRobotDrawingImage}"/>
                     <TextBlock Text="⚠️" Foreground="Red" FontSize="16" Margin="25,-10,0,0" />
                 </Grid>
                 

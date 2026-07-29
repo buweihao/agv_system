@@ -38,12 +38,13 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.Services
         {
             // 上报时间缺省时以当前时间兜底
             var reportedAt = snapshot.ReportedAt == default ? DateTime.Now : snapshot.ReportedAt;
+            var existingSnapshot = _vehicleStateStore.GetVehicle(snapshot.VehicleId.Trim());
 
             // 归一化：去除字段空白、电量裁剪到 0~100、推导在线/告警等派生状态，避免脏数据进入存储
             var normalizedSnapshot = new VehicleStatusSnapshot
             {
                 VehicleId = snapshot.VehicleId.Trim(),
-                Brand = snapshot.Brand.Trim(),
+                Brand = existingSnapshot?.Brand ?? string.Empty,
                 BatteryLevel = Math.Clamp(snapshot.BatteryLevel, 0, 100),
                 Location = snapshot.Location.Trim(),
                 State = snapshot.State,

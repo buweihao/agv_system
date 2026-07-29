@@ -36,6 +36,8 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
     private string? _taskAId;
     private string? _taskBId;
     private bool _manualBlockActive;
+    private bool _vehicleAHoldingTarget;
+    private int _fullFlowRunning;
 
     private static readonly IReadOnlyList<ScenarioDefinition> Scenarios = new[]
     {
@@ -47,7 +49,7 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
         new ScenarioDefinition(
             "narrow-aisle",
             "窄道会车冲突",
-            "两条路线汇入同一条单车通行窄道，演示滚动窗口锁定下的等待与继续运行。",
+            "A 车从 N001、B 车从 N002 汇入 N003，经 N003→N005 单车窄道依次通行。",
             RollingWindowSize: 2),
         new ScenarioDefinition(
             "fault-occupancy",
@@ -110,7 +112,7 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
             string.Equals(item.Key, scenarioKey, StringComparison.OrdinalIgnoreCase)) ?? Scenarios[0];
 
         await ResetScenarioAsync(cancellationToken).ConfigureAwait(false);
-        var layout = ResolveLayout();
+        var layout = ResolveLayout(scenario.Key);
         var taskA = _taskService.CreateTask(CreateTaskRequest(
             sourceNodeId: layout.SourceA,
             targetNodeId: layout.Target,
@@ -127,6 +129,24 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
             _taskAId = taskA.TaskId;
             _taskBId = taskB.TaskId;
             _manualBlockActive = false;
+            _vehicleAHoldingTarget = false;
+        }
+
+        var occupancyA = await ReportInitialOccupancyAsync(
+            VehicleAId,
+            layout.SourceA,
+            cancellationToken).ConfigureAwait(false);
+        var occupancyB = occupancyA.Success
+            ? await ReportInitialOccupancyAsync(
+                VehicleBId,
+                layout.SourceB,
+                cancellationToken).ConfigureAwait(false)
+            : occupancyA;
+        if (!occupancyA.Success || !occupancyB.Success)
+        {
+            var message = !occupancyA.Success ? occupancyA.Message : occupancyB.Message;
+            await ResetScenarioAsync(cancellationToken).ConfigureAwait(false);
+            return MockScenarioOperationResult.Fail($"场景初始化占用失败：{message}");
         }
 
         UpsertVehicle(VehicleAId, layout.SourceA, null, RobotState.Idle, clearAlarm: true, ResolveNodePosition(layout.SourceA));
@@ -138,6 +158,191 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
             $"B={VehicleBId}/{taskB.TaskId} {layout.SourceB}->{layout.Target}");
         NotifyChanged();
         return MockScenarioOperationResult.Ok("场景已初始化。");
+    }
+
+    private Task<AgvResult> ReportInitialOccupancyAsync(
+        string vehicleId,
+        string sourceNodeId,
+        CancellationToken cancellationToken)
+    {
+        return _trafficControlService.UpdateAgvOccupancyAsync(
+            new AgvOccupancyUpdateRequest
+            {
+                Context = Context("InitializeScenario"),
+                AgvId = vehicleId,
+                CurrentNodeId = sourceNodeId,
+                OccupiedNodeIds = new[] { sourceNodeId },
+                ReportTime = DateTimeOffset.Now
+            },
+            cancellationToken);
+    }
+
+    public async Task<MockScenarioOperationResult> RunSameTargetFlowAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.CompareExchange(ref _fullFlowRunning, 1, 0) != 0)
+        {
+            return MockScenarioOperationResult.Fail("完整流程正在演示中，请等待当前演示结束。");
+        }
+
+        NotifyChanged();
+        try
+        {
+            var initialized = await InitializeScenarioAsync("same-target", cancellationToken).ConfigureAwait(false);
+            if (!initialized.Success) return initialized;
+
+            AddLog("一键演示", "Step 1", "场景已初始化，准备启动 A 车。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(1200), cancellationToken).ConfigureAwait(false);
+
+            var startedA = await StartVehicleAsync(MockScenarioVehicleSlot.VehicleA, cancellationToken).ConfigureAwait(false);
+            if (!startedA.Success) return startedA;
+            await Task.Delay(TimeSpan.FromMilliseconds(1400), cancellationToken).ConfigureAwait(false);
+
+            var startedB = await StartVehicleAsync(MockScenarioVehicleSlot.VehicleB, cancellationToken).ConfigureAwait(false);
+            if (!startedB.Success) return startedB;
+            AddLog("一键演示", "Step 2", "B 车已启动并因共享终点被 A 车锁定而等待。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(2000), cancellationToken).ConfigureAwait(false);
+
+            for (var step = 0; step < 64 && !CurrentState.IsVehicleAHoldingTarget; step++)
+            {
+                var arrived = await MoveOneDemoSegmentAsync(VehicleAId, cancellationToken).ConfigureAwait(false);
+                if (!arrived.Success) return arrived;
+                await Task.Delay(TimeSpan.FromMilliseconds(700), cancellationToken).ConfigureAwait(false);
+            }
+
+            if (!CurrentState.IsVehicleAHoldingTarget)
+            {
+                return FailAndLog("一键演示", "A 车未能到达并占用共享终点。");
+            }
+
+            AddLog("一键演示", "Step 3", "A 车正在占用共享终点；B 车继续等待。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(3000), cancellationToken).ConfigureAwait(false);
+
+            var departed = await DepartVehicleAAsync(cancellationToken).ConfigureAwait(false);
+            if (!departed.Success) return departed;
+            await Task.Delay(TimeSpan.FromMilliseconds(1500), cancellationToken).ConfigureAwait(false);
+
+            var retriedB = await RetryWaitingTaskAsync(VehicleBId, cancellationToken).ConfigureAwait(false);
+            if (!retriedB.Success) return retriedB;
+            AddLog("一键演示", "Step 4", "A 车已让出共享终点，B 车重试成功并继续运行。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(1400), cancellationToken).ConfigureAwait(false);
+
+            for (var step = 0; step < 64; step++)
+            {
+                var taskB = string.IsNullOrWhiteSpace(_taskBId) ? null : _taskService.GetTask(_taskBId);
+                if (taskB?.State is TaskState.Completed or TaskState.Cancelled or TaskState.Failed)
+                {
+                    break;
+                }
+
+                var arrived = await MoveOneDemoSegmentAsync(VehicleBId, cancellationToken).ConfigureAwait(false);
+                if (!arrived.Success) return arrived;
+                await Task.Delay(TimeSpan.FromMilliseconds(700), cancellationToken).ConfigureAwait(false);
+            }
+
+            var finalTaskB = string.IsNullOrWhiteSpace(_taskBId) ? null : _taskService.GetTask(_taskBId);
+            if (finalTaskB?.State != TaskState.Completed)
+            {
+                return FailAndLog("一键演示", "B 车未能完成进入共享终点的流程。");
+            }
+
+            AddLog("一键演示", "Completed", "完整流程演示结束：A 车先占用并离开，B 车随后进入终点。");
+            NotifyChanged();
+            return MockScenarioOperationResult.Ok("两车同终点完整流程演示已完成。");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _fullFlowRunning, 0);
+            NotifyChanged();
+        }
+    }
+
+    public async Task<MockScenarioOperationResult> RunNarrowAisleFlowAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.CompareExchange(ref _fullFlowRunning, 1, 0) != 0)
+        {
+            return MockScenarioOperationResult.Fail("已有完整流程正在演示，请等待当前演示结束。");
+        }
+
+        NotifyChanged();
+        try
+        {
+            var initialized = await InitializeScenarioAsync("narrow-aisle", cancellationToken).ConfigureAwait(false);
+            if (!initialized.Success) return initialized;
+
+            AddLog("窄道一键演示", "Step 1", "A 车位于 N001，B 车位于 N002，共同入口为 N003。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(1200), cancellationToken).ConfigureAwait(false);
+
+            var startedA = await StartVehicleAsync(MockScenarioVehicleSlot.VehicleA, cancellationToken).ConfigureAwait(false);
+            if (!startedA.Success) return startedA;
+            await Task.Delay(TimeSpan.FromMilliseconds(1400), cancellationToken).ConfigureAwait(false);
+
+            var startedB = await StartVehicleAsync(MockScenarioVehicleSlot.VehicleB, cancellationToken).ConfigureAwait(false);
+            if (!startedB.Success) return startedB;
+            AddLog("窄道一键演示", "Step 2", "A 车已锁定 N003→N005 窄道，B 车进入交通等待。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(2500), cancellationToken).ConfigureAwait(false);
+
+            for (var step = 0; step < 64 && !CurrentState.IsVehicleAHoldingTarget; step++)
+            {
+                var moved = await MoveOneDemoSegmentAsync(VehicleAId, cancellationToken).ConfigureAwait(false);
+                if (!moved.Success) return moved;
+                await Task.Delay(TimeSpan.FromMilliseconds(900), cancellationToken).ConfigureAwait(false);
+            }
+
+            if (!CurrentState.IsVehicleAHoldingTarget)
+            {
+                return FailAndLog("窄道一键演示", "A 车未能通过窄道到达并占用 N005。");
+            }
+
+            AddLog("窄道一键演示", "Step 3", "A 车已到达并占用 N005，B 车继续在 N002 等待。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(2200), cancellationToken).ConfigureAwait(false);
+
+            var departedA = await DepartVehicleAAsync(cancellationToken).ConfigureAwait(false);
+            if (!departedA.Success) return departedA;
+            AddLog("窄道一键演示", "Step 4", "A 车已前往 N005 后续节点并让出出口，准备重试 B 车。");
+            NotifyChanged();
+            await Task.Delay(TimeSpan.FromMilliseconds(1400), cancellationToken).ConfigureAwait(false);
+
+            var retriedB = await RetryWaitingTaskAsync(VehicleBId, cancellationToken).ConfigureAwait(false);
+            if (!retriedB.Success) return retriedB;
+            await Task.Delay(TimeSpan.FromMilliseconds(1400), cancellationToken).ConfigureAwait(false);
+
+            for (var step = 0; step < 64; step++)
+            {
+                var taskB = string.IsNullOrWhiteSpace(_taskBId) ? null : _taskService.GetTask(_taskBId);
+                if (taskB?.State is TaskState.Completed or TaskState.Cancelled or TaskState.Failed)
+                {
+                    break;
+                }
+
+                var moved = await MoveOneDemoSegmentAsync(VehicleBId, cancellationToken).ConfigureAwait(false);
+                if (!moved.Success) return moved;
+                await Task.Delay(TimeSpan.FromMilliseconds(900), cancellationToken).ConfigureAwait(false);
+            }
+
+            var completedB = string.IsNullOrWhiteSpace(_taskBId) ? null : _taskService.GetTask(_taskBId);
+            if (completedB?.State != TaskState.Completed)
+            {
+                return FailAndLog("窄道一键演示", "B 车未能通过窄道到达 N005。");
+            }
+
+            AddLog("窄道一键演示", "Completed", "演示完成：A 车先通过窄道、占用出口并离开，B 车随后再进入。");
+            NotifyChanged();
+            return MockScenarioOperationResult.Ok("窄道会车冲突完整流程演示已完成。");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _fullFlowRunning, 0);
+            NotifyChanged();
+        }
     }
 
     public async Task<MockScenarioOperationResult> StartVehicleAsync(
@@ -285,10 +490,27 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
         return await ArriveNextNodeCoreAsync(vehicleId, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<MockScenarioOperationResult> MoveVehicleToNextNodeAsync(
+        string vehicleId,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsAutomaticRunning(vehicleId))
+        {
+            return FailAndLog($"前进 {vehicleId}", "自动运行中，不能同时执行手动前进。");
+        }
+
+        return await MoveOneDemoSegmentAsync(vehicleId, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<MockScenarioOperationResult> ArriveNextNodeCoreAsync(
         string vehicleId,
         CancellationToken cancellationToken)
     {
+        if (IsVehicleAHoldingTarget(vehicleId))
+        {
+            return MockScenarioOperationResult.Ok($"{vehicleId} is holding the shared target; use 'A 车离开' to continue.");
+        }
+
         var taskId = GetTaskIdForVehicle(vehicleId);
         if (string.IsNullOrWhiteSpace(taskId))
         {
@@ -352,7 +574,13 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
 
         var progress = CalculateProgress(reservationResult.Data, next.Segment.Sequence);
         _taskService.UpdateTaskProgress(taskId, progress, nextNode);
-        UpsertVehicle(vehicleId, nextNode, taskId, RobotState.Running, clearAlarm: false);
+        UpsertVehicle(
+            vehicleId,
+            nextNode,
+            taskId,
+            isFinalSegment ? RobotState.Idle : RobotState.Running,
+            clearAlarm: false,
+            ResolveNodePosition(nextNode));
         AddLog(
             $"到达 {vehicleId}",
             advance.Data.Execution.State.ToString(),
@@ -360,12 +588,115 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
 
         if (isFinalSegment)
         {
+            if (ShouldVehicleAHoldTarget(vehicleId))
+            {
+                lock (_syncRoot)
+                {
+                    _vehicleAHoldingTarget = true;
+                }
+
+                AddLog(
+                    $"A 车占用终点",
+                    "Holding",
+                    $"{vehicleId} 已到达并持续占用 {nextNode}；B 车必须等待 A 车离开。");
+                NotifyChanged();
+                return MockScenarioOperationResult.Ok($"{vehicleId} 已到达并占用共享终点 {nextNode}。");
+            }
+
             return await CompleteVehicleTaskAsync(vehicleId, taskId, nextNode, cancellationToken)
                 .ConfigureAwait(false);
         }
 
         NotifyChanged();
         return MockScenarioOperationResult.Ok($"{vehicleId} 已推进到 {nextNode}。");
+    }
+
+    public async Task<MockScenarioOperationResult> DepartVehicleAAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string? taskId;
+        string target;
+        string exitNode;
+        lock (_syncRoot)
+        {
+            if (!string.Equals(_scenario.Key, "same-target", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(_scenario.Key, "narrow-aisle", StringComparison.OrdinalIgnoreCase))
+            {
+                return MockScenarioOperationResult.Fail("A 车离开仅用于两车同终点或窄道会车场景。");
+            }
+
+            if (!_vehicleAHoldingTarget)
+            {
+                return MockScenarioOperationResult.Fail("A 车尚未到达并占用共享终点。");
+            }
+
+            taskId = _taskAId;
+            target = _layout?.Target ?? string.Empty;
+            exitNode = _layout?.VehicleAExitNode ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(taskId) || string.IsNullOrWhiteSpace(exitNode))
+        {
+            return FailAndLog("A 车离开", "没有可用的后续节点，无法让 A 车离开终点。");
+        }
+
+        UpsertVehicle(
+            VehicleAId,
+            target,
+            taskId,
+            RobotState.Running,
+            clearAlarm: false,
+            ResolveNodePosition(target));
+
+        var exitPosition = ResolveNodePosition(exitNode);
+        if (exitPosition?.HasValidCoordinates() == true)
+        {
+            var departureSpeed = CalculateDemoSpeed(
+                ResolveNodePosition(target),
+                exitPosition,
+                TimeSpan.FromSeconds(3));
+            AddLog("A 车离开", "Moving", $"{VehicleAId} 正在从 {target} 平滑移动到 {exitNode}。");
+            NotifyChanged();
+            var motion = await _vehicleMotionService.MoveToAsync(
+                VehicleAId,
+                exitPosition,
+                departureSpeed,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!motion.ReachedTarget)
+            {
+                UpsertVehicle(VehicleAId, target, taskId, RobotState.Idle, clearAlarm: false, ResolveNodePosition(target));
+                return FailAndLog("A 车离开", motion.Message);
+            }
+        }
+
+        var completed = await _dispatchOrchestrationService.CompleteTaskAsync(
+            new CompleteDispatchTaskRequest
+            {
+                Context = Context("DepartVehicleA"),
+                TaskId = taskId,
+                VehicleId = VehicleAId,
+                CurrentNodeId = exitNode,
+                // 最后一段已在到达终点时结束；这里保留 A 车对后续节点的实际占用。
+                ReleaseReservation = false
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (!completed.Success)
+        {
+            return FailAndLog("A 车离开", completed.Message);
+        }
+
+        lock (_syncRoot)
+        {
+            _vehicleAHoldingTarget = false;
+        }
+
+        UpsertVehicle(VehicleAId, exitNode, null, RobotState.Idle, clearAlarm: false, exitPosition);
+        AddLog(
+            "A 车离开",
+            "OK",
+            $"{VehicleAId} 已从 {target} 移动到 {exitNode}，共享终点已让出，B 车现在可以重试进入。");
+        NotifyChanged();
+        return MockScenarioOperationResult.Ok($"A 车已离开 {target} 并到达 {exitNode}；请重试 B 车。");
     }
 
     public async Task<MockScenarioOperationResult> RetryWaitingTaskAsync(
@@ -540,6 +871,7 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
             _taskAId = null;
             _taskBId = null;
             _manualBlockActive = false;
+            _vehicleAHoldingTarget = false;
             _layout = null;
             _logs.Clear();
         }
@@ -617,7 +949,7 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
         _taskService.CancelTask(taskId, "Debug dashboard scenario reset");
     }
 
-    private ScenarioLayout ResolveLayout()
+    private ScenarioLayout ResolveLayout(string scenarioKey)
     {
         var mapResult = _mapService.GetCurrentMap(new GetMapSnapshotRequest { Context = Context("ResolveLayout") });
         var nodeIds = mapResult.Success && mapResult.Data is not null
@@ -627,6 +959,29 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
             ? mapResult.Data.Edges.Select(edge => edge.EdgeId).ToHashSet(StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        if (string.Equals(scenarioKey, "narrow-aisle", StringComparison.OrdinalIgnoreCase) &&
+            mapResult.Data is not null &&
+            HasNodes(nodeIds, "N001", "N002", "N003", "N005"))
+        {
+            var routeAEntry = FindEnabledEdge(mapResult.Data, "N001", "N003");
+            var routeBEntry = FindEnabledEdge(mapResult.Data, "N002", "N003");
+            var narrowEdge = FindEnabledEdge(mapResult.Data, "N003", "N005");
+            if (routeAEntry is not null && routeBEntry is not null && narrowEdge is not null)
+            {
+                return new ScenarioLayout(
+                    "N001",
+                    "N002",
+                    "N005",
+                    new TrafficResourceKey
+                    {
+                        ResourceType = TrafficResourceType.Edge,
+                        ResourceId = narrowEdge.EdgeId
+                    },
+                    ResolveVehicleAExitNode(mapResult.Data, "N005", "N001", "N002", "N003"),
+                    "N003");
+            }
+        }
+
         if (HasNodes(nodeIds, "PICK-A1", "PICK-A2", "CHG-02") &&
             edgeIds.Contains("E-PICK-A2-PUT-A1"))
         {
@@ -634,7 +989,8 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
                 "PICK-A1",
                 "PICK-A2",
                 "CHG-02",
-                new TrafficResourceKey { ResourceType = TrafficResourceType.Edge, ResourceId = "E-PICK-A2-PUT-A1" });
+                new TrafficResourceKey { ResourceType = TrafficResourceType.Edge, ResourceId = "E-PICK-A2-PUT-A1" },
+                ResolveVehicleAExitNode(mapResult.Data, "CHG-02", "PICK-A1", "PICK-A2"));
         }
 
         if (HasNodes(nodeIds, "P1", "P2", "D1"))
@@ -644,7 +1000,8 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
                 "P1",
                 "P2",
                 "D1",
-                new TrafficResourceKey { ResourceType = TrafficResourceType.Edge, ResourceId = blockEdge });
+                new TrafficResourceKey { ResourceType = TrafficResourceType.Edge, ResourceId = blockEdge },
+                ResolveVehicleAExitNode(mapResult.Data, "D1", "P1", "P2"));
         }
 
         var fallback = nodeIds.Take(3).ToArray();
@@ -658,14 +1015,62 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
                 {
                     ResourceType = TrafficResourceType.Node,
                     ResourceId = fallback[1]
-                });
+                },
+                ResolveVehicleAExitNode(mapResult.Data, fallback[2], fallback[0], fallback[1]));
         }
 
         return new ScenarioLayout(
             "P1",
             "P2",
             "D1",
-            new TrafficResourceKey { ResourceType = TrafficResourceType.Edge, ResourceId = "E-X1-D1" });
+            new TrafficResourceKey { ResourceType = TrafficResourceType.Edge, ResourceId = "E-X1-D1" },
+            "E1");
+    }
+
+    private static MapEdgeDto? FindEnabledEdge(
+        MapSnapshotDto map,
+        string fromNodeId,
+        string toNodeId)
+    {
+        return map.Edges.FirstOrDefault(edge =>
+            edge.Enabled &&
+            string.Equals(edge.FromNodeId, fromNodeId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(edge.ToNodeId, toNodeId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveVehicleAExitNode(
+        MapSnapshotDto? map,
+        string target,
+        params string[] excludedNodes)
+    {
+        if (map is null)
+        {
+            return string.Empty;
+        }
+
+        var excluded = excludedNodes
+            .Append(target)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var outgoing = map.Edges.FirstOrDefault(edge =>
+            edge.Enabled &&
+            string.Equals(edge.FromNodeId, target, StringComparison.OrdinalIgnoreCase) &&
+            !excluded.Contains(edge.ToNodeId));
+        if (outgoing is not null)
+        {
+            return outgoing.ToNodeId;
+        }
+
+        var reverse = map.Edges.FirstOrDefault(edge =>
+            edge.Enabled &&
+            edge.Direction == MapEdgeDirection.Bidirectional &&
+            string.Equals(edge.ToNodeId, target, StringComparison.OrdinalIgnoreCase) &&
+            !excluded.Contains(edge.FromNodeId));
+        if (reverse is not null)
+        {
+            return reverse.FromNodeId;
+        }
+
+        return string.Empty;
     }
 
     private (string VehicleId, string? TaskId, ScenarioDefinition Scenario) GetSlot(MockScenarioVehicleSlot slot)
@@ -717,6 +1122,25 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
         lock (_syncRoot)
         {
             return _layout?.Target ?? string.Empty;
+        }
+    }
+
+    private bool ShouldVehicleAHoldTarget(string vehicleId)
+    {
+        lock (_syncRoot)
+        {
+            return (string.Equals(_scenario.Key, "same-target", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(_scenario.Key, "narrow-aisle", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals(vehicleId, VehicleAId, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsVehicleAHoldingTarget(string vehicleId)
+    {
+        lock (_syncRoot)
+        {
+            return _vehicleAHoldingTarget &&
+                string.Equals(vehicleId, VehicleAId, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -899,6 +1323,70 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
             : new AutomaticSegment(AutomaticSegmentState.Ready, start, target);
     }
 
+    private async Task<MockScenarioOperationResult> MoveOneDemoSegmentAsync(
+        string vehicleId,
+        CancellationToken cancellationToken)
+    {
+        var segment = await GetNextAutomaticSegmentAsync(vehicleId, cancellationToken).ConfigureAwait(false);
+        if (segment.State == AutomaticSegmentState.Completed)
+        {
+            return MockScenarioOperationResult.Ok($"{vehicleId} 已完成路线。");
+        }
+
+        if (segment.State != AutomaticSegmentState.Ready || segment.Target is null)
+        {
+            return FailAndLog("平滑移动", $"{vehicleId} 当前没有已锁定的下一段路线。");
+        }
+
+        var snapshot = _mockSimulationService.GetVehicle(vehicleId);
+        var start = snapshot?.Position?.HasValidCoordinates() == true
+            ? snapshot.Position
+            : segment.Start;
+        if (snapshot?.Position?.HasValidCoordinates() != true && segment.Start is not null)
+        {
+            _mockSimulationService.UpsertVehicle(new MockVehicleUpdate
+            {
+                VehicleId = vehicleId,
+                Position = segment.Start
+            });
+        }
+
+        var speed = CalculateDemoSpeed(start, segment.Target, TimeSpan.FromSeconds(3));
+        AddLog(
+            "平滑移动",
+            "Moving",
+            $"{vehicleId} 正在前往 {segment.Target.NodeId}，本段预计约 3 秒。");
+        NotifyChanged();
+
+        var motion = await _vehicleMotionService.MoveToAsync(
+            vehicleId,
+            segment.Target,
+            speed,
+            cancellationToken).ConfigureAwait(false);
+        if (!motion.ReachedTarget)
+        {
+            return FailAndLog("平滑移动", motion.Message);
+        }
+
+        return await ArriveNextNodeCoreAsync(vehicleId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static double CalculateDemoSpeed(
+        MapPosition? start,
+        MapPosition target,
+        TimeSpan desiredDuration)
+    {
+        if (start?.HasValidCoordinates() != true || !target.HasValidCoordinates())
+        {
+            return 30;
+        }
+
+        var distance = Math.Sqrt(
+            Math.Pow(target.X - start.X, 2) +
+            Math.Pow(target.Y - start.Y, 2));
+        return Math.Max(0.1, distance / Math.Max(0.1, desiredDuration.TotalSeconds));
+    }
+
     private MapPosition? ResolveNodePosition(string nodeId)
     {
         var map = _mapService.GetCurrentMap(new GetMapSnapshotRequest { Context = Context("ResolveNodePosition") });
@@ -958,6 +1446,10 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
         SourceA = _layout?.SourceA ?? string.Empty,
         SourceB = _layout?.SourceB ?? string.Empty,
         Target = _layout?.Target ?? string.Empty,
+        MergeNode = _layout?.MergeNode ?? string.Empty,
+        VehicleAExitNode = _layout?.VehicleAExitNode ?? string.Empty,
+        IsVehicleAHoldingTarget = _vehicleAHoldingTarget,
+        IsFullFlowRunning = Volatile.Read(ref _fullFlowRunning) != 0,
         ManualBlockResource = _layout?.ManualBlockResource,
         IsManualBlockActive = _manualBlockActive,
         IsVehicleAAutomaticRunning = _automaticRuns.ContainsKey(VehicleAId),
@@ -1024,7 +1516,9 @@ public sealed class MockScenarioController : IMockScenarioController, IDisposabl
         string SourceA,
         string SourceB,
         string Target,
-        TrafficResourceKey ManualBlockResource);
+        TrafficResourceKey ManualBlockResource,
+        string VehicleAExitNode,
+        string MergeNode = "");
 
     private enum AutomaticSegmentState
     {

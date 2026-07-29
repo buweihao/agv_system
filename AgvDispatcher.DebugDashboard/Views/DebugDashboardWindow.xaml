@@ -365,8 +365,32 @@
                             <TextBlock Text="{Binding IsVehicleBAutomaticRunning, StringFormat=B 车自动运行：{0}}"
                                        Foreground="#8FA8BF"
                                        Margin="0,0,0,12"/>
+                            <TextBlock Text="{Binding IsVehicleAHoldingTarget, StringFormat=A 车占用共享终点/窄道出口：{0}}"
+                                       Foreground="#FFD166"
+                                       Margin="0,0,0,12"/>
+                            <TextBlock Text="{Binding IsFullFlowRunning, StringFormat=完整流程演示中：{0}}"
+                                       Foreground="#4DD0E1"
+                                       Margin="0,0,0,12"/>
+                            <TextBlock Text="窄道手动顺序：初始化 → 启动车A → 启动车B → A前进两段 → A离开 → B重试 → B前进两段"
+                                       Foreground="#FFD166"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12"/>
 
                             <WrapPanel>
+                                <Button Content="一键演示同终点"
+                                        Command="{Binding RunFullScenarioCommand}"
+                                        Width="216"
+                                        Height="34"
+                                        Margin="0,0,8,8"
+                                        Background="#0078D4"
+                                        Foreground="White"/>
+                                <Button Content="一键演示窄道冲突"
+                                        Command="{Binding RunNarrowAisleScenarioCommand}"
+                                        Width="216"
+                                        Height="34"
+                                        Margin="0,0,8,8"
+                                        Background="#C45A00"
+                                        Foreground="White"/>
                                 <Button Content="初始化场景"
                                         Command="{Binding InitializeScenarioCommand}"
                                         Width="104"
@@ -402,8 +426,18 @@
                                         Width="104"
                                         Height="30"
                                         Margin="0,0,8,8"/>
-                                <Button Content="车A到达"
+                                <Button Content="A前进一段"
                                         Command="{Binding VehicleAArriveNextNodeCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="B前进一段"
+                                        Command="{Binding VehicleBArriveNextNodeCommand}"
+                                        Width="104"
+                                        Height="30"
+                                        Margin="0,0,8,8"/>
+                                <Button Content="车A离开"
+                                        Command="{Binding VehicleADepartTargetCommand}"
                                         Width="104"
                                         Height="30"
                                         Margin="0,0,8,8"/>

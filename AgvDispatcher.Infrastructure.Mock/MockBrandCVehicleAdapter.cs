@@ -1,5 +1,4 @@
 using AgvDispatcher.Core.Models;
-using System;
 
 namespace AgvDispatcher.Infrastructure.Mock
 {
@@ -8,9 +7,5 @@ namespace AgvDispatcher.Infrastructure.Mock
         public MockBrandCVehicleAdapter(Vehicle vehicle, AgvDispatcher.Core.Interfaces.IChargeStationRepository? chargeRepo = null) : base(vehicle, chargeRepo)
         {
         }
-
-        // Brand C is heavy duty, 8 seconds tick, 0.5% battery drain per tick
-        protected override double BatteryDrainPerTick => 0.5;
-        protected override TimeSpan TickInterval => TimeSpan.FromSeconds(8);
     }
 }

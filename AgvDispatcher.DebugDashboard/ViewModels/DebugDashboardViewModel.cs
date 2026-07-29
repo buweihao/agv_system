@@ -41,6 +41,10 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     private bool _isScenarioManualBlockActive;
     private bool _isVehicleAAutomaticRunning;
     private bool _isVehicleBAutomaticRunning;
+    private bool _isVehicleAHoldingTarget;
+    private bool _isFullFlowRunning;
+    private bool _isVehicleAManualMoveRunning;
+    private bool _isVehicleBManualMoveRunning;
 
     public DebugDashboardViewModel(
         IDebugSnapshotService debugSnapshotService,
@@ -54,6 +58,12 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         OpenVehicleWindowCommand = new DelegateCommand<VehicleRow?>(OpenVehicleWindow);
         InitializeScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => _mockScenarioController.InitializeScenarioAsync(SelectedScenario?.Key ?? string.Empty)).ConfigureAwait(true));
+        RunFullScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.RunSameTargetFlowAsync()).ConfigureAwait(true),
+            () => !IsFullFlowRunning);
+        RunNarrowAisleScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.RunNarrowAisleFlowAsync()).ConfigureAwait(true),
+            () => !IsFullFlowRunning);
         StartVehicleACommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => _mockScenarioController.StartVehicleAsync(MockScenarioVehicleSlot.VehicleA)).ConfigureAwait(true));
         StartVehicleBCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
@@ -66,9 +76,15 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
             () => Task.FromResult(_mockScenarioController.StopAutomaticVehicle(ScenarioVehicleAId))).ConfigureAwait(true));
         StopAutomaticVehicleBCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => Task.FromResult(_mockScenarioController.StopAutomaticVehicle(ScenarioVehicleBId))).ConfigureAwait(true));
-        VehicleAArriveNextNodeCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
-            () => _mockScenarioController.ArriveNextNodeAsync(ScenarioVehicleAId)).ConfigureAwait(true),
-            () => !IsVehicleAAutomaticRunning);
+        VehicleAArriveNextNodeCommand = new DelegateCommand(
+            async () => await RunManualMoveAsync(MockScenarioVehicleSlot.VehicleA).ConfigureAwait(true),
+            () => !IsVehicleAAutomaticRunning && !_isVehicleAManualMoveRunning);
+        VehicleBArriveNextNodeCommand = new DelegateCommand(
+            async () => await RunManualMoveAsync(MockScenarioVehicleSlot.VehicleB).ConfigureAwait(true),
+            () => !IsVehicleBAutomaticRunning && !_isVehicleBManualMoveRunning);
+        VehicleADepartTargetCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
+            () => _mockScenarioController.DepartVehicleAAsync()).ConfigureAwait(true),
+            () => IsVehicleAHoldingTarget && !IsVehicleAAutomaticRunning);
         VehicleBRetryWaitingTaskCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
             () => _mockScenarioController.RetryWaitingTaskAsync(ScenarioVehicleBId)).ConfigureAwait(true));
         ManualBlockScenarioCommand = new DelegateCommand(async () => await RunScenarioActionAsync(
@@ -94,6 +110,10 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
 
     public DelegateCommand InitializeScenarioCommand { get; }
 
+    public DelegateCommand RunFullScenarioCommand { get; }
+
+    public DelegateCommand RunNarrowAisleScenarioCommand { get; }
+
     public DelegateCommand StartVehicleACommand { get; }
 
     public DelegateCommand StartVehicleBCommand { get; }
@@ -107,6 +127,10 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
     public DelegateCommand StopAutomaticVehicleBCommand { get; }
 
     public DelegateCommand VehicleAArriveNextNodeCommand { get; }
+
+    public DelegateCommand VehicleBArriveNextNodeCommand { get; }
+
+    public DelegateCommand VehicleADepartTargetCommand { get; }
 
     public DelegateCommand VehicleBRetryWaitingTaskCommand { get; }
 
@@ -288,6 +312,18 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         private set => SetProperty(ref _isVehicleBAutomaticRunning, value);
     }
 
+    public bool IsVehicleAHoldingTarget
+    {
+        get => _isVehicleAHoldingTarget;
+        private set => SetProperty(ref _isVehicleAHoldingTarget, value);
+    }
+
+    public bool IsFullFlowRunning
+    {
+        get => _isFullFlowRunning;
+        private set => SetProperty(ref _isFullFlowRunning, value);
+    }
+
     public int TaskCount { get; private set; }
     public int RunningTaskCount { get; private set; }
     public int WaitingForTrafficTaskCount { get; private set; }
@@ -348,6 +384,44 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         }
     }
 
+    private async Task RunManualMoveAsync(MockScenarioVehicleSlot slot)
+    {
+        if (slot == MockScenarioVehicleSlot.VehicleA)
+        {
+            if (_isVehicleAManualMoveRunning) return;
+            _isVehicleAManualMoveRunning = true;
+            VehicleAArriveNextNodeCommand.RaiseCanExecuteChanged();
+        }
+        else
+        {
+            if (_isVehicleBManualMoveRunning) return;
+            _isVehicleBManualMoveRunning = true;
+            VehicleBArriveNextNodeCommand.RaiseCanExecuteChanged();
+        }
+
+        try
+        {
+            var vehicleId = slot == MockScenarioVehicleSlot.VehicleA
+                ? ScenarioVehicleAId
+                : ScenarioVehicleBId;
+            await RunScenarioActionAsync(
+                () => _mockScenarioController.MoveVehicleToNextNodeAsync(vehicleId)).ConfigureAwait(true);
+        }
+        finally
+        {
+            if (slot == MockScenarioVehicleSlot.VehicleA)
+            {
+                _isVehicleAManualMoveRunning = false;
+                VehicleAArriveNextNodeCommand.RaiseCanExecuteChanged();
+            }
+            else
+            {
+                _isVehicleBManualMoveRunning = false;
+                VehicleBArriveNextNodeCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     private void OnScenarioChanged(object? sender, EventArgs e)
     {
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
@@ -369,14 +443,22 @@ public sealed class DebugDashboardViewModel : BindableBase, IDisposable
         ScenarioTaskBId = state.TaskBId ?? string.Empty;
         ScenarioRouteSummary = string.IsNullOrWhiteSpace(state.SourceA)
             ? "场景尚未初始化"
-            : $"A车：{state.SourceA} -> {state.Target}；B车：{state.SourceB} -> {state.Target}";
+            : string.Equals(state.ScenarioKey, "narrow-aisle", StringComparison.OrdinalIgnoreCase)
+                ? $"A车：{state.SourceA} -> {state.MergeNode} -> {state.Target}；B车：{state.SourceB} -> {state.MergeNode} -> {state.Target}"
+            : $"A车：{state.SourceA} -> {state.Target} -> {state.VehicleAExitNode}；B车：{state.SourceB} -> {state.Target}";
         ScenarioManualBlockResource = state.ManualBlockResource is null
             ? string.Empty
             : $"{state.ManualBlockResource.ResourceType}:{state.ManualBlockResource.ResourceId}";
         IsScenarioManualBlockActive = state.IsManualBlockActive;
         IsVehicleAAutomaticRunning = state.IsVehicleAAutomaticRunning;
         IsVehicleBAutomaticRunning = state.IsVehicleBAutomaticRunning;
+        IsVehicleAHoldingTarget = state.IsVehicleAHoldingTarget;
+        IsFullFlowRunning = state.IsFullFlowRunning;
         VehicleAArriveNextNodeCommand.RaiseCanExecuteChanged();
+        VehicleBArriveNextNodeCommand.RaiseCanExecuteChanged();
+        VehicleADepartTargetCommand.RaiseCanExecuteChanged();
+        RunFullScenarioCommand.RaiseCanExecuteChanged();
+        RunNarrowAisleScenarioCommand.RaiseCanExecuteChanged();
         Replace(ScenarioLogs, state.Logs);
     }
 

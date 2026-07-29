@@ -1,3 +1,4 @@
+using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
@@ -12,15 +13,21 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
         private readonly Dictionary<string, VehicleStatusSnapshot> _vehicles = new(StringComparer.OrdinalIgnoreCase);
         private readonly IEventAggregator _eventAggregator;
         private readonly IVehicleRepository _vehicleRepository;
+        private readonly IMapService _mapService;
         private readonly object _syncRoot = new();
 
-        public PersistentVehicleStateStore(IEventAggregator eventAggregator, IVehicleRepository vehicleRepository)
+        public PersistentVehicleStateStore(
+            IEventAggregator eventAggregator,
+            IVehicleRepository vehicleRepository,
+            IMapService mapService)
         {
             _eventAggregator = eventAggregator;
             _vehicleRepository = vehicleRepository;
+            _mapService = mapService;
 
             SeedFromConfiguration();
             _eventAggregator.GetEvent<VehicleConfigurationChangedEvent>().Subscribe(ApplyVehicleConfigurationChange);
+            _eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>().Subscribe(_ => RevalidateCurrentLocations());
         }
 
         public bool CreateVehicle(VehicleStatusSnapshot snapshot)
@@ -157,9 +164,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
             foreach (var vehicle in vehicles.Where(vehicle => vehicle.IsEnabled))
             {
-                var homeLocation = !string.IsNullOrWhiteSpace(vehicle.HomeNodeId)
-                    ? vehicle.HomeNodeId
-                    : string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode;
+                var homeLocation = ResolveConfiguredLocation(vehicle);
                 var snapshot = new VehicleStatusSnapshot
                 {
                     VehicleId = vehicle.VehicleId,
@@ -238,11 +243,57 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             });
         }
 
-        private static string ResolveConfiguredLocation(Vehicle vehicle)
+        private string ResolveConfiguredLocation(Vehicle vehicle)
         {
-            return !string.IsNullOrWhiteSpace(vehicle.HomeNodeId)
+            if (string.IsNullOrWhiteSpace(vehicle.HomeNodeId))
+            {
+                return "Unassigned";
+            }
+
+            var result = _mapService.NodeExists(new GetMapNodeRequest { NodeId = vehicle.HomeNodeId });
+            return result.Success && result.Data
                 ? vehicle.HomeNodeId
-                : string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode;
+                : "Unassigned";
+        }
+
+        private void RevalidateCurrentLocations()
+        {
+            List<VehicleStatusSnapshot> changedSnapshots = new();
+
+            lock (_syncRoot)
+            {
+                foreach (var snapshot in _vehicles.Values)
+                {
+                    if (string.IsNullOrWhiteSpace(snapshot.Location)
+                        || string.Equals(snapshot.Location, "Unassigned", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var result = _mapService.NodeExists(new GetMapNodeRequest { NodeId = snapshot.Location });
+                    if (result.Success && result.Data)
+                    {
+                        continue;
+                    }
+
+                    snapshot.Location = "Unassigned";
+                    snapshot.Position ??= new MapPosition();
+                    snapshot.Position.NodeId = null;
+                    snapshot.ReportedAt = DateTime.Now;
+                    changedSnapshots.Add(snapshot);
+                }
+            }
+
+            foreach (var snapshot in changedSnapshots)
+            {
+                _eventAggregator.GetEvent<VehicleStatusUpdatedEvent>().Publish(snapshot);
+                _eventAggregator.GetEvent<VehicleStateChangedEvent>().Publish(new VehicleStateChangedMessage
+                {
+                    ChangeType = VehicleStateChangeType.Updated,
+                    Snapshot = snapshot,
+                    OccurredAt = DateTime.Now
+                });
+            }
         }
     }
 }

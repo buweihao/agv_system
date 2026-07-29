@@ -8,8 +8,7 @@ namespace AgvDispatcher.Infrastructure.Mock
     {
         protected readonly Vehicle _vehicle;
         protected readonly object _syncRoot = new();
-        protected CancellationTokenSource? _runCancellation;
-        protected Task? _runTask;
+        private bool _started;
         protected double _batteryLevel;
         protected RobotState _state = RobotState.Idle;
         protected string _location;
@@ -23,7 +22,15 @@ namespace AgvDispatcher.Infrastructure.Mock
             _vehicle = vehicle;
             _chargeRepo = chargeRepo;
             _batteryLevel = 70 + Math.Abs(vehicle.VehicleId.GetHashCode()) % 25;
-            _location = string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "A01-01" : $"{vehicle.AreaCode}01-01";
+            _state = vehicle.AdapterType?.ToUpperInvariant() switch
+            {
+                "MOCKOFFLINE" => RobotState.Offline,
+                "MOCKFAULT" => RobotState.Fault,
+                _ => RobotState.Idle
+            };
+            _location = !string.IsNullOrWhiteSpace(vehicle.HomeNodeId)
+                ? vehicle.HomeNodeId
+                : string.IsNullOrWhiteSpace(vehicle.AreaCode) ? "Unassigned" : vehicle.AreaCode;
         }
 
         public string VehicleId => _vehicle.VehicleId;
@@ -32,44 +39,34 @@ namespace AgvDispatcher.Infrastructure.Mock
 
         public event EventHandler<VehicleStatusSnapshot>? StatusReceived;
 
-        protected abstract double BatteryDrainPerTick { get; }
-        protected abstract TimeSpan TickInterval { get; }
-
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            if (_runTask is not null)
+            cancellationToken.ThrowIfCancellationRequested();
+
+            lock (_syncRoot)
             {
-                return Task.CompletedTask;
+                if (_started)
+                {
+                    return Task.CompletedTask;
+                }
+
+                _started = true;
             }
 
-            _runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            // Mock 状态只在启动和明确命令时发布。周期发布会用适配器内部旧值
+            // 覆盖调试面板、真实回调或其他业务模块刚写入的车辆状态。
             PublishCurrentStatus();
-            _runTask = RunStatusLoopAsync(_runCancellation.Token);
             return Task.CompletedTask;
         }
 
-        public async Task StopAsync(CancellationToken cancellationToken)
+        public Task StopAsync(CancellationToken cancellationToken)
         {
-            if (_runCancellation is null || _runTask is null)
+            lock (_syncRoot)
             {
-                return;
+                _started = false;
             }
 
-            await _runCancellation.CancelAsync();
-
-            try
-            {
-                await _runTask.WaitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            finally
-            {
-                _runCancellation.Dispose();
-                _runCancellation = null;
-                _runTask = null;
-            }
+            return Task.CompletedTask;
         }
 
         public virtual Task SendCommandAsync(DispatchCommand command, CancellationToken cancellationToken)
@@ -144,10 +141,6 @@ namespace AgvDispatcher.Infrastructure.Mock
                         break;
                     case DispatchCommandType.AssignTask:
                         _state = RobotState.Running;
-                        if (!string.IsNullOrWhiteSpace(command.SourceNodeId))
-                        {
-                            _location = command.SourceNodeId;
-                        }
                         break;
                     case DispatchCommandType.CompleteTask:
                         _state = RobotState.Idle;
@@ -221,40 +214,6 @@ namespace AgvDispatcher.Infrastructure.Mock
                 },
                 _ => throw new ArgumentException("Unsupported mock vehicle status payload.", nameof(rawStatus))
             };
-        }
-
-        protected virtual async Task RunStatusLoopAsync(CancellationToken cancellationToken)
-        {
-            using var timer = new PeriodicTimer(TickInterval);
-
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                lock (_syncRoot)
-                {
-                    if (string.Equals(_vehicle.AdapterType, "MockOffline", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _state = RobotState.Offline;
-                    }
-                    else if (string.Equals(_vehicle.AdapterType, "MockFault", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (_state != RobotState.Fault && Random.Shared.NextDouble() < 0.05)
-                        {
-                            _state = RobotState.Fault;
-                        }
-                    }
-
-                    if (_state == RobotState.Running)
-                    {
-                        _batteryLevel = Math.Max(0, _batteryLevel - BatteryDrainPerTick);
-                    }
-                    else if (_isCharging)
-                    {
-                        _batteryLevel = Math.Min(100, _batteryLevel + 5.0);
-                    }
-                }
-
-                PublishCurrentStatus();
-            }
         }
 
         protected void PublishCurrentStatus()

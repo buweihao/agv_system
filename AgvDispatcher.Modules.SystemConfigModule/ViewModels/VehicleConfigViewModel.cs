@@ -22,6 +22,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private readonly IVehicleRepository _vehicleRepository;
         private readonly IEventAggregator _eventAggregator;
         private readonly IMapService _mapService;
+        private readonly HashSet<string> _validAreaIds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _validNodeIds = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _validChargeNodeIds = new(StringComparer.OrdinalIgnoreCase);
         private Vehicle? _selectedVehicle;
         private EditableVehicle _currentVehicle = new();
         private string _statusMessage = "\u8bf7\u9009\u62e9\u8f66\u8f86\u6216\u65b0\u589e\u8f66\u8f86\u6863\u6848";
@@ -115,14 +118,17 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             VehiclesView = CollectionViewSource.GetDefaultView(Vehicles);
             VehiclesView.Filter = FilterVehicle;
 
-            RefreshCommand = new DelegateCommand(LoadVehicles);
+            RefreshCommand = new DelegateCommand(RefreshData);
             AddCommand = new DelegateCommand(AddVehicle);
             SaveCommand = new DelegateCommand(SaveVehicle);
             DeleteCommand = new DelegateCommand(DeleteVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
             CopyCommand = new DelegateCommand(CopyVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
 
-            LoadMapOptions();
             LoadVehicles();
+            LoadMapOptions();
+
+            eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>()
+                .Subscribe(_ => LoadMapOptions(), ThreadOption.UIThread);
         }
 
         private void LoadMapOptions()
@@ -135,26 +141,92 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 AvailableAreas.Clear();
                 AvailableNodeIds.Clear();
                 AvailableChargeNodeIds.Clear();
+                _validAreaIds.Clear();
+                _validNodeIds.Clear();
+                _validChargeNodeIds.Clear();
 
                 if (snapshot is null)
                 {
+                    AddConfiguredMapReferences();
                     return;
                 }
 
-                foreach (var area in snapshot.Areas.Where(area => area.Enabled).OrderBy(area => area.AreaId))
+                var areas = snapshot.Areas
+                    .Where(area => area.Enabled && !string.IsNullOrWhiteSpace(area.AreaId))
+                    .Select(area => new MapAreaOption(area.AreaId, area.AreaName))
+                    .Concat(snapshot.Nodes
+                        .Where(node => node.Enabled && !string.IsNullOrWhiteSpace(node.AreaId))
+                        .Select(node => new MapAreaOption(node.AreaId!, node.AreaId!)))
+                    .Concat(snapshot.Edges
+                        .Where(edge => edge.Enabled && !string.IsNullOrWhiteSpace(edge.AreaId))
+                        .Select(edge => new MapAreaOption(edge.AreaId!, edge.AreaId!)))
+                    .GroupBy(area => area.AreaId, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group
+                        .OrderByDescending(area => !string.Equals(area.AreaId, area.AreaName, StringComparison.OrdinalIgnoreCase))
+                        .First())
+                    .OrderBy(area => area.AreaId);
+
+                foreach (var area in areas)
                 {
-                    AvailableAreas.Add(new MapAreaOption(area.AreaId, area.AreaName));
+                    AvailableAreas.Add(area);
+                    _validAreaIds.Add(area.AreaId);
                 }
 
-                foreach (var node in snapshot.Nodes.Where(node => node.Enabled).OrderBy(node => node.NodeId))
+                foreach (var node in snapshot.Nodes
+                    .Where(node => node.Enabled && !string.IsNullOrWhiteSpace(node.NodeId))
+                    .GroupBy(node => node.NodeId, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .OrderBy(node => node.NodeId))
                 {
                     AvailableNodeIds.Add(node.NodeId);
+                    _validNodeIds.Add(node.NodeId);
                     if (node.NodeType == AgvDispatcher.Core.Contracts.Map.MapNodeType.ChargeStation)
                     {
                         AvailableChargeNodeIds.Add(node.NodeId);
+                        _validChargeNodeIds.Add(node.NodeId);
                     }
                 }
+
+                AddConfiguredMapReferences();
             });
+        }
+
+        private void RefreshData()
+        {
+            LoadVehicles();
+            LoadMapOptions();
+        }
+
+        private void AddConfiguredMapReferences()
+        {
+            foreach (var vehicle in Vehicles)
+            {
+                AddAreaOptionIfMissing(vehicle.AreaCode);
+                AddIfMissing(AvailableNodeIds, vehicle.HomeNodeId);
+                AddIfMissing(AvailableChargeNodeIds, vehicle.ChargeNodeId);
+            }
+
+            AddAreaOptionIfMissing(CurrentVehicle.AreaCode);
+            AddIfMissing(AvailableNodeIds, CurrentVehicle.HomeNodeId);
+            AddIfMissing(AvailableChargeNodeIds, CurrentVehicle.ChargeNodeId);
+        }
+
+        private void AddAreaOptionIfMissing(string areaId)
+        {
+            if (!string.IsNullOrWhiteSpace(areaId)
+                && AvailableAreas.All(area => !string.Equals(area.AreaId, areaId, StringComparison.OrdinalIgnoreCase)))
+            {
+                AvailableAreas.Add(new MapAreaOption(areaId, areaId));
+            }
+        }
+
+        private static void AddIfMissing(ObservableCollection<string> options, string value)
+        {
+            if (!string.IsNullOrWhiteSpace(value)
+                && !options.Any(item => string.Equals(item, value, StringComparison.OrdinalIgnoreCase)))
+            {
+                options.Add(value);
+            }
         }
 
         private void LoadVehicles()
@@ -232,21 +304,21 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             }
 
             if (!string.IsNullOrWhiteSpace(CurrentVehicle.AreaCode)
-                && AvailableAreas.All(area => !string.Equals(area.AreaId, CurrentVehicle.AreaCode, StringComparison.OrdinalIgnoreCase)))
+                && !_validAreaIds.Contains(CurrentVehicle.AreaCode))
             {
                 System.Windows.MessageBox.Show($"\u533a\u57df '{CurrentVehicle.AreaCode}' \u4e0d\u5b58\u5728\u4e8e\u5f53\u524d\u5730\u56fe\u533a\u57df\u4e2d\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9", "\u9a8c\u8bc1\u5931\u8d25", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 StatusMessage = "\u4fdd\u5b58\u5931\u8d25\uff1a\u533a\u57df\u65e0\u6548";
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(CurrentVehicle.HomeNodeId) && !AvailableNodeIds.Contains(CurrentVehicle.HomeNodeId))
+            if (!string.IsNullOrWhiteSpace(CurrentVehicle.HomeNodeId) && !_validNodeIds.Contains(CurrentVehicle.HomeNodeId))
             {
                 System.Windows.MessageBox.Show($"\u9ed8\u8ba4\u505c\u9760\u70b9 '{CurrentVehicle.HomeNodeId}' \u4e0d\u5b58\u5728\u4e8e\u53ef\u7528\u8282\u70b9\u4e2d\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9", "\u9a8c\u8bc1\u5931\u8d25", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 StatusMessage = "\u4fdd\u5b58\u5931\u8d25\uff1a\u9ed8\u8ba4\u505c\u9760\u70b9\u65e0\u6548";
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(CurrentVehicle.ChargeNodeId) && !AvailableChargeNodeIds.Contains(CurrentVehicle.ChargeNodeId))
+            if (!string.IsNullOrWhiteSpace(CurrentVehicle.ChargeNodeId) && !_validChargeNodeIds.Contains(CurrentVehicle.ChargeNodeId))
             {
                 System.Windows.MessageBox.Show($"\u9ed8\u8ba4\u5145\u7535\u70b9 '{CurrentVehicle.ChargeNodeId}' \u4e0d\u5b58\u5728\u4e8e\u53ef\u7528\u5145\u7535\u8282\u70b9\u4e2d\uff0c\u8bf7\u91cd\u65b0\u9009\u62e9", "\u9a8c\u8bc1\u5931\u8d25", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 StatusMessage = "\u4fdd\u5b58\u5931\u8d25\uff1a\u9ed8\u8ba4\u5145\u7535\u70b9\u65e0\u6548";

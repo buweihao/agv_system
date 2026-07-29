@@ -185,7 +185,6 @@
 
                     <DataGridTextColumn Header="任务ID" Binding="{Binding TaskId}" Width="1.5*" />
                     <DataGridTextColumn Header="当前位置" Binding="{Binding CurrentPosition}" Width="1.2*" />
-                    <DataGridTextColumn Header="目标位置" Binding="{Binding TargetPosition}" Width="1.2*" />
 
                     <DataGridTemplateColumn Header="电量" Width="1.5*">
                         <DataGridTemplateColumn.CellTemplate>

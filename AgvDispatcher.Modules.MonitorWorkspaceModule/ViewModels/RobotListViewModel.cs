@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Enums;
 using AgvDispatcher.Core.Events;
 using AgvDispatcher.Core.Interfaces;
@@ -19,19 +20,20 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
     /// 同时提供一个手动上报车辆状态的调试入口（<see cref="PublishStatusCommand"/>）。
     /// 通过订阅 <see cref="VehicleStateChangedEvent"/> 对列表做增量增改删，保持与状态存储一致。
     /// </para>
-    /// <para>部分展示字段（目标位置、速度、运行时长）当前为按车辆 ID 预设的演示数据。</para>
+    /// <para>部分展示字段（速度、运行时长）当前为按车辆 ID 预设的演示数据。</para>
     /// </summary>
     public class RobotListViewModel : BindableBase
     {
         private readonly IVehicleStateStore _vehicleStateStore;
         private readonly IVehicleStatusPublisher _vehicleStatusPublisher;
+        private readonly IMapService _mapService;
+        private readonly Dictionary<string, string> _nodeNames = new(StringComparer.OrdinalIgnoreCase);
 
         private ObservableCollection<RobotModel> _robotList = new();
         // 手动上报表单的默认值
         private string _vehicleId = "AGV-002";
-        private string _brand = "RGV-A";
         private double _batteryLevel = 76;
-        private string _location = "PICK-A1";
+        private string _location = string.Empty;
         private RobotState _state = RobotState.Running;
         private string _lastPublishMessage = "Ready";
         private RobotModel? _selectedRobot;
@@ -55,12 +57,7 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         };
 
         /// <summary>手动上报表单：品牌候选项。</summary>
-        public ObservableCollection<string> BrandOptions { get; } = new()
-        {
-            "RGV-A",
-            "RGV-B",
-            "RGV-C"
-        };
+        public ObservableCollection<MapNodeLocationOption> LocationOptions { get; } = new();
 
         /// <summary>手动上报表单：状态候选项（全部 <see cref="RobotState"/>）。</summary>
         public IEnumerable<RobotState> StateOptions { get; } = Enum.GetValues<RobotState>();
@@ -73,12 +70,6 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         }
 
         /// <summary>手动上报表单：品牌。</summary>
-        public string Brand
-        {
-            get => _brand;
-            set => SetProperty(ref _brand, value);
-        }
-
         /// <summary>手动上报表单：电量（0~100，自动裁剪）。</summary>
         public double BatteryLevel
         {
@@ -135,14 +126,16 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
         public RobotListViewModel(
             IEventAggregator eventAggregator,
             IVehicleStateStore vehicleStateStore,
-            IVehicleStatusPublisher vehicleStatusPublisher)
+            IVehicleStatusPublisher vehicleStatusPublisher,
+            IMapService mapService)
         {
             _eventAggregator = eventAggregator;
             _vehicleStateStore = vehicleStateStore;
             _vehicleStatusPublisher = vehicleStatusPublisher;
+            _mapService = mapService;
+            LoadNodeNames();
             PublishStatusCommand = new DelegateCommand(PublishStatus, CanPublishStatus)
                 .ObservesProperty(() => VehicleId)
-                .ObservesProperty(() => Brand)
                 .ObservesProperty(() => Location);
 
             RobotList = new ObservableCollection<RobotModel>(
@@ -153,17 +146,27 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 AddVehicleIdOption(snapshot.VehicleId);
             }
 
+            Location = _vehicleStateStore.GetAllVehicles()
+                .Select(snapshot => snapshot.Location)
+                .FirstOrDefault(location => LocationOptions.Any(option =>
+                    string.Equals(option.NodeId, location, StringComparison.OrdinalIgnoreCase)))
+                ?? LocationOptions.FirstOrDefault()?.NodeId
+                ?? string.Empty;
+
             SelectedRobot = RobotList.FirstOrDefault();
 
             eventAggregator.GetEvent<VehicleStateChangedEvent>().Subscribe(ApplyVehicleStateChange, ThreadOption.UIThread);
+            eventAggregator.GetEvent<PubSubEvent<MapPublishedEvent>>()
+                .Subscribe(_ => ReloadForCurrentMap(), ThreadOption.UIThread);
         }
 
         /// <summary>上报命令可执行条件：车辆 ID、品牌、位置均非空。</summary>
         private bool CanPublishStatus()
         {
             return !string.IsNullOrWhiteSpace(VehicleId)
-                && !string.IsNullOrWhiteSpace(Brand)
-                && !string.IsNullOrWhiteSpace(Location);
+                && !string.IsNullOrWhiteSpace(Location)
+                && LocationOptions.Any(option =>
+                    string.Equals(option.NodeId, Location, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>根据表单构造快照并通过发布服务上报，更新结果提示。</summary>
@@ -172,7 +175,6 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             var snapshot = new VehicleStatusSnapshot
             {
                 VehicleId = VehicleId.Trim(),
-                Brand = Brand.Trim(),
                 BatteryLevel = Math.Clamp(BatteryLevel, 0, 100),
                 Location = Location.Trim(),
                 State = State,
@@ -265,8 +267,8 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
             }
         }
 
-        /// <summary>将车辆状态快照转换为列表展示模型；目标位置/速度/运行时长为演示占位数据。</summary>
-        private static RobotModel ToRobotModel(VehicleStatusSnapshot snapshot)
+        /// <summary>将车辆状态快照转换为列表展示模型；速度/运行时长为演示占位数据。</summary>
+        private RobotModel ToRobotModel(VehicleStatusSnapshot snapshot)
         {
             return new RobotModel
             {
@@ -275,71 +277,81 @@ namespace AgvDispatcher.Modules.MonitorWorkspaceModule.ViewModels
                 State = snapshot.State,
                 TaskId = string.IsNullOrWhiteSpace(snapshot.CurrentTaskId) ? "-" : snapshot.CurrentTaskId,
                 CurrentPosition = FormatNodeLocation(snapshot.Location),
-                TargetPosition = FormatNodeLocation(GetMockTargetPosition(snapshot.VehicleId)),
                 BatteryLevel = (int)Math.Round(snapshot.BatteryLevel),
                 Speed = GetMockSpeed(snapshot.State, snapshot.VehicleId),
                 RunningTime = GetMockRunningTime(snapshot.VehicleId)
             };
         }
 
-        /// <summary>按车辆 ID 返回演示用目标位置。</summary>
-        private static string GetMockTargetPosition(string vehicleId)
-        {
-            return vehicleId switch
-            {
-                "AGV-002" => "PUT-A1",
-                "AGV-003" => "INT-C",
-                "AGV-008" => "RAW-OUT-01",
-                "AGV-010" => "FIRE-G2",
-                "AGV-017" => "CHG-03",
-                _ => "-"
-            };
-        }
-
-        private static string FormatNodeLocation(string nodeId)
+        private string FormatNodeLocation(string nodeId)
         {
             if (string.IsNullOrWhiteSpace(nodeId) || nodeId == "-")
             {
                 return "-";
             }
 
-            return NodeNames.TryGetValue(nodeId, out var name)
+            if (string.Equals(nodeId, "Unassigned", StringComparison.OrdinalIgnoreCase))
+            {
+                return "\u672a\u4e0a\u62a5";
+            }
+
+            return _nodeNames.TryGetValue(nodeId, out var name)
                 ? $"{nodeId} ({name})"
-                : nodeId;
+                : $"{nodeId}\uff08\u672a\u5339\u914d\u5f53\u524d\u5730\u56fe\uff09";
         }
 
-        private static readonly IReadOnlyDictionary<string, string> NodeNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        private void LoadNodeNames()
         {
-            ["PICK-A1"] = "\u6210\u54c1\u5e93\u53d6\u8d27\u70b9A1",
-            ["PICK-A2"] = "\u6210\u54c1\u5e93\u53d6\u8d27\u70b9A2",
-            ["PUT-A1"] = "\u6210\u54c1\u5e93\u653e\u8d27\u70b9A1",
-            ["RAW-IN-01"] = "\u539f\u6599\u533a\u5165\u5e93\u70b91",
-            ["RAW-IN-02"] = "\u539f\u6599\u533a\u5165\u5e93\u70b92",
-            ["RAW-OUT-01"] = "\u539f\u6599\u533a\u51fa\u5e93\u70b91",
-            ["QR-01"] = "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b91",
-            ["QR-02"] = "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b92",
-            ["QR-03"] = "\u4e8c\u7ef4\u7801\u5bfc\u822a\u70b93",
-            ["SLAM-01"] = "\u6fc0\u5149\u533a\u5165\u53e3",
-            ["SLAM-02"] = "\u6fc0\u5149\u5de5\u4f4d",
-            ["INT-N"] = "\u4e92\u65a5\u533a\u5317\u53e3",
-            ["INT-C"] = "\u4e92\u65a5\u533a\u4e2d\u5fc3",
-            ["INT-S"] = "\u4e92\u65a5\u533a\u5357\u53e3",
-            ["FIRE-G1"] = "\u6d88\u9632\u95e8\u524d\u70b9",
-            ["FIRE-G2"] = "\u6d88\u9632\u95e8\u540e\u70b9",
-            ["SPEED-IN"] = "\u9650\u901f\u533a\u5165\u53e3",
-            ["WEIGH-01"] = "\u5730\u78c5\u79f0\u91cd\u70b9",
-            ["WASH-01"] = "\u6e05\u6d17\u5de5\u4f4d",
-            ["SPEED-OUT"] = "\u9650\u901f\u533a\u51fa\u53e3",
-            ["WAIT-01"] = "\u5f85\u673a\u4f4d1",
-            ["WAIT-02"] = "\u5f85\u673a\u4f4d2",
-            ["WAIT-03"] = "\u5f85\u673a\u4f4d3",
-            ["PARK-01"] = "\u505c\u8f66\u4f4d1",
-            ["CHG-01"] = "\u5145\u7535\u68691",
-            ["CHG-02"] = "\u5145\u7535\u68692",
-            ["CHG-03"] = "\u5feb\u5145\u68693",
-            ["MAINT-IN"] = "\u7ef4\u62a4\u533a\u5165\u53e3",
-            ["MAINT-OUT"] = "\u7ef4\u62a4\u533a\u51fa\u53e3"
-        };
+            _nodeNames.Clear();
+            LocationOptions.Clear();
+            var result = _mapService.GetCurrentMap(new GetMapSnapshotRequest());
+            if (!result.Success || result.Data is null)
+            {
+                return;
+            }
+
+            foreach (var node in result.Data.Nodes
+                .Where(node => node.Enabled && !string.IsNullOrWhiteSpace(node.NodeId))
+                .OrderBy(node => node.NodeId))
+            {
+                var nodeName = string.IsNullOrWhiteSpace(node.NodeName)
+                    ? node.NodeCode
+                    : node.NodeName;
+                _nodeNames[node.NodeId] = nodeName;
+                LocationOptions.Add(new MapNodeLocationOption(node.NodeId, nodeName));
+            }
+        }
+
+        private void ReloadForCurrentMap()
+        {
+            var selectedVehicleId = SelectedRobot?.Id;
+            var selectedLocation = Location;
+            LoadNodeNames();
+            Location = LocationOptions.Any(option =>
+                string.Equals(option.NodeId, selectedLocation, StringComparison.OrdinalIgnoreCase))
+                ? selectedLocation
+                : LocationOptions.FirstOrDefault()?.NodeId ?? string.Empty;
+            RobotList = new ObservableCollection<RobotModel>(
+                _vehicleStateStore.GetAllVehicles().Select(ToRobotModel));
+            SelectedRobot = RobotList.FirstOrDefault(robot =>
+                string.Equals(robot.Id, selectedVehicleId, StringComparison.OrdinalIgnoreCase))
+                ?? RobotList.FirstOrDefault();
+        }
+
+        public sealed class MapNodeLocationOption
+        {
+            public MapNodeLocationOption(string nodeId, string nodeName)
+            {
+                NodeId = nodeId;
+                DisplayName = string.IsNullOrWhiteSpace(nodeName)
+                    ? nodeId
+                    : $"{nodeId} ({nodeName})";
+            }
+
+            public string NodeId { get; }
+
+            public string DisplayName { get; }
+        }
 
         /// <summary>按状态与车辆 ID 返回演示用速度（非运行恒为 0）。</summary>
         private static double GetMockSpeed(RobotState state, string vehicleId)

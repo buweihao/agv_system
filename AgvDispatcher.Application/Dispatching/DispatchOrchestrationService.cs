@@ -8,6 +8,7 @@ using AgvDispatcher.Core.Contracts.Dispatching.Models;
 using AgvDispatcher.Core.Contracts.Dispatching.Requests;
 using AgvDispatcher.Core.Contracts.Dispatching.Results;
 using AgvDispatcher.Core.Contracts.Map;
+using AgvDispatcher.Core.Contracts.Planning.Constraints;
 using AgvDispatcher.Core.Contracts.Planning.Interfaces;
 using AgvDispatcher.Core.Contracts.Planning.Requests;
 using AgvDispatcher.Core.Contracts.Planning.Results;
@@ -102,13 +103,15 @@ namespace AgvDispatcher.Application.Dispatching
             }
 
             var vehicleId = vehicleSelection.VehicleId!;
+            var vehicleStatus = _vehicleService.GetVehicleStatus(vehicleId);
+            var startNodeId = FirstNonEmpty(vehicleStatus?.LocationText, task.CurrentNodeId, task.SourceNodeId);
             var execution = new DispatchExecutionDto
             {
                 ExecutionId = Guid.NewGuid().ToString("N"),
                 TaskId = task.TaskId,
                 VehicleId = vehicleId,
                 State = DispatchExecutionState.SelectingVehicle,
-                CurrentNodeId = FirstNonEmpty(task.CurrentNodeId, task.SourceNodeId),
+                CurrentNodeId = startNodeId,
                 RollingWindowSize = request.RollingWindowSize,
                 CreatedAt = DateTimeOffset.Now,
                 UpdatedAt = DateTimeOffset.Now
@@ -125,20 +128,27 @@ namespace AgvDispatcher.Application.Dispatching
             }
 
             var map = mapResult.Data;
+            if (!map.Nodes.Any(node =>
+                    string.Equals(node.NodeId, startNodeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                startNodeId = FirstNonEmpty(task.CurrentNodeId, task.SourceNodeId);
+            }
             execution = CopyExecution(
                 execution,
                 state: DispatchExecutionState.PlanningPath,
                 mapId: map.MapId,
-                mapVersion: map.Version);
+                mapVersion: map.Version,
+                currentNodeId: startNodeId);
             SaveExecution(execution, DispatchOrchestrationEventType.MapLoaded, $"Map {map.MapId}/{map.Version} loaded.");
 
-            var startNodeId = FirstNonEmpty(task.CurrentNodeId, task.SourceNodeId);
-            if (string.IsNullOrWhiteSpace(startNodeId) || string.IsNullOrWhiteSpace(task.TargetNodeId))
+            if (string.IsNullOrWhiteSpace(startNodeId) ||
+                string.IsNullOrWhiteSpace(task.SourceNodeId) ||
+                string.IsNullOrWhiteSpace(task.TargetNodeId))
             {
                 return FailExecution<StartDispatchTaskResultDto>(
                     execution,
                     DispatchOrchestrationFailureCode.InvalidRequest,
-                    "The task route must contain both a start and a target node.");
+                    "The vehicle location and the task source and target nodes are required.");
             }
 
             var maxReplans = Math.Max(0, request.MaxReplanCount);
@@ -160,15 +170,15 @@ namespace AgvDispatcher.Application.Dispatching
                 // The planner remains stateless: orchestration translates runtime traffic
                 // ownership/state into a PathPlanConstraint and supplies it with the map.
                 var constraint = DispatchTrafficConstraintMapper.Map(trafficResult.Data, task.TaskId, vehicleId);
-                var planResult = await _pathPlanner.PlanAsync(new PathPlanRequest
-                {
-                    Context = request.Context,
-                    MapSnapshot = map,
-                    VehicleId = vehicleId,
-                    StartNodeId = startNodeId,
-                    TargetNodeId = task.TargetNodeId,
-                    Constraint = constraint
-                }, cancellationToken).ConfigureAwait(false);
+                var planResult = await PlanRouteViaTaskSourceAsync(
+                    request.Context,
+                    map,
+                    vehicleId,
+                    startNodeId,
+                    task.SourceNodeId,
+                    task.TargetNodeId,
+                    constraint,
+                    cancellationToken).ConfigureAwait(false);
 
                 if (!planResult.Success || planResult.Data is null)
                 {
@@ -1002,8 +1012,104 @@ namespace AgvDispatcher.Application.Dispatching
         private static AgvResult Fail(DispatchOrchestrationFailureCode code, string? message) =>
             AgvResult.Fail(code.ToString(), string.IsNullOrWhiteSpace(message) ? code.ToString() : message);
 
-        private static string FirstNonEmpty(string? first, string? second) =>
-            !string.IsNullOrWhiteSpace(first) ? first : second ?? string.Empty;
+        private async Task<AgvResult<PathPlanResult>> PlanRouteViaTaskSourceAsync(
+            RequestContext context,
+            MapSnapshotDto map,
+            string vehicleId,
+            string vehicleNodeId,
+            string taskSourceNodeId,
+            string taskTargetNodeId,
+            PathPlanConstraint constraint,
+            CancellationToken cancellationToken)
+        {
+            async Task<AgvResult<PathPlanResult>> PlanLegAsync(string fromNodeId, string toNodeId) =>
+                await _pathPlanner.PlanAsync(new PathPlanRequest
+                {
+                    Context = context,
+                    MapSnapshot = map,
+                    VehicleId = vehicleId,
+                    StartNodeId = fromNodeId,
+                    TargetNodeId = toNodeId,
+                    Constraint = constraint
+                }, cancellationToken).ConfigureAwait(false);
+
+            if (string.Equals(vehicleNodeId, taskSourceNodeId, StringComparison.OrdinalIgnoreCase))
+            {
+                return await PlanLegAsync(taskSourceNodeId, taskTargetNodeId).ConfigureAwait(false);
+            }
+
+            var repositionResult = await PlanLegAsync(vehicleNodeId, taskSourceNodeId).ConfigureAwait(false);
+            if (!repositionResult.Success || repositionResult.Data is null)
+            {
+                return AgvResult<PathPlanResult>.Fail(
+                    repositionResult.Error ??
+                    new AgvError(repositionResult.Code.ToString(), repositionResult.Message));
+            }
+
+            if (!repositionResult.Data.IsReachable || repositionResult.Data.Segments is null)
+            {
+                return AgvResult<PathPlanResult>.Ok(repositionResult.Data);
+            }
+
+            var taskRouteResult = await PlanLegAsync(taskSourceNodeId, taskTargetNodeId).ConfigureAwait(false);
+            if (!taskRouteResult.Success || taskRouteResult.Data is null)
+            {
+                return AgvResult<PathPlanResult>.Fail(
+                    taskRouteResult.Error ??
+                    new AgvError(taskRouteResult.Code.ToString(), taskRouteResult.Message));
+            }
+
+            if (!taskRouteResult.Data.IsReachable || taskRouteResult.Data.Segments is null)
+            {
+                return AgvResult<PathPlanResult>.Ok(taskRouteResult.Data);
+            }
+
+            var legs = repositionResult.Data.Segments
+                .Concat(taskRouteResult.Data.Segments)
+                .Select((segment, index) => new PathSegmentDto
+                {
+                    Sequence = index + 1,
+                    FromNodeId = segment.FromNodeId,
+                    ToNodeId = segment.ToNodeId,
+                    EdgeId = segment.EdgeId,
+                    Distance = segment.Distance,
+                    EstimatedSeconds = segment.EstimatedSeconds,
+                    Direction = segment.Direction,
+                    IsReverseMove = segment.IsReverseMove,
+                    SpeedLimit = segment.SpeedLimit
+                })
+                .ToArray();
+            var firstCost = repositionResult.Data.Cost;
+            var secondCost = taskRouteResult.Data.Cost;
+
+            return AgvResult<PathPlanResult>.Ok(new PathPlanResult
+            {
+                PlanId = Guid.NewGuid().ToString("N"),
+                StartNodeId = vehicleNodeId,
+                TargetNodeId = taskTargetNodeId,
+                Segments = legs,
+                TotalDistance = repositionResult.Data.TotalDistance + taskRouteResult.Data.TotalDistance,
+                EstimatedSeconds = repositionResult.Data.EstimatedSeconds + taskRouteResult.Data.EstimatedSeconds,
+                TurnCount = repositionResult.Data.TurnCount + taskRouteResult.Data.TurnCount,
+                Cost = new PathPlanCost
+                {
+                    DistanceCost = (firstCost?.DistanceCost ?? 0) + (secondCost?.DistanceCost ?? 0),
+                    TimeCost = (firstCost?.TimeCost ?? 0) + (secondCost?.TimeCost ?? 0),
+                    TurnCost = (firstCost?.TurnCost ?? 0) + (secondCost?.TurnCost ?? 0),
+                    TrafficCost = (firstCost?.TrafficCost ?? 0) + (secondCost?.TrafficCost ?? 0),
+                    ReservationCost = (firstCost?.ReservationCost ?? 0) + (secondCost?.ReservationCost ?? 0),
+                    TotalCost = (firstCost?.TotalCost ?? 0) + (secondCost?.TotalCost ?? 0)
+                },
+                MapVersion = map.Version,
+                IsReachable = true,
+                Warnings = (repositionResult.Data.Warnings ?? Array.Empty<string>())
+                    .Concat(taskRouteResult.Data.Warnings ?? Array.Empty<string>())
+                    .ToArray()
+            });
+        }
+
+        private static string FirstNonEmpty(params string?[] values) =>
+            values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
         private static DispatchExecutionDto CopyExecution(
             DispatchExecutionDto source,

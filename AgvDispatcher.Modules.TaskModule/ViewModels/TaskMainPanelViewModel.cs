@@ -22,6 +22,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         private readonly ITaskService _taskService;
         private readonly IDispatchService _dispatchService;
         private readonly IMapRepository _mapRepository;
+        private readonly IMapVersionRepository _mapVersionRepository;
 
         public ObservableCollection<MapNode> AvailableSourceNodes { get; } = new();
         public ObservableCollection<MapNode> AvailableTargetNodes { get; } = new();
@@ -30,14 +31,26 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
         public MapNode? SelectedSourceNode
         {
             get => _selectedSourceNode;
-            set => SetProperty(ref _selectedSourceNode, value);
+            set
+            {
+                if (SetProperty(ref _selectedSourceNode, value))
+                {
+                    CreateDemoTaskCommand?.RaiseCanExecuteChanged();
+                }
+            }
         }
 
         private MapNode? _selectedTargetNode;
         public MapNode? SelectedTargetNode
         {
             get => _selectedTargetNode;
-            set => SetProperty(ref _selectedTargetNode, value);
+            set
+            {
+                if (SetProperty(ref _selectedTargetNode, value))
+                {
+                    CreateDemoTaskCommand?.RaiseCanExecuteChanged();
+                }
+            }
         }
 
         private ObservableCollection<TaskModel> _taskList = new();
@@ -162,12 +175,14 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
             IEventAggregator eventAggregator,
             ITaskService taskService,
             IDispatchService dispatchService,
-            IMapRepository mapRepository)
+            IMapRepository mapRepository,
+            IMapVersionRepository mapVersionRepository)
         {
             _eventAggregator = eventAggregator;
             _taskService = taskService;
             _dispatchService = dispatchService;
             _mapRepository = mapRepository;
+            _mapVersionRepository = mapVersionRepository;
 
             foreach (VehicleCapability cap in Enum.GetValues(typeof(VehicleCapability)))
             {
@@ -179,7 +194,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                 });
             }
 
-            CreateDemoTaskCommand = new DelegateCommand(CreateDemoTask);
+            CreateDemoTaskCommand = new DelegateCommand(CreateDemoTask, CanCreateDemoTask);
             AutoDispatchCommand = new DelegateCommand<TaskModel>(AutoDispatch, CanAutoDispatch);
             PreviousPageCommand = new DelegateCommand(
                 () => PageIndex--,
@@ -208,8 +223,17 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
         private async void LoadNodesAsync()
         {
-            var nodes = await _mapRepository.GetNodesAsync();
-            var activeNodes = nodes.Where(n => n.IsEnabled).ToList();
+            var activeVersion = await _mapVersionRepository.GetActiveAsync();
+            var nodes = activeVersion is null
+                ? Array.Empty<MapNode>()
+                : await _mapRepository.GetNodesAsync(activeVersion.MapId, activeVersion.MapVersion);
+            var activeNodes = nodes
+                .Where(IsTaskEndpoint)
+                .GroupBy(n => n.NodeId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(n => n.NodeCode)
+                .ThenBy(n => n.NodeId)
+                .ToList();
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 AvailableSourceNodes.Clear();
@@ -220,8 +244,19 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
                     AvailableTargetNodes.Add(n);
                 }
                 SelectedSourceNode = AvailableSourceNodes.FirstOrDefault();
-                SelectedTargetNode = AvailableTargetNodes.FirstOrDefault();
+                SelectedTargetNode = AvailableTargetNodes.FirstOrDefault(n =>
+                    !string.Equals(n.NodeId, SelectedSourceNode?.NodeId, StringComparison.OrdinalIgnoreCase));
             });
+        }
+
+        private static bool IsTaskEndpoint(MapNode node)
+        {
+            return node.IsEnabled && node.NodeType is
+                MapNodeType.Normal or
+                MapNodeType.Station or
+                MapNodeType.Pickup or
+                MapNodeType.Dropoff or
+                MapNodeType.Waiting;
         }
 
         private void RefreshTasks()
@@ -271,7 +306,7 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
         private void CreateDemoTask()
         {
-            if (SelectedSourceNode == null || SelectedTargetNode == null)
+            if (!CanCreateDemoTask())
             {
                 System.Windows.MessageBox.Show("请先选择任务起点和终点", "提示", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
@@ -295,6 +330,16 @@ namespace AgvDispatcher.Modules.TaskModule.ViewModels
 
             DispatchMessage = $"已创建任务 {task.TaskId}";
             RefreshTasks();
+        }
+
+        private bool CanCreateDemoTask()
+        {
+            return SelectedSourceNode is not null
+                && SelectedTargetNode is not null
+                && !string.Equals(
+                    SelectedSourceNode.NodeId,
+                    SelectedTargetNode.NodeId,
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         private bool CanAutoDispatch(TaskModel? task)

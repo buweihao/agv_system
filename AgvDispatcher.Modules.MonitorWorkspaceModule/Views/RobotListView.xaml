@@ -80,11 +80,9 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="130"/>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="70"/>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="190"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
@@ -98,31 +96,26 @@
                               Text="{Binding VehicleId, UpdateSourceTrigger=PropertyChanged}"
                                />
 
-                    <TextBlock Grid.Column="2" Text="Brand" Style="{StaticResource SimulatorLabelStyle}"/>
-                    <ComboBox Grid.Column="3"
-                              IsEditable="True"
-                              ItemsSource="{Binding BrandOptions}"
-                              Text="{Binding Brand, UpdateSourceTrigger=PropertyChanged}"
-                               />
-
-                    <TextBlock Grid.Column="4" Text="Battery" Style="{StaticResource SimulatorLabelStyle}"/>
-                    <TextBox Grid.Column="5"
+                    <TextBlock Grid.Column="2" Text="Battery" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <TextBox Grid.Column="3"
                              Text="{Binding BatteryLevel, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F0}}"
-                              
+                               
                              HorizontalContentAlignment="Center"/>
 
-                    <TextBlock Grid.Column="6" Text="Location" Style="{StaticResource SimulatorLabelStyle}"/>
-                    <TextBox Grid.Column="7"
-                             Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}"
-                              />
+                    <TextBlock Grid.Column="4" Text="Location" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <ComboBox Grid.Column="5"
+                              ItemsSource="{Binding LocationOptions}"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValuePath="NodeId"
+                              SelectedValue="{Binding Location, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
 
-                    <TextBlock Grid.Column="8" Text="State" Style="{StaticResource SimulatorLabelStyle}"/>
-                    <ComboBox Grid.Column="9"
+                    <TextBlock Grid.Column="6" Text="State" Style="{StaticResource SimulatorLabelStyle}"/>
+                    <ComboBox Grid.Column="7"
                               ItemsSource="{Binding StateOptions}"
                               SelectedItem="{Binding State}"
                                />
 
-                    <Button Grid.Column="10"
+                    <Button Grid.Column="8"
                             Content="上报状态" Command="{Binding PublishStatusCommand}"
                             Width="82"
                             Height="28"
@@ -133,7 +126,7 @@
                             FontWeight="Bold"
                             Cursor="Hand"/>
 
-                    <TextBlock Grid.Column="11"
+                    <TextBlock Grid.Column="9"
                                Text="{Binding LastPublishMessage}"
                                Foreground="#8FB8D8"
                                VerticalAlignment="Center"
@@ -178,7 +171,6 @@
 
                     <DataGridTextColumn Header="任务ID" Binding="{Binding TaskId}" Width="1.5*" />
                     <DataGridTextColumn Header="当前位置" Binding="{Binding CurrentPosition}" Width="1.8*" />
-                    <DataGridTextColumn Header="目标位置" Binding="{Binding TargetPosition}" Width="1.8*" />
 
                     <DataGridTemplateColumn Header="电量" Width="1.5*">
                         <DataGridTemplateColumn.CellTemplate>

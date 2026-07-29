@@ -14,6 +14,12 @@ public interface IMockScenarioController
         string scenarioKey,
         CancellationToken cancellationToken = default);
 
+    Task<MockScenarioOperationResult> RunSameTargetFlowAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<MockScenarioOperationResult> RunNarrowAisleFlowAsync(
+        CancellationToken cancellationToken = default);
+
     Task<MockScenarioOperationResult> StartVehicleAsync(
         MockScenarioVehicleSlot slot,
         CancellationToken cancellationToken = default);
@@ -30,6 +36,13 @@ public interface IMockScenarioController
 
     Task<MockScenarioOperationResult> ArriveNextNodeAsync(
         string vehicleId,
+        CancellationToken cancellationToken = default);
+
+    Task<MockScenarioOperationResult> MoveVehicleToNextNodeAsync(
+        string vehicleId,
+        CancellationToken cancellationToken = default);
+
+    Task<MockScenarioOperationResult> DepartVehicleAAsync(
         CancellationToken cancellationToken = default);
 
     Task<MockScenarioOperationResult> RetryWaitingTaskAsync(
@@ -84,6 +97,14 @@ public sealed class MockScenarioState
     public string SourceB { get; init; } = string.Empty;
 
     public string Target { get; init; } = string.Empty;
+
+    public string MergeNode { get; init; } = string.Empty;
+
+    public string VehicleAExitNode { get; init; } = string.Empty;
+
+    public bool IsVehicleAHoldingTarget { get; init; }
+
+    public bool IsFullFlowRunning { get; init; }
 
     public TrafficResourceKey? ManualBlockResource { get; init; }
 

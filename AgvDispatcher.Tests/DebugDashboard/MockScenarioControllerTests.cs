@@ -23,6 +23,27 @@ public sealed class MockScenarioControllerTests
     private static readonly RequestContext Context = new() { SourceModule = nameof(MockScenarioControllerTests) };
 
     [Fact]
+    public async Task InitializeScenario_ShouldOccupyBothVehicleSourceNodes()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Controller.InitializeScenarioAsync("same-target");
+
+        Assert.True(result.Success, result.Message);
+        var state = fixture.Controller.CurrentState;
+        var sourceA = await fixture.Traffic.GetResourceStatusAsync(
+            new TrafficResourceKey { ResourceType = TrafficResourceType.Node, ResourceId = state.SourceA },
+            Context);
+        var sourceB = await fixture.Traffic.GetResourceStatusAsync(
+            new TrafficResourceKey { ResourceType = TrafficResourceType.Node, ResourceId = state.SourceB },
+            Context);
+        Assert.Equal(TrafficResourceState.Occupied, sourceA.Data!.State);
+        Assert.Equal("AGV-002", sourceA.Data.OccupiedByAgvId);
+        Assert.Equal(TrafficResourceState.Occupied, sourceB.Data!.State);
+        Assert.Equal("AGV-003", sourceB.Data.OccupiedByAgvId);
+    }
+
+    [Fact]
     public async Task SameTarget_ShouldPutSecondVehicleIntoWaitingForTraffic()
     {
         var fixture = CreateFixture();
@@ -38,7 +59,7 @@ public sealed class MockScenarioControllerTests
     }
 
     [Fact]
-    public async Task RetryWaitingTask_ShouldStartAfterFirstVehicleArrivesAndReleases()
+    public async Task SameTarget_ShouldHoldVehicleAAtTargetUntilItDeparts()
     {
         var fixture = CreateFixture();
         await fixture.Controller.InitializeScenarioAsync("same-target");
@@ -49,13 +70,113 @@ public sealed class MockScenarioControllerTests
         Assert.True(firstArrival.Success, firstArrival.Message);
         var secondArrival = await fixture.Controller.ArriveNextNodeAsync("AGV-002");
         Assert.True(secondArrival.Success, secondArrival.Message);
+
+        Assert.True(fixture.Controller.CurrentState.IsVehicleAHoldingTarget);
+        var taskA = fixture.Controller.CurrentState.TaskAId!;
+        Assert.Equal(TaskState.Running, fixture.Tasks.GetTask(taskA)!.State);
+        var occupiedTarget = await fixture.Traffic.GetResourceStatusAsync(
+            new TrafficResourceKey { ResourceType = TrafficResourceType.Node, ResourceId = "D1" },
+            Context);
+        Assert.Equal(TrafficResourceState.Occupied, occupiedTarget.Data!.State);
+        Assert.Equal("AGV-002", occupiedTarget.Data.OccupiedByAgvId);
+
+        await fixture.Controller.RetryWaitingTaskAsync("AGV-003");
+        var taskB = fixture.Controller.CurrentState.TaskBId!;
+        var stillWaiting = await GetExecutionAsync(fixture.Dispatch, taskB);
+        Assert.Equal(DispatchExecutionState.WaitingForTraffic, stillWaiting.State);
+
+        var departed = await fixture.Controller.DepartVehicleAAsync();
+        Assert.True(departed.Success, departed.Message);
+        Assert.False(fixture.Controller.CurrentState.IsVehicleAHoldingTarget);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask(taskA)!.State);
+
+        var releasedTarget = await fixture.Traffic.GetResourceStatusAsync(
+            new TrafficResourceKey { ResourceType = TrafficResourceType.Node, ResourceId = "D1" },
+            Context);
+        Assert.Equal(TrafficResourceState.Free, releasedTarget.Data!.State);
+        var occupiedExit = await fixture.Traffic.GetResourceStatusAsync(
+            new TrafficResourceKey { ResourceType = TrafficResourceType.Node, ResourceId = "E1" },
+            Context);
+        Assert.Equal(TrafficResourceState.Occupied, occupiedExit.Data!.State);
+        Assert.Equal("AGV-002", occupiedExit.Data.OccupiedByAgvId);
+
         var retried = await fixture.Controller.RetryWaitingTaskAsync("AGV-003");
 
         Assert.True(retried.Success);
-        var taskB = fixture.Controller.CurrentState.TaskBId!;
         var executionB = await GetExecutionAsync(fixture.Dispatch, taskB);
         Assert.Equal(DispatchExecutionState.Running, executionB.State);
         Assert.Equal(TaskState.Running, fixture.Tasks.GetTask(taskB)!.State);
+    }
+
+    [Fact]
+    public async Task SameTarget_FullFlow_ShouldCompleteWithOneOperation()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Controller.RunSameTargetFlowAsync();
+
+        Assert.True(result.Success, result.Message);
+        var state = fixture.Controller.CurrentState;
+        Assert.False(state.IsFullFlowRunning);
+        Assert.False(state.IsVehicleAHoldingTarget);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask(state.TaskAId!)!.State);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask(state.TaskBId!)!.State);
+        Assert.Equal("E1", fixture.Simulation.GetVehicle("AGV-002")!.Location);
+        Assert.Equal("D1", fixture.Simulation.GetVehicle("AGV-003")!.Location);
+    }
+
+    [Fact]
+    public async Task NarrowAisle_ShouldSupportManualStepByStepFlowOnConfiguredNodes()
+    {
+        var fixture = CreateFixture();
+
+        await fixture.Controller.InitializeScenarioAsync("narrow-aisle");
+        var state = fixture.Controller.CurrentState;
+        Assert.Equal("N001", state.SourceA);
+        Assert.Equal("N002", state.SourceB);
+        Assert.Equal("N003", state.MergeNode);
+        Assert.Equal("N005", state.Target);
+        Assert.Equal("E003", state.ManualBlockResource!.ResourceId);
+
+        Assert.True((await fixture.Controller.StartVehicleAsync(MockScenarioVehicleSlot.VehicleA)).Success);
+        Assert.True((await fixture.Controller.StartVehicleAsync(MockScenarioVehicleSlot.VehicleB)).Success);
+        var waitingB = await GetExecutionAsync(fixture.Dispatch, state.TaskBId!);
+        Assert.Equal(DispatchExecutionState.WaitingForTraffic, waitingB.State);
+
+        Assert.True((await fixture.Controller.MoveVehicleToNextNodeAsync("AGV-002")).Success);
+        Assert.Equal("N003", fixture.Simulation.GetVehicle("AGV-002")!.Location);
+        Assert.True((await fixture.Controller.MoveVehicleToNextNodeAsync("AGV-002")).Success);
+        Assert.True(fixture.Controller.CurrentState.IsVehicleAHoldingTarget);
+        Assert.Equal(TaskState.Running, fixture.Tasks.GetTask(state.TaskAId!)!.State);
+        Assert.Equal("N005", fixture.Simulation.GetVehicle("AGV-002")!.Location);
+
+        Assert.True((await fixture.Controller.DepartVehicleAAsync()).Success);
+        Assert.False(fixture.Controller.CurrentState.IsVehicleAHoldingTarget);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask(state.TaskAId!)!.State);
+        Assert.Equal("N006", fixture.Simulation.GetVehicle("AGV-002")!.Location);
+        Assert.True((await fixture.Controller.RetryWaitingTaskAsync("AGV-003")).Success);
+        Assert.Equal(DispatchExecutionState.Running, (await GetExecutionAsync(fixture.Dispatch, state.TaskBId!)).State);
+        Assert.True((await fixture.Controller.MoveVehicleToNextNodeAsync("AGV-003")).Success);
+        Assert.True((await fixture.Controller.MoveVehicleToNextNodeAsync("AGV-003")).Success);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask(state.TaskBId!)!.State);
+        Assert.Equal("N005", fixture.Simulation.GetVehicle("AGV-003")!.Location);
+    }
+
+    [Fact]
+    public async Task NarrowAisle_FullFlow_ShouldCompleteWithOneOperation()
+    {
+        var fixture = CreateFixture();
+
+        var result = await fixture.Controller.RunNarrowAisleFlowAsync();
+
+        Assert.True(result.Success, result.Message);
+        var state = fixture.Controller.CurrentState;
+        Assert.False(state.IsFullFlowRunning);
+        Assert.False(state.IsVehicleAHoldingTarget);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask(state.TaskAId!)!.State);
+        Assert.Equal(TaskState.Completed, fixture.Tasks.GetTask(state.TaskBId!)!.State);
+        Assert.Equal("N006", fixture.Simulation.GetVehicle("AGV-002")!.Location);
+        Assert.Equal("N005", fixture.Simulation.GetVehicle("AGV-003")!.Location);
     }
 
     [Fact]
@@ -111,7 +232,8 @@ public sealed class MockScenarioControllerTests
     private static Fixture CreateFixture()
     {
         var tasks = new FakeTaskService();
-        var vehicles = new FakeVehicleService();
+        var simulation = new FakeMockSimulationService();
+        var vehicles = new FakeVehicleService(simulation);
         var traffic = new MockTrafficControlService();
         IRouteReservationService reservations = new MockRouteReservationService(traffic);
         var dispatch = new DispatchOrchestrationService(
@@ -123,7 +245,6 @@ public sealed class MockScenarioControllerTests
             traffic,
             reservations,
             new FakeVehicleAdapterManager());
-        var simulation = new FakeMockSimulationService();
         var controller = new MockScenarioController(
             tasks,
             traffic,
@@ -161,12 +282,21 @@ public sealed class MockScenarioControllerTests
         MapId = "SCENARIO-TEST-MAP",
         MapName = "Debug scenario map",
         Version = "1.0",
-        Nodes = new[] { Node("P1"), Node("P2"), Node("X1"), Node("D1") },
+        Nodes = new[]
+        {
+            Node("P1"), Node("P2"), Node("X1"), Node("D1"), Node("E1"),
+            Node("N001"), Node("N002"), Node("N003"), Node("N005"), Node("N006")
+        },
         Edges = new[]
         {
             Edge("E-P1-X1", "P1", "X1"),
             Edge("E-P2-X1", "P2", "X1"),
-            Edge("E-X1-D1", "X1", "D1")
+            Edge("E-X1-D1", "X1", "D1"),
+            Edge("E-D1-E1", "D1", "E1"),
+            Edge("E012", "N001", "N003"),
+            Edge("E002", "N002", "N003"),
+            Edge("E003", "N003", "N005"),
+            Edge("E008", "N005", "N006")
         }
     };
 
@@ -240,7 +370,14 @@ public sealed class MockScenarioControllerTests
 
     private sealed class FakeVehicleService : IVehicleService
     {
+        private readonly FakeMockSimulationService _simulation;
         private readonly Vehicle[] _vehicles = { Vehicle("AGV-002"), Vehicle("AGV-003") };
+
+        internal FakeVehicleService(FakeMockSimulationService simulation)
+        {
+            _simulation = simulation;
+        }
+
         public IReadOnlyList<Vehicle> GetVehicles() => _vehicles;
         public Vehicle? GetVehicle(string vehicleId) => _vehicles.FirstOrDefault(item => item.VehicleId == vehicleId);
         public VehicleStatus? GetVehicleStatus(string vehicleId) => GetVehicle(vehicleId) is null ? null : Status(vehicleId);
@@ -255,13 +392,13 @@ public sealed class MockScenarioControllerTests
             SupportedCommandFlags = VehicleCommandCapability.AssignTask | VehicleCommandCapability.CancelTask
         };
 
-        private static VehicleStatus Status(string id) => new()
+        private VehicleStatus Status(string id) => new()
         {
             VehicleId = id,
             State = RobotState.Idle,
             IsOnline = true,
             BatteryLevel = 100,
-            LocationText = id == "AGV-002" ? "P1" : "P2"
+            LocationText = _simulation.GetVehicle(id)?.Location ?? (id == "AGV-002" ? "P1" : "P2")
         };
     }
 

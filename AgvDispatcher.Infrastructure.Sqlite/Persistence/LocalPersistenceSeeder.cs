@@ -83,10 +83,8 @@ CREATE INDEX IF NOT EXISTS IX_RouteReservationEvents_ReservationId ON RouteReser
             {
                 db.Vehicles.AddRange(CreateVehicles());
             }
-            else
-            {
-                EnsureReferenceVehicleSeed(db);
-            }
+
+            ClearVehicleBindingsMissingFromActiveMap(db);
 
             if (!referenceSeedInitialized && !db.ChargeStations.Any() && !db.ChangeTracker.Entries<ChargeStation>().Any())
             {
@@ -517,32 +515,55 @@ PRAGMA foreign_keys=ON;");
             }
         }
 
-        private static void EnsureReferenceVehicleSeed(AgvDispatcherDbContext db)
+        private static void ClearVehicleBindingsMissingFromActiveMap(AgvDispatcherDbContext db)
         {
-            foreach (var reference in CreateVehicles())
+            var activeVersion = db.MapVersions.AsNoTracking()
+                .FirstOrDefault(version => version.IsActive || version.State == MapState.Active);
+            if (activeVersion is null)
             {
-                var vehicle = db.Vehicles.FirstOrDefault(item => item.VehicleId == reference.VehicleId);
-                if (vehicle is null)
+                return;
+            }
+
+            var activeNodes = db.MapNodes
+                .Where(node => node.MapId == activeVersion.MapId && node.MapVersion == activeVersion.MapVersion)
+                .ToList();
+            var nodeIds = activeNodes
+                .Select(node => node.NodeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var chargeNodeIds = activeNodes
+                .Where(node => node.NodeType == MapNodeType.Charge)
+                .Select(node => node.NodeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var areaIds = db.MapAreas
+                .Where(area => area.MapId == activeVersion.MapId && area.MapVersion == activeVersion.MapVersion)
+                .Select(area => area.AreaId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var areaId in activeNodes.Select(node => node.AreaCode)
+                .Concat(db.MapEdges
+                    .Where(edge => edge.MapId == activeVersion.MapId && edge.MapVersion == activeVersion.MapVersion)
+                    .Select(edge => edge.AreaCode))
+                .Where(areaId => !string.IsNullOrWhiteSpace(areaId)))
+            {
+                areaIds.Add(areaId);
+            }
+
+            foreach (var vehicle in db.Vehicles)
+            {
+                if (!string.IsNullOrWhiteSpace(vehicle.AreaCode) && !areaIds.Contains(vehicle.AreaCode))
                 {
-                    db.Vehicles.Add(reference);
-                    continue;
+                    vehicle.AreaCode = string.Empty;
                 }
 
-                vehicle.VehicleCode = reference.VehicleCode;
-                vehicle.Name = reference.Name;
-                vehicle.Brand = reference.Brand;
-                vehicle.Model = reference.Model;
-                vehicle.AreaCode = reference.AreaCode;
-                vehicle.HomeNodeId = reference.HomeNodeId;
-                vehicle.ChargeNodeId = reference.ChargeNodeId;
-                vehicle.AdapterType = reference.AdapterType;
-                vehicle.ProtocolType = reference.ProtocolType;
-                vehicle.Endpoint = reference.Endpoint;
-                vehicle.MaxSpeed = reference.MaxSpeed;
-                vehicle.RatedLoad = reference.RatedLoad;
-                vehicle.CapabilityFlags = reference.CapabilityFlags;
-                vehicle.MinDispatchBattery = reference.MinDispatchBattery;
-                vehicle.IsEnabled = true;
+                if (!string.IsNullOrWhiteSpace(vehicle.HomeNodeId) && !nodeIds.Contains(vehicle.HomeNodeId))
+                {
+                    vehicle.HomeNodeId = string.Empty;
+                }
+
+                if (!string.IsNullOrWhiteSpace(vehicle.ChargeNodeId) && !chargeNodeIds.Contains(vehicle.ChargeNodeId))
+                {
+                    vehicle.ChargeNodeId = string.Empty;
+                }
             }
         }
 

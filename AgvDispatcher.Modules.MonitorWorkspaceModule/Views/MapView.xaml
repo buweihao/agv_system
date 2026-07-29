@@ -5,8 +5,12 @@
              prism:ViewModelLocator.AutoWireViewModel="True"
              Background="#050B14">
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <Style x:Key="MapToggleStyle" TargetType="RadioButton">
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/AgvDispatcher.Modules.MonitorWorkspaceModule;component/Resources/AgvRobotIcon.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+            <Style x:Key="MapToggleStyle" TargetType="RadioButton">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
@@ -27,7 +31,8 @@
                 </Setter.Value>
             </Setter>
             <Setter Property="FontWeight" Value="Bold"/>
-        </Style>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
     <Grid>
@@ -312,11 +317,11 @@
                             </ItemsControl.ItemContainerStyle>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Cursor="Hand">
-                                        <StackPanel.InputBindings>
+                                    <Grid Width="30" Height="30" Cursor="Hand">
+                                        <Grid.InputBindings>
                                             <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.MapItemClickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
-                                        </StackPanel.InputBindings>
-                                        <StackPanel.ToolTip>
+                                        </Grid.InputBindings>
+                                        <Grid.ToolTip>
                                             <StackPanel>
                                                 <TextBlock Text="{Binding VehicleId}" FontWeight="Bold"/>
                                                 <TextBlock Text="{Binding X, StringFormat=当前 X：{0:F2}}"/>
@@ -326,19 +331,33 @@
                                                 <TextBlock Text="{Binding CurrentTaskId, StringFormat=当前任务：{0}}"/>
                                                 <TextBlock Text="{Binding StateText, StringFormat=当前状态：{0}}"/>
                                             </StackPanel>
-                                        </StackPanel.ToolTip>
-                                        <Border Background="#0A111E" BorderBrush="{Binding Fill}" BorderThickness="1" CornerRadius="4" Padding="5,2" HorizontalAlignment="Center">
-                                            <TextBlock Text="{Binding VehicleId}" Foreground="White" FontSize="10" FontWeight="Bold"/>
-                                        </Border>
-                                        <Grid Width="30" Height="18" RenderTransformOrigin="0.5,0.5">
-                                            <Grid.RenderTransform>
+                                        </Grid.ToolTip>
+                                        <Rectangle Width="30"
+                                                   Height="30"
+                                                   Fill="{Binding Fill}"
+                                                   OpacityMask="{StaticResource AgvRobotOpacityMask}"
+                                                   RenderTransformOrigin="0.5,0.5">
+                                            <Rectangle.RenderTransform>
                                                 <RotateTransform Angle="{Binding Heading}"/>
-                                            </Grid.RenderTransform>
-                                            <Border Background="{Binding Fill}" CornerRadius="8" BorderBrush="White" BorderThickness="1"/>
-                                            <TextBlock Text="AGV" FontSize="8" Foreground="#05111F" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
-                                            <Polygon Points="27,9 21,5 21,13" Fill="White" Stroke="#05111F" StrokeThickness="0.5"/>
-                                        </Grid>
-                                    </StackPanel>
+                                            </Rectangle.RenderTransform>
+                                        </Rectangle>
+                                        <Canvas Panel.ZIndex="1" IsHitTestVisible="False">
+                                            <Grid Canvas.Left="-65" Canvas.Top="-23" Width="160">
+                                                <Border Background="#0A111E"
+                                                        BorderBrush="{Binding Fill}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        Padding="5,2"
+                                                        HorizontalAlignment="Center">
+                                                    <TextBlock Text="{Binding VehicleId}"
+                                                               Foreground="White"
+                                                               FontSize="10"
+                                                               FontWeight="Bold"
+                                                               TextWrapping="NoWrap"/>
+                                                </Border>
+                                            </Grid>
+                                        </Canvas>
+                                    </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

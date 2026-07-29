@@ -220,6 +220,53 @@ public sealed class DispatchOrchestrationServiceSmokeTests
     }
 
     [Fact]
+    public async Task StartTaskAsync_VehicleAwayFromSource_ShouldPlanRepositionBeforeTaskRoute()
+    {
+        var map = new MapSnapshotDto
+        {
+            MapId = "REPOSITION-TEST-MAP",
+            MapName = "Vehicle reposition test map",
+            Version = "1.0",
+            Nodes = new[] { Node("N1"), Node("N2"), Node("N5") },
+            Edges = new[]
+            {
+                Edge("E21", "N2", "N1"),
+                Edge("E15", "N1", "N5")
+            }
+        };
+        var fixture = CreateFixture(map: map, vehicleLocation: "N2");
+        fixture.Tasks.Task.TargetNodeId = "N5";
+
+        var result = await fixture.Service.StartTaskAsync(StartRequest(rollingWindowSize: 2));
+
+        Assert.True(result.Success);
+        Assert.Equal("N2", result.Data!.Execution.CurrentNodeId);
+        var reservation = await fixture.Reservations.GetReservationAsync(
+            new GetRouteReservationRequest
+            {
+                Context = Context,
+                ReservationId = result.Data.ReservationId
+            });
+        Assert.True(reservation.Success);
+        var segments = reservation.Data!.Segments
+            .OrderBy(item => item.Segment.Sequence)
+            .Select(item => item.Segment)
+            .ToArray();
+        Assert.Collection(
+            segments,
+            segment =>
+            {
+                Assert.Equal("N2", segment.FromNodeId);
+                Assert.Equal("N1", segment.ToNodeId);
+            },
+            segment =>
+            {
+                Assert.Equal("N1", segment.FromNodeId);
+                Assert.Equal("N5", segment.ToNodeId);
+            });
+    }
+
+    [Fact]
     public async Task GetExecutionAsync_ShouldReturnCurrentExecution()
     {
         var fixture = CreateFixture();
@@ -462,12 +509,13 @@ public sealed class DispatchOrchestrationServiceSmokeTests
         MapSnapshotDto? map = null,
         TaskState taskState = TaskState.Pending,
         bool includeTask = true,
-        bool mapUnavailable = false)
+        bool mapUnavailable = false,
+        string vehicleLocation = "N1")
     {
         traffic ??= new MockTrafficControlService();
         planner ??= new DijkstraPathPlanner();
         var tasks = new FakeTaskService(taskState, includeTask);
-        var vehicles = new FakeVehicleService();
+        var vehicles = new FakeVehicleService(vehicleLocation);
         var adapter = new FakeVehicleAdapterManager();
         IRouteReservationService reservations = new MockRouteReservationService(traffic);
         var service = new DispatchOrchestrationService(
@@ -572,6 +620,13 @@ public sealed class DispatchOrchestrationServiceSmokeTests
 
     private sealed class FakeVehicleService : IVehicleService
     {
+        private readonly string _location;
+
+        internal FakeVehicleService(string location)
+        {
+            _location = location;
+        }
+
         internal Vehicle Vehicle { get; } = new()
         {
             VehicleId = "AGV-001",
@@ -585,7 +640,7 @@ public sealed class DispatchOrchestrationServiceSmokeTests
             State = RobotState.Idle,
             IsOnline = true,
             BatteryLevel = 100,
-            LocationText = "N1"
+            LocationText = _location
         };
 
         public IReadOnlyList<Vehicle> GetVehicles() => new[] { Vehicle };

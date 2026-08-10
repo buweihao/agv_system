@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
-using HandyControl.Controls;
 
 namespace AgvDispatcher.Modules.SystemConfigModule.Behaviors
 {
@@ -27,52 +26,52 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Behaviors
 
         private static void OnSelectedItemsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
-            if (d is CheckComboBox checkComboBox)
+            if (d is ListBox listBox)
             {
-                checkComboBox.SelectionChanged -= CheckComboBox_SelectionChanged;
+                listBox.SelectionChanged -= ListBox_SelectionChanged;
 
                 if (e.NewValue is IList newList)
                 {
-                    checkComboBox.SelectedItems.Clear();
+                    listBox.SelectedItems.Clear();
                     foreach (var item in newList)
                     {
-                        checkComboBox.SelectedItems.Add(item);
+                        listBox.SelectedItems.Add(item);
                     }
 
-                    checkComboBox.SelectionChanged += CheckComboBox_SelectionChanged;
+                    listBox.SelectionChanged += ListBox_SelectionChanged;
 
                     if (e.NewValue is INotifyCollectionChanged obsList)
                     {
                         obsList.CollectionChanged += (s, args) =>
                         {
-                            checkComboBox.SelectionChanged -= CheckComboBox_SelectionChanged;
+                            listBox.SelectionChanged -= ListBox_SelectionChanged;
                             if (args.Action == NotifyCollectionChangedAction.Reset)
                             {
-                                checkComboBox.SelectedItems.Clear();
+                                listBox.SelectedItems.Clear();
                             }
                             else
                             {
                                 if (args.OldItems != null)
                                 {
-                                    foreach (var item in args.OldItems) checkComboBox.SelectedItems.Remove(item);
+                                    foreach (var item in args.OldItems) listBox.SelectedItems.Remove(item);
                                 }
                                 if (args.NewItems != null)
                                 {
-                                    foreach (var item in args.NewItems) checkComboBox.SelectedItems.Add(item);
+                                    foreach (var item in args.NewItems) listBox.SelectedItems.Add(item);
                                 }
                             }
-                            checkComboBox.SelectionChanged += CheckComboBox_SelectionChanged;
+                            listBox.SelectionChanged += ListBox_SelectionChanged;
                         };
                     }
                 }
             }
         }
 
-        private static void CheckComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private static void ListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (sender is CheckComboBox checkComboBox)
+            if (sender is ListBox listBox)
             {
-                var boundList = GetSelectedItems(checkComboBox);
+                var boundList = GetSelectedItems(listBox);
                 if (boundList != null)
                 {
                     foreach (var item in e.RemovedItems)

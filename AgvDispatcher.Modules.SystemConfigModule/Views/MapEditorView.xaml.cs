@@ -9,19 +9,6 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
 {
     public partial class MapEditorView : UserControl
     {
-        public static readonly DependencyProperty IsPanModeViewProperty =
-            DependencyProperty.Register(
-                nameof(IsPanModeView),
-                typeof(bool),
-                typeof(MapEditorView),
-                new PropertyMetadata(false));
-
-        public bool IsPanModeView
-        {
-            get => (bool)GetValue(IsPanModeViewProperty);
-            set => SetValue(IsPanModeViewProperty, value);
-        }
-
         private MapConfigViewModel? Vm => DataContext as MapConfigViewModel;
 
         private EditorNodeVm? _dragNode;
@@ -34,7 +21,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
         private Point _boxStart;
 
         private bool _isPanning;
-        private bool _isPanMode;
+        private bool _isRightButtonDown;
+        private Point _rightButtonDownAt;
         private Point _panStart;
         private DateTime _lastReadoutAt = DateTime.MinValue;
         private DateTime _lastSelectionPreviewAt = DateTime.MinValue;
@@ -46,59 +34,101 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
             InitializeComponent();
         }
 
-        private void Canvas_MouseWheel(object sender, MouseWheelEventArgs e)
+        private void Viewport_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
         {
-            var pos = e.GetPosition(_root);
+            var pos = e.GetPosition(_viewport);
             ZoomAt(pos, e.Delta > 0 ? 1.1 : 1 / 1.1);
             e.Handled = true;
         }
 
-        private void Root_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        private void Viewport_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
-            if (Vm?.AreaDrawMode == AreaDrawMode.Polygon && _polygonPoints.Count >= 3)
+            _viewport.Focus();
+
+            if (Vm?.IsAddNodeMode == true)
             {
-                FinishPolygonArea();
+                var point = e.GetPosition(_canvas);
+                Vm.AddNodeAt(point.X, point.Y);
                 e.Handled = true;
-                return;
             }
+        }
 
-            if (e.ClickCount == 2)
-            {
-                _canvasScale.ScaleX = _canvasScale.ScaleY = 1;
-                _canvasTranslate.X = _canvasTranslate.Y = 0;
-                return;
-            }
-
-            _isPanning = true;
-            _panStart = e.GetPosition(_root);
-            _root.CaptureMouse();
+        private void Viewport_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _viewport.Focus();
+            _isRightButtonDown = true;
+            _isPanning = false;
+            _rightButtonDownAt = e.GetPosition(_viewport);
+            _panStart = _rightButtonDownAt;
+            _viewport.CaptureMouse();
             e.Handled = true;
         }
 
-        private void Root_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        private void Viewport_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
         {
-            _isPanning = false;
-            _root.ReleaseMouseCapture();
+            var wasPanning = _isPanning;
+            EndRightButtonInteraction(releaseCapture: true);
+
+            if (!wasPanning && Vm?.AreaDrawMode == AreaDrawMode.Polygon && _polygonPoints.Count >= 3)
+            {
+                FinishPolygonArea();
+            }
+
             e.Handled = true;
+        }
+
+        private void Viewport_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isRightButtonDown) return;
+
+            if (e.RightButton != MouseButtonState.Pressed)
+            {
+                EndRightButtonInteraction(releaseCapture: true);
+                return;
+            }
+
+            var current = e.GetPosition(_viewport);
+            if (!_isPanning)
+            {
+                var delta = current - _rightButtonDownAt;
+                if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance
+                    && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+                {
+                    return;
+                }
+
+                _isPanning = true;
+                _viewport.Cursor = Cursors.ScrollAll;
+            }
+
+            _canvasTranslate.X += current.X - _panStart.X;
+            _canvasTranslate.Y += current.Y - _panStart.Y;
+            _panStart = current;
+            e.Handled = true;
+        }
+
+        private void Viewport_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            if (_isRightButtonDown)
+            {
+                EndRightButtonInteraction(releaseCapture: false);
+            }
+        }
+
+        private void EndRightButtonInteraction(bool releaseCapture)
+        {
+            _isRightButtonDown = false;
+            _isPanning = false;
+            _viewport.Cursor = null;
+            if (releaseCapture && _viewport.IsMouseCaptured)
+            {
+                _viewport.ReleaseMouseCapture();
+            }
         }
 
         private void Canvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (Vm == null) return;
-
-            if (_isPanMode)
-            {
-                BeginPan(_canvas, e.GetPosition(_root));
-                e.Handled = true;
-                return;
-            }
-
-            if (Vm.IsAddNodeMode)
-            {
-                Vm.AddNodeAt(e.GetPosition(_canvas).X, e.GetPosition(_canvas).Y);
-                e.Handled = true;
-                return;
-            }
 
             if (Vm.AreaDrawMode == AreaDrawMode.Polygon)
             {
@@ -155,15 +185,6 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 Vm.UpdateReadout(p.X, p.Y);
             }
 
-            if (_isPanning)
-            {
-                var rp = e.GetPosition(_root);
-                _canvasTranslate.X += rp.X - _panStart.X;
-                _canvasTranslate.Y += rp.Y - _panStart.Y;
-                _panStart = rp;
-                return;
-            }
-
             if (_dragNode != null)
             {
                 double nx = Vm.Snap(_dragNodeOrigX + (p.X - _dragStartCanvas.X));
@@ -204,14 +225,6 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
         private void Canvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (Vm == null) return;
-
-            if (_isPanMode && _isPanning)
-            {
-                _isPanning = false;
-                _canvas.ReleaseMouseCapture();
-                e.Handled = true;
-                return;
-            }
 
             if (_isBoxSelecting)
             {
@@ -303,15 +316,17 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
         private void Node_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
         {
             if (Vm == null) return;
-            ((UIElement)sender).ReleaseMouseCapture();
 
             if (_dragNode != null)
             {
                 Vm.RecordMove(_dragNode, _dragNodeOrigX, _dragNodeOrigY, _dragNode.X, _dragNode.Y);
                 _dragNode = null;
+                ((UIElement)sender).ReleaseMouseCapture();
                 e.Handled = true;
                 return;
             }
+
+            ((UIElement)sender).ReleaseMouseCapture();
 
             if (Vm.IsConnectMode && _connectFrom != null
                 && sender is FrameworkElement fe && fe.DataContext is EditorNodeVm target)
@@ -323,6 +338,24 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 }
                 e.Handled = true;
             }
+        }
+
+        private void Node_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            if (_dragNode is null || Vm is null) return;
+            if (sender is not FrameworkElement element || !ReferenceEquals(element.DataContext, _dragNode)) return;
+
+            Vm.RecordMove(_dragNode, _dragNodeOrigX, _dragNodeOrigY, _dragNode.X, _dragNode.Y);
+            _dragNode = null;
+        }
+
+        private void Canvas_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            if (!_isBoxSelecting) return;
+
+            _isBoxSelecting = false;
+            _selectionBox.Visibility = Visibility.Collapsed;
+            Vm?.ClearBulkHighlights();
         }
 
         private void Edge_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -381,47 +414,6 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Views
                 if (Vm.RedoCommand.CanExecute()) Vm.RedoCommand.Execute();
                 e.Handled = true;
             }
-        }
-
-        private void TogglePanMode_Click(object sender, RoutedEventArgs e)
-        {
-            _isPanMode = !_isPanMode;
-            IsPanModeView = _isPanMode;
-            if (sender is Button button)
-            {
-                button.Tag = _isPanMode;
-            }
-        }
-
-        private void ZoomIn_Click(object sender, RoutedEventArgs e)
-            => ZoomAt(new Point(_root.ActualWidth / 2, _root.ActualHeight / 2), 1.15);
-
-        private void ZoomOut_Click(object sender, RoutedEventArgs e)
-            => ZoomAt(new Point(_root.ActualWidth / 2, _root.ActualHeight / 2), 1 / 1.15);
-
-        private void CenterView_Click(object sender, RoutedEventArgs e)
-        {
-            _canvasScale.ScaleX = 1;
-            _canvasScale.ScaleY = 1;
-            var viewportWidth = Math.Max(0, _root.ActualWidth - 260);
-            var viewportHeight = Math.Max(0, _root.ActualHeight - 46);
-            _canvasTranslate.X = (viewportWidth - _canvas.Width) / 2;
-            _canvasTranslate.Y = (viewportHeight - _canvas.Height) / 2;
-        }
-
-        private void ResetView_Click(object sender, RoutedEventArgs e)
-        {
-            _canvasScale.ScaleX = 1;
-            _canvasScale.ScaleY = 1;
-            _canvasTranslate.X = 0;
-            _canvasTranslate.Y = 0;
-        }
-
-        private void BeginPan(UIElement element, Point start)
-        {
-            _isPanning = true;
-            _panStart = start;
-            element.CaptureMouse();
         }
 
         private void BeginSelectionBox(Point start)

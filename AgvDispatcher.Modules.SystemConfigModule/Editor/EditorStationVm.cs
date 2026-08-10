@@ -75,11 +75,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.Editor
         /// <summary>充电桩中心 Y（跟随绑定节点；无绑定时用模型 Position）。</summary>
         private double CenterY => _node?.Y ?? Model.Position.Y;
 
-        /// <summary>方块绘制左上角 X（偏向节点右上角，避免完全盖住节点圆点）。</summary>
-        public double CanvasLeft => CenterX + 8;
+        /// <summary>方块绘制左上角 X（放在节点左上方，避开右侧节点名称）。</summary>
+        public double CanvasLeft => CenterX - 24;
 
-        /// <summary>方块绘制左上角 Y。</summary>
-        public double CanvasTop => CenterY - 16;
+        /// <summary>方块绘制左上角 Y（与节点圆点留出少量间距）。</summary>
+        public double CanvasTop => CenterY - 20;
 
         private bool _isSelected;
         /// <summary>是否处于选中态（描边高亮）。</summary>

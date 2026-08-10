@@ -252,17 +252,19 @@ public sealed class InMemoryTrafficReservationLifecycleTests
         var traffic = new MockTrafficControlService();
         IRouteReservationService reservations = new MockRouteReservationService(traffic);
         var adapter = new FakeVehicleAdapterManager();
+        var mapService = new FakeMapService(CreateLinearMap());
         var service = new DispatchOrchestrationService(
             tasks,
             vehicles,
             new FakeDispatchScoringService(),
-            new FakeMapService(CreateLinearMap()),
+            mapService,
             new DijkstraPathPlanner(),
             traffic,
             reservations,
             adapter);
         var simulator = new MockTaskExecutionSimulator(
             tasks,
+            mapService,
             adapter,
             new FakeAuditTrailService(),
             new FakeChargeStationRepository(),

@@ -562,8 +562,25 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             AddNodeAt(430, 290);
         }
 
-        public EditorNodeVm AddNodeAt(double x, double y, MapNodeType nodeType = MapNodeType.Normal)
+        public EditorNodeVm? AddNodeAt(double x, double y, MapNodeType nodeType = MapNodeType.Normal)
         {
+            var snappedX = Snap(x);
+            var snappedY = Snap(y);
+            var minimumSpacing = EditorNodeVm.NodeDiameter;
+            var overlappingNode = EditorNodes.FirstOrDefault(node =>
+            {
+                var deltaX = node.X - snappedX;
+                var deltaY = node.Y - snappedY;
+                return deltaX * deltaX + deltaY * deltaY <= minimumSpacing * minimumSpacing;
+            });
+
+            if (overlappingNode is not null)
+            {
+                SelectedEditorNode = overlappingNode;
+                CoordReadout = $"该位置已有节点 {overlappingNode.NodeId}，未重复创建";
+                return null;
+            }
+
             var number = NextNodeNumber();
             var id = $"N{number:000}";
             var model = new MapNode
@@ -573,7 +590,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
                 NodeCode = id,
                 Name = nodeType == MapNodeType.Charge ? $"充电点 {number:000}" : $"节点 {number:000}",
                 NodeType = nodeType,
-                Position = new MapPosition { MapId = "MAIN", NodeId = id, X = Snap(x), Y = Snap(y) },
+                Position = new MapPosition { MapId = "MAIN", NodeId = id, X = snappedX, Y = snappedY },
                 IsEnabled = true
             };
             var vm = new EditorNodeVm(model);
@@ -590,6 +607,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private void AddChargeNodeAtCenter()
         {
             var nodeVm = AddNodeAt(430, 290, MapNodeType.Charge);
+            if (nodeVm is null) return;
+
             SelectedEditorNode = nodeVm;
             PlaceStationOnNode(nodeVm);
         }

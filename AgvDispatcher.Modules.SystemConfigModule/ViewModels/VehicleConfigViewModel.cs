@@ -31,6 +31,8 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         private string _filterBrand = AllText;
         private string _filterStatus = AllText;
         private string _filterCapability = AllText;
+        private bool _isEditorOpen;
+        private bool _isNewVehicle;
 
         public ObservableCollection<Vehicle> Vehicles { get; } = new();
         public ICollectionView VehiclesView { get; }
@@ -74,7 +76,11 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
         public DelegateCommand AddCommand { get; }
 
+        public DelegateCommand OpenCommand { get; }
+
         public DelegateCommand SaveCommand { get; }
+
+        public DelegateCommand CancelEditCommand { get; }
 
         public DelegateCommand DeleteCommand { get; }
 
@@ -85,10 +91,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             get => _selectedVehicle;
             set
             {
-                if (SetProperty(ref _selectedVehicle, value) && value is not null)
+                if (SetProperty(ref _selectedVehicle, value))
                 {
-                    CurrentVehicle = EditableVehicle.FromVehicle(value);
-                    StatusMessage = $"\u6b63\u5728\u7f16\u8f91 {value.VehicleCode}";
+                    OpenCommand.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -105,6 +110,14 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             set => SetProperty(ref _statusMessage, value);
         }
 
+        public bool IsEditorOpen
+        {
+            get => _isEditorOpen;
+            set => SetProperty(ref _isEditorOpen, value);
+        }
+
+        public string EditorTitle => _isNewVehicle ? "新增车辆档案" : $"车辆档案 · {CurrentVehicle.VehicleCode}";
+
         public int TotalCount => Vehicles.Count;
 
         public int EnabledCount => Vehicles.Count(vehicle => vehicle.IsEnabled);
@@ -120,7 +133,9 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
 
             RefreshCommand = new DelegateCommand(RefreshData);
             AddCommand = new DelegateCommand(AddVehicle);
+            OpenCommand = new DelegateCommand(OpenSelectedVehicle, CanOperateVehicle);
             SaveCommand = new DelegateCommand(SaveVehicle);
+            CancelEditCommand = new DelegateCommand(CancelEdit);
             DeleteCommand = new DelegateCommand(DeleteVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
             CopyCommand = new DelegateCommand(CopyVehicle, CanOperateVehicle).ObservesProperty(() => SelectedVehicle);
 
@@ -267,13 +282,15 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             }
             else
             {
-                AddVehicle();
+                SelectedVehicle = null;
+                CurrentVehicle = new EditableVehicle();
+                StatusMessage = "当前没有车辆，点击“新增车辆”创建档案";
             }
         }
 
         private void AddVehicle()
         {
-            var nextNumber = Vehicles.Count + 1;
+            var nextNumber = GetNextVehicleNumber();
             CurrentVehicle = new EditableVehicle
             {
                 VehicleId = $"AGV-{nextNumber:000}",
@@ -292,7 +309,29 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             };
 
             SelectedVehicle = null;
-            StatusMessage = "\u6b63\u5728\u65b0\u589e\u8f66\u8f86\u6863\u6848";
+            _isNewVehicle = true;
+            RaisePropertyChanged(nameof(EditorTitle));
+            IsEditorOpen = true;
+            StatusMessage = "正在新增车辆档案";
+        }
+
+        private void OpenSelectedVehicle()
+        {
+            if (SelectedVehicle is null) return;
+
+            CurrentVehicle = EditableVehicle.FromVehicle(SelectedVehicle);
+            _isNewVehicle = false;
+            RaisePropertyChanged(nameof(EditorTitle));
+            IsEditorOpen = true;
+            StatusMessage = $"正在编辑 {SelectedVehicle.VehicleCode}";
+        }
+
+        private void CancelEdit()
+        {
+            IsEditorOpen = false;
+            StatusMessage = SelectedVehicle is null
+                ? "已取消编辑"
+                : $"已选择 {SelectedVehicle.VehicleCode}，双击可打开车辆档案";
         }
 
         private void SaveVehicle()
@@ -335,6 +374,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             StatusMessage = $"{vehicle.VehicleCode} \u5df2\u4fdd\u5b58";
             LoadVehicles();
             SelectedVehicle = Vehicles.FirstOrDefault(item => item.VehicleId == vehicle.VehicleId);
+            IsEditorOpen = false;
         }
 
         private bool CanOperateVehicle() => SelectedVehicle is not null;
@@ -352,7 +392,7 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
         {
             if (SelectedVehicle is null) return;
             var copiedVehicleCode = SelectedVehicle.VehicleCode;
-            var nextNumber = Vehicles.Count + 1;
+            var nextNumber = GetNextVehicleNumber();
 
             CurrentVehicle = EditableVehicle.FromVehicle(SelectedVehicle);
             CurrentVehicle.VehicleId = $"AGV-{nextNumber:000}";
@@ -360,7 +400,23 @@ namespace AgvDispatcher.Modules.SystemConfigModule.ViewModels
             CurrentVehicle.Name = $"{SelectedVehicle.Name} (Copy)";
 
             SelectedVehicle = null;
-            StatusMessage = $"\u6b63\u5728\u590d\u5236 {copiedVehicleCode} \u5230 {CurrentVehicle.VehicleCode}";
+            _isNewVehicle = true;
+            RaisePropertyChanged(nameof(EditorTitle));
+            IsEditorOpen = true;
+            StatusMessage = $"正在复制 {copiedVehicleCode} 到 {CurrentVehicle.VehicleCode}";
+        }
+
+        private int GetNextVehicleNumber()
+        {
+            var number = 1;
+            while (Vehicles.Any(vehicle =>
+                       string.Equals(vehicle.VehicleId, $"AGV-{number:000}", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(vehicle.VehicleCode, $"AGV-{number:000}", StringComparison.OrdinalIgnoreCase)))
+            {
+                number++;
+            }
+
+            return number;
         }
 
         private bool FilterVehicle(object obj)

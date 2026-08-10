@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using AgvDispatcher.Core.Contracts.Common;
 using AgvDispatcher.Core.Contracts.Dispatching.Interfaces;
 using AgvDispatcher.Core.Contracts.Dispatching.Requests;
+using AgvDispatcher.Core.Contracts.Map;
 using AgvDispatcher.Core.Contracts.Reservations.Interfaces;
 using AgvDispatcher.Core.Contracts.Reservations.Requests;
 using AgvDispatcher.Core.Enums;
@@ -12,11 +13,12 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 {
     public class MockTaskExecutionSimulator : ITaskExecutionSimulator, IDisposable
     {
-        private const int TicksPerSegment = 4;
-        private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
+        private const int FramesPerSegment = 100;
+        private const int ProgressUpdateFrameInterval = 25;
+        private static readonly TimeSpan FrameInterval = TimeSpan.FromMilliseconds(40);
 
         private readonly ITaskService _taskService;
-        // private readonly IMapService _mapService;
+        private readonly IMapService _mapService;
         private readonly IVehicleAdapterManager _vehicleAdapterManager;
         private readonly IAuditTrailService _auditTrail;
         private readonly IChargeStationRepository _chargeStationRepository;
@@ -27,7 +29,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
         public MockTaskExecutionSimulator(
             ITaskService taskService,
-            // IMapService mapService,
+            IMapService mapService,
             IVehicleAdapterManager vehicleAdapterManager,
             IAuditTrailService auditTrail,
             IChargeStationRepository chargeStationRepository,
@@ -36,7 +38,7 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
             IRouteReservationService routeReservationService)
         {
             _taskService = taskService;
-            // _mapService = mapService;
+            _mapService = mapService;
             _vehicleAdapterManager = vehicleAdapterManager;
             _auditTrail = auditTrail;
             _chargeStationRepository = chargeStationRepository;
@@ -110,28 +112,54 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
 
                 var context = new RequestContext { SourceModule = nameof(MockTaskExecutionSimulator) };
                 var route = await ResolveRouteAsync(task, context, cancellationToken);
+                var mapResult = _mapService.GetCurrentMap(new GetMapSnapshotRequest { Context = context });
+                var mapSnapshot = mapResult.Success ? mapResult.Data : null;
+                var mapNodes = (mapSnapshot?.Nodes ?? Array.Empty<MapNodeDto>())
+                    .Where(node => !string.IsNullOrWhiteSpace(node.NodeId))
+                    .GroupBy(node => node.NodeId, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
                 _taskService.UpdateTaskProgress(taskId, 0, route.FirstOrDefault() ?? task.SourceNodeId);
 
                 var segmentCount = Math.Max(route.Count - 1, 1);
-                var totalTicks = segmentCount * TicksPerSegment;
-                var completedTicks = 0;
+                var totalFrames = segmentCount * FramesPerSegment;
+                var completedFrames = 0;
 
                 for (var segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
                 {
                     var fromNodeId = route[Math.Min(segmentIndex, route.Count - 1)];
                     var toNodeId = route[Math.Min(segmentIndex + 1, route.Count - 1)];
 
-                    for (var tick = 1; tick <= TicksPerSegment; tick++)
+                    mapNodes.TryGetValue(fromNodeId, out var fromNode);
+                    mapNodes.TryGetValue(toNodeId, out var toNode);
+
+                    for (var frame = 1; frame <= FramesPerSegment; frame++)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        await System.Threading.Tasks.Task.Delay(TickInterval, cancellationToken);
+                        await System.Threading.Tasks.Task.Delay(FrameInterval, cancellationToken);
 
-                        completedTicks++;
-                        var progress = Math.Min(95, (int)Math.Round((double)completedTicks / totalTicks * 95));
-                        var currentNodeId = tick == TicksPerSegment ? toNodeId : fromNodeId;
-                        _taskService.UpdateTaskProgress(taskId, progress, currentNodeId);
+                        completedFrames++;
+                        var progress = Math.Min(95, (int)Math.Round((double)completedFrames / totalFrames * 95));
+                        var arrived = frame == FramesPerSegment;
+                        var currentNodeId = arrived ? toNodeId : fromNodeId;
 
-                        if (tick == TicksPerSegment)
+                        if (fromNode is not null && toNode is not null)
+                        {
+                            PublishInterpolatedVehiclePosition(
+                                vehicleId,
+                                taskId,
+                                mapSnapshot?.MapId,
+                                fromNode,
+                                toNode,
+                                (double)frame / FramesPerSegment,
+                                arrived);
+                        }
+
+                        if (arrived || frame % ProgressUpdateFrameInterval == 0)
+                        {
+                            _taskService.UpdateTaskProgress(taskId, progress, currentNodeId);
+                        }
+
+                        if (arrived)
                         {
                             await _vehicleAdapterManager.SendCommandAsync(new DispatchCommand
                             {
@@ -252,6 +280,41 @@ namespace AgvDispatcher.Infrastructure.Sqlite.Services
                     cancellation.Dispose();
                 }
             }
+        }
+
+        private void PublishInterpolatedVehiclePosition(
+            string vehicleId,
+            string taskId,
+            string? mapId,
+            MapNodeDto fromNode,
+            MapNodeDto toNode,
+            double progress,
+            bool arrived)
+        {
+            var current = _vehicleStateStore.GetVehicle(vehicleId);
+            if (current is null)
+            {
+                return;
+            }
+
+            var normalizedProgress = Math.Clamp(progress, 0, 1);
+            var deltaX = toNode.X - fromNode.X;
+            var deltaY = toNode.Y - fromNode.Y;
+            var updated = current.Clone();
+            updated.State = RobotState.Running;
+            updated.CurrentTaskId = taskId;
+            updated.Location = arrived ? toNode.NodeId : fromNode.NodeId;
+            updated.Position = new MapPosition
+            {
+                MapId = string.IsNullOrWhiteSpace(mapId) ? "MAIN" : mapId,
+                X = fromNode.X + deltaX * normalizedProgress,
+                Y = fromNode.Y + deltaY * normalizedProgress,
+                Heading = Math.Atan2(deltaY, deltaX) * 180 / Math.PI,
+                NodeId = arrived ? toNode.NodeId : null,
+                AreaCode = arrived ? toNode.AreaId : fromNode.AreaId
+            };
+            updated.ReportedAt = DateTime.Now;
+            _vehicleStateStore.UpsertStatus(updated);
         }
 
         private async Task<List<string>> ResolveRouteAsync(
